@@ -42,6 +42,36 @@ interface TranscriptMessage {
   content: string;
 }
 
+function parseStatusMessage(content: string): { isStatus: boolean; text: string; statusType: string } {
+  try {
+    const trimmed = content.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        if ('status' in parsed) {
+          const statusText = String(parsed.status);
+          return {
+            isStatus: true,
+            text: statusText,
+            statusType: statusText.toLowerCase()
+          };
+        }
+        if ('message' in parsed && ('event' in parsed || 'type' in parsed)) {
+          const statusText = String(parsed.message);
+          return {
+            isStatus: true,
+            text: statusText,
+            statusType: String(parsed.type || parsed.event || 'default').toLowerCase()
+          };
+        }
+      }
+    }
+  } catch (e) {
+    // Not valid JSON
+  }
+  return { isStatus: false, text: content, statusType: '' };
+}
+
 export default function FloatingVoiceWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [callState, setCallState] = useState<CallState>('idle');
@@ -51,6 +81,15 @@ export default function FloatingVoiceWidget() {
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
   const [duration, setDuration] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // New text chat states
+  const [activeTab, setActiveTab] = useState<'voice' | 'text'>('voice');
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<TranscriptMessage[]>([
+    { role: 'agent', content: 'Hi there! I am your AI front desk receptionist. How can I help you today?' }
+  ]);
+  const [chatTyping, setChatTyping] = useState(false);
 
   const clientRef = useRef<RetellWebClient | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -101,17 +140,59 @@ export default function FloatingVoiceWidget() {
         timerRef.current = null;
       }
     }
-    return () => {
-      // Cleanup on unmount
-    };
   }, [isCallActive]);
 
-  // Auto-scroll transcripts
+  // Auto-scroll transcripts and chat messages
   useEffect(() => {
     if (transcriptEndRef.current) {
       transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [transcript]);
+  }, [transcript, chatMessages]);
+
+  const handleSendChatMessage = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = chatInput.trim();
+    if (!text) return;
+
+    setChatInput('');
+    const userMsg: TranscriptMessage = { role: 'user', content: text };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatTyping(true);
+
+    try {
+      const res = await fetch('/api/retell/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId,
+          content: text
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to get response');
+      }
+
+      const data = await res.json();
+      if (data.chatId) {
+        setChatId(data.chatId);
+      }
+      if (data.messages && Array.isArray(data.messages)) {
+        const mapped = data.messages.map((m: any) => ({
+          role: m.role === 'agent' ? 'agent' : 'user',
+          content: m.content
+        }));
+        setChatMessages((prev) => [...prev, ...mapped]);
+      }
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'agent', content: 'Sorry, I encountered an issue connecting to the chat service. Please try again.' }
+      ]);
+    } finally {
+      setChatTyping(false);
+    }
+  }, [chatInput, chatId]);
 
   const startCall = useCallback(async () => {
     // Guard state transitions
@@ -121,6 +202,7 @@ export default function FloatingVoiceWidget() {
     if (isStartingRef.current) return;
     isStartingRef.current = true;
 
+    setActiveTab('voice');
     updateState('connecting');
     setErrorMessage(null);
     setTranscript([]);
@@ -489,9 +571,65 @@ export default function FloatingVoiceWidget() {
           </div>
 
           {/* Body Content */}
-          <div style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px', overflowY: 'auto' }}>
+          <div style={{
+            padding: '20px',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '18px',
+            overflowY: activeTab === 'text' && callState === 'idle' ? 'hidden' : 'auto'
+          }}>
+            {/* Tab Selector - Only show when callState is 'idle' */}
+            {callState === 'idle' && (
+              <div style={{
+                display: 'flex',
+                background: 'rgba(14,27,42,0.06)',
+                padding: '4px',
+                borderRadius: '12px',
+                width: '100%',
+                marginBottom: '4px'
+              }}>
+                <button
+                  onClick={() => setActiveTab('voice')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: activeTab === 'voice' ? '#FFFFFF' : 'transparent',
+                    border: 'none',
+                    color: activeTab === 'voice' ? '#0E1B2A' : 'rgba(14,27,42,0.6)',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    boxShadow: activeTab === 'voice' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  Voice Chat
+                </button>
+                <button
+                  onClick={() => setActiveTab('text')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: activeTab === 'text' ? '#FFFFFF' : 'transparent',
+                    border: 'none',
+                    color: activeTab === 'text' ? '#0E1B2A' : 'rgba(14,27,42,0.6)',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    boxShadow: activeTab === 'text' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  Text Chat
+                </button>
+              </div>
+            )}
+
             {/* Connection States */}
-            {isLoading && (
+            {isLoading && activeTab === 'voice' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '30px 0', textAlign: 'center' }}>
                 <svg style={{ width: '32px', height: '32px', animation: 'spin 1.2s linear infinite', color: '#D9714B' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <circle cx="12" cy="12" r="10" strokeDasharray="36 12" />
@@ -503,7 +641,7 @@ export default function FloatingVoiceWidget() {
             )}
 
             {/* Error State */}
-            {callState === 'error' && (
+            {callState === 'error' && activeTab === 'voice' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '20px 0', textAlign: 'center' }}>
                 <div style={{ color: '#EF4444' }}>
                   <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -536,7 +674,7 @@ export default function FloatingVoiceWidget() {
             )}
 
             {/* Ended State */}
-            {callState === 'ended' && (
+            {callState === 'ended' && activeTab === 'voice' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '30px 0', textAlign: 'center' }}>
                 <div style={{
                   width: '40px',
@@ -558,7 +696,7 @@ export default function FloatingVoiceWidget() {
             )}
 
             {/* Idle State / Intro */}
-            {callState === 'idle' && (
+            {callState === 'idle' && activeTab === 'voice' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '20px 0', textAlign: 'center' }}>
                 <p style={{ fontSize: '13.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.7)', margin: 0 }}>
                   Have questions about our hours, services, or want to test our virtual receptionist? Start a real-time call!
@@ -582,8 +720,166 @@ export default function FloatingVoiceWidget() {
               </div>
             )}
 
+            {/* Text Chat Tab */}
+            {callState === 'idle' && activeTab === 'text' && (
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minHeight: '320px', height: '100%' }}>
+                {/* Scrollable messages container */}
+                <div style={{
+                  flex: 1,
+                  background: 'rgba(14, 27, 42, 0.03)',
+                  border: '1px solid rgba(14, 27, 42, 0.08)',
+                  borderRadius: '16px',
+                  padding: '12px',
+                  overflowY: 'auto',
+                  maxHeight: '260px',
+                  minHeight: '220px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  textAlign: 'left'
+                }}>
+                  {chatMessages.map((msg, idx) => {
+                    const statusInfo = parseStatusMessage(msg.content);
+                    if (statusInfo.isStatus) {
+                      let bgColor = 'rgba(47, 143, 224, 0.1)';
+                      let textColor = '#2F8FE0';
+                      let borderColor = 'rgba(47, 143, 224, 0.2)';
+
+                      const type = statusInfo.statusType;
+                      if (type.includes('success') || type.includes('booked') || type.includes('completed')) {
+                        bgColor = 'rgba(46, 204, 113, 0.1)';
+                        textColor = '#2ecc71';
+                        borderColor = 'rgba(46, 204, 113, 0.2)';
+                      } else if (type.includes('fail') || type.includes('error') || type.includes('reject')) {
+                        bgColor = 'rgba(231, 76, 60, 0.1)';
+                        textColor = '#e74c3c';
+                        borderColor = 'rgba(231, 76, 60, 0.2)';
+                      } else if (type.includes('transfer') || type.includes('redirect')) {
+                        bgColor = 'rgba(155, 89, 182, 0.1)';
+                        textColor = '#9b59b6';
+                        borderColor = 'rgba(155, 89, 182, 0.2)';
+                      } else if (type.includes('progress') || type.includes('wait') || type.includes('pend') || type.includes('process') || type.includes('look')) {
+                        bgColor = 'rgba(241, 196, 15, 0.1)';
+                        textColor = '#f1c40f';
+                        borderColor = 'rgba(241, 196, 15, 0.2)';
+                      }
+
+                      return (
+                        <div key={idx} style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          width: '100%',
+                          margin: '6px 0'
+                        }}>
+                          <div style={{
+                            background: bgColor,
+                            color: textColor,
+                            border: `1px solid ${borderColor}`,
+                            borderRadius: '12px',
+                            padding: '8px 16px',
+                            fontSize: '12.5px',
+                            fontWeight: 600,
+                            textAlign: 'center',
+                            maxWidth: '90%',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                            textTransform: 'capitalize'
+                          }}>
+                            {statusInfo.text}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={idx} style={{
+                        display: 'flex',
+                        justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                        width: '100%'
+                      }}>
+                        <div style={{
+                          maxWidth: '85%',
+                          background: msg.role === 'user' ? '#2F8FE0' : '#FFFFFF',
+                          color: msg.role === 'user' ? '#FFFFFF' : '#0E1B2A',
+                          border: msg.role === 'user' ? 'none' : '1px solid rgba(14, 27, 42, 0.1)',
+                          borderRadius: msg.role === 'user' ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                          padding: '8px 12px',
+                          fontSize: '13px',
+                          lineHeight: 1.45,
+                          boxShadow: '0 2px 6px rgba(14,27,42,0.03)'
+                        }}>
+                          {msg.content}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {chatTyping && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
+                      <div style={{
+                        background: '#FFFFFF',
+                        border: '1px solid rgba(14, 27, 42, 0.1)',
+                        borderRadius: '14px 14px 14px 2px',
+                        padding: '8px 12px',
+                        fontSize: '13px',
+                        color: 'rgba(14,27,42,0.5)',
+                        boxShadow: '0 2px 6px rgba(14,27,42,0.03)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        <span>Agent is typing</span>
+                        <span style={{ animation: 'pulseConnecting 1.5s infinite', fontWeight: 'bold' }}>...</span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={transcriptEndRef} />
+                </div>
+
+                {/* Form input */}
+                <form onSubmit={handleSendChatMessage} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Type your message to the agent..."
+                    disabled={chatTyping}
+                    style={{
+                      flex: 1,
+                      border: '1px solid rgba(14,27,42,0.15)',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      fontSize: '13px',
+                      background: '#FFFFFF',
+                      outline: 'none',
+                      color: '#0E1B2A',
+                      fontFamily: "'Figtree', sans-serif"
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={chatTyping || !chatInput.trim()}
+                    style={{
+                      background: '#2F8FE0',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '0 14px',
+                      cursor: (chatTyping || !chatInput.trim()) ? 'not-allowed' : 'pointer',
+                      opacity: (chatTyping || !chatInput.trim()) ? 0.6 : 1,
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      fontFamily: "'Figtree', sans-serif",
+                      boxShadow: '0 4px 12px rgba(47, 143, 224, 0.15)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
+            )}
+
             {/* Connected Active Call Details */}
-            {isActive && (
+            {isActive && activeTab === 'voice' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                 {/* Timer & Speaking Waves */}
                 <div style={{
