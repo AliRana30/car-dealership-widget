@@ -1,0 +1,408 @@
+'use client';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import Link from 'next/link';
+import { defaultVoiceWidgetConfig, deepMerge } from '@/config/voiceWidget/default';
+import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
+import { CustomizerSection } from './customizerTypes';
+import SettingsSidebar from './SettingsSidebar';
+import PreviewArea from './PreviewArea';
+import ColorEditorPanel from './ColorEditorPanel';
+import ColorsSection from './ColorsSection';
+import DeploySection from './DeploySection';
+import {
+  BrandingSection,
+  TypographySection,
+  LauncherSection,
+  PanelSection,
+  BehaviorSection,
+  ResponsiveSection,
+} from './ConfigSections';
+
+// Toggle styles (injected once)
+const TOGGLE_CSS = `
+  .cust-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .cust-toggle span {
+    display: inline-block;
+    width: 36px; height: 20px;
+    background: #d1d5db;
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.2s;
+    cursor: pointer;
+  }
+  .cust-toggle input:checked + span { background: #2563eb; }
+  .cust-toggle span::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    background: white;
+    border-radius: 50%;
+    top: 3px; left: 3px;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .cust-toggle input:checked + span::after { transform: translateX(16px); }
+
+  .cust-input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important; outline: none; }
+  .cust-select:focus { border-color: #2563eb !important; outline: none; }
+
+  /* iro picker overrides */
+  .IroColorPicker { user-select: none; }
+`;
+
+const SECTION_TITLES: Record<CustomizerSection, string> = {
+  branding: 'Branding & Copy',
+  colors: 'Colors',
+  typography: 'Typography',
+  launcher: 'Launcher Button',
+  panel: 'Panel & Layout',
+  behavior: 'Behavior',
+  responsive: 'Responsive',
+  deploy: 'Deploy & Connect',
+};
+
+export default function WidgetCustomizerApp() {
+  const [draft, setDraft] = useState<VoiceWidgetConfig>(() =>
+    deepMerge(defaultVoiceWidgetConfig, {})
+  );
+  const [activeSection, setActiveSection] = useState<CustomizerSection>('colors');
+  const [openColorTokenId, setOpenColorTokenId] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const originalRef = useRef<VoiceWidgetConfig>(draft);
+
+  // Deploy-specific metadata (not part of visual config)
+  const [widgetId, setWidgetId] = useState('default');
+  const [widgetName, setWidgetName] = useState('Default Widget');
+  const [retellApiKey, setRetellApiKey] = useState('');
+  const [vapiApiKey, setVapiApiKey] = useState('');
+  const [isSavedOnServer, setIsSavedOnServer] = useState(false);
+
+  // Fetch on mount if id is in query params
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const idParam = params.get('id');
+    if (!idParam) return;
+
+    async function loadWidget() {
+      try {
+        if (!idParam) return;
+        const fetchFn = typeof window !== 'undefined' && window.fetch ? window.fetch.bind(window) : null;
+        if (!fetchFn) {
+          console.warn('loadWidget: window.fetch is not available.');
+          return;
+        }
+        const res = await fetchFn(`/api/widgets?id=${encodeURIComponent(idParam)}`);
+        if (!res) {
+          console.warn('loadWidget: API fetch returned a null response.');
+          return;
+        }
+        if (!res.ok) {
+          console.warn(`loadWidget: API response is not ok (status: ${res.status}).`);
+          return;
+        }
+        const data = await res.json().catch(() => null);
+        if (!data) {
+          console.warn('loadWidget: failed to parse JSON or returned empty data.');
+          return;
+        }
+
+        if (data.id !== undefined && data.id !== null) {
+          setWidgetId(String(data.id));
+        }
+        if (data.name !== undefined && data.name !== null) {
+          setWidgetName(String(data.name));
+        }
+        setRetellApiKey(data.hasRetellApiKey ? '••••••••' : '');
+        setVapiApiKey(data.hasVapiApiKey ? '••••••••' : '');
+        if (data.config) {
+          setDraft(deepMerge(defaultVoiceWidgetConfig, data.config));
+        }
+        setIsSavedOnServer(true);
+      } catch (err) {
+        console.error('Failed to load widget config:', err);
+      }
+    }
+    loadWidget();
+  }, []);
+
+  const patchDraft = useCallback((patch: Partial<VoiceWidgetConfig>) => {
+    setDraft(prev => deepMerge(prev, patch as any));
+  }, []);
+
+  const handleColorChange = useCallback((field: string, hex: string) => {
+    setDraft(prev => ({
+      ...prev,
+      theme: { ...prev.theme, [field]: hex },
+    }));
+  }, []);
+
+  const handleReset = () => {
+    setDraft(deepMerge(defaultVoiceWidgetConfig, {}));
+    setWidgetId('default');
+    setWidgetName('Default Widget');
+    setRetellApiKey('');
+    setVapiApiKey('');
+    setIsSavedOnServer(false);
+    setOpenColorTokenId(null);
+    setSaved(false);
+  };
+
+  const handleSave = async () => {
+    try {
+      const provider = draft.provider?.provider ?? 'retell';
+      const res = await fetch('/api/widgets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: widgetId,
+          name: widgetName,
+          provider,
+          retellApiKey,
+          retellAgentId: draft.provider?.provider === 'retell' ? (draft.provider?.agentId || '') : '',
+          vapiApiKey,
+          vapiAssistantId: draft.provider?.provider === 'vapi' ? (draft.provider?.agentId || '') : '',
+          config: draft,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to save configuration');
+      }
+
+      const data = await res.json();
+      setIsSavedOnServer(true);
+      setSaved(true);
+
+      if (typeof window !== 'undefined') {
+        const nextUrl = `${window.location.pathname}?id=${encodeURIComponent(data.widget.id)}`;
+        window.history.replaceState({ ...window.history.state, as: nextUrl, url: nextUrl }, '', nextUrl);
+      }
+
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save widget configuration');
+    }
+  };
+
+  const handleSectionChange = (s: CustomizerSection) => {
+    setActiveSection(s);
+    if (s !== 'colors') setOpenColorTokenId(null);
+  };
+
+  const handleOpenToken = (id: string) => {
+    setOpenColorTokenId(prev => prev === id ? null : id);
+  };
+
+  const showColorPanel = openColorTokenId !== null;
+
+  return (
+    <div style={styles.root}>
+      <style dangerouslySetInnerHTML={{ __html: TOGGLE_CSS }} />
+
+      {/* ── Top Bar ──────────────────────────────────── */}
+      <header style={styles.header}>
+        <div style={styles.headerLeft}>
+          <Link href="/" style={styles.backLink}>
+            ← Back
+          </Link>
+          <div style={styles.headerDivider} />
+          <div style={styles.headerTitle}>Widget Customizer</div>
+        </div>
+        <div style={styles.headerActions}>
+          <button onClick={handleReset} style={styles.btnSecondary}>Reset</button>
+          <button onClick={handleSave} style={{
+            ...styles.btnPrimary,
+            background: saved ? '#16a34a' : '#2563eb',
+          }}>
+            {saved ? '✓ Saved' : 'Save'}
+          </button>
+        </div>
+      </header>
+
+      {/* ── Main Layout ──────────────────────────────── */}
+      <div style={styles.body}>
+
+        {/* LEFT: Section nav */}
+        <SettingsSidebar active={activeSection} onSelect={handleSectionChange} />
+
+        {/* CENTER-LEFT: Section editor */}
+        <div style={styles.editorCol}>
+          <div style={styles.editorHeader}>
+            <span style={styles.editorTitle}>{SECTION_TITLES[activeSection]}</span>
+          </div>
+          <div style={styles.editorBody}>
+            {activeSection === 'branding' && (
+              <BrandingSection draft={draft} onChange={patchDraft} />
+            )}
+            {activeSection === 'colors' && (
+              <ColorsSection
+                draft={draft}
+                openTokenId={openColorTokenId}
+                onOpenToken={handleOpenToken}
+              />
+            )}
+            {activeSection === 'typography' && (
+              <TypographySection draft={draft} onChange={patchDraft} />
+            )}
+            {activeSection === 'launcher' && (
+              <LauncherSection draft={draft} onChange={patchDraft} />
+            )}
+            {activeSection === 'panel' && (
+              <PanelSection draft={draft} onChange={patchDraft} />
+            )}
+            {activeSection === 'behavior' && (
+              <BehaviorSection draft={draft} onChange={patchDraft} />
+            )}
+            {activeSection === 'responsive' && (
+              <ResponsiveSection draft={draft} onChange={patchDraft} />
+            )}
+            {activeSection === 'deploy' && (
+              <DeploySection
+                draft={draft}
+                onChange={patchDraft}
+                widgetId={widgetId}
+                setWidgetId={setWidgetId}
+                widgetName={widgetName}
+                setWidgetName={setWidgetName}
+                apiKey={draft.provider?.provider === 'vapi' ? vapiApiKey : retellApiKey}
+                setApiKey={draft.provider?.provider === 'vapi' ? setVapiApiKey : setRetellApiKey}
+                isSavedOnServer={isSavedOnServer}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* CENTER: Live preview */}
+        <div style={styles.previewCol}>
+          <PreviewArea draft={draft} widgetId={widgetId} />
+        </div>
+
+        {/* RIGHT: Color editor (conditional) */}
+        <ColorEditorPanel
+          draft={draft}
+          openTokenId={openColorTokenId}
+          onClose={() => setOpenColorTokenId(null)}
+          onColorChange={handleColorChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    width: '100vw',
+    background: '#ffffff',
+    fontFamily: "'Inter', 'Figtree', system-ui, sans-serif",
+    overflow: 'hidden',
+  },
+  header: {
+    height: '52px',
+    borderBottom: '1px solid #e5e7eb',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0 20px',
+    background: '#ffffff',
+    flexShrink: 0,
+    zIndex: 10,
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  backLink: {
+    fontSize: '13px',
+    color: '#6b7280',
+    textDecoration: 'none',
+    fontWeight: 500,
+  },
+  headerDivider: {
+    width: '1px',
+    height: '18px',
+    background: '#e5e7eb',
+  },
+  headerTitle: {
+    fontSize: '14px',
+    fontWeight: 600,
+    color: '#111827',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  btnSecondary: {
+    height: '32px',
+    padding: '0 14px',
+    borderRadius: '7px',
+    border: '1px solid #e5e7eb',
+    background: '#ffffff',
+    color: '#374151',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'background 0.15s',
+    fontFamily: 'inherit',
+  },
+  btnPrimary: {
+    height: '32px',
+    padding: '0 14px',
+    borderRadius: '7px',
+    border: 'none',
+    background: '#2563eb',
+    color: '#ffffff',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'background 0.2s',
+    fontFamily: 'inherit',
+  },
+  body: {
+    flex: 1,
+    display: 'flex',
+    overflow: 'hidden',
+    minHeight: 0,
+  },
+  editorCol: {
+    width: '256px',
+    minWidth: '256px',
+    borderRight: '1px solid #e5e7eb',
+    display: 'flex',
+    flexDirection: 'column',
+    background: '#ffffff',
+    flexShrink: 0,
+    overflowY: 'hidden',
+  },
+  editorHeader: {
+    padding: '14px 16px 10px',
+    borderBottom: '1px solid #f0f0f0',
+    background: '#fafafa',
+    flexShrink: 0,
+  },
+  editorTitle: {
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#374151',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+  },
+  editorBody: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '16px',
+  },
+  previewCol: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    minWidth: 0,
+  },
+};

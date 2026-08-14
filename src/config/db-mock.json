@@ -1,0 +1,310 @@
+{
+  "front-desk": {
+    "id": "front-desk",
+    "name": "Front Desk",
+    "provider": "retell",
+    "retellApiKey": "key_c8518fbaaa990618439d277ab026",
+    "retellAgentId": "agent_3150b4da2eaf98174c827f061d",
+    "vapiApiKey": "",
+    "vapiAssistantId": "",
+    "config": {
+      "mode": "floating",
+      "provider": {
+        "provider": "retell",
+        "agentId": "agent_3150b4da2eaf98174c827f061d"
+      },
+      "branding": {
+        "companyName": "MyFrontDesk",
+        "assistantName": "AI Front Desk Agent",
+        "title": "Talk to our AI Agent",
+        "subtitle": "Experience the virtual front desk receptionist live in your browser.",
+        "welcomeMessage": "Hi! I'm your AI front desk receptionist. How can I help you today?",
+        "startLabel": "Start Conversation",
+        "connectingLabel": "Connecting...",
+        "connectedLabel": "You're connected",
+        "endLabel": "End Call",
+        "retryLabel": "Try Again",
+        "muteLabel": "Mute",
+        "unmuteLabel": "Unmute",
+        "errorMessage": "Unable to connect. Please check your connection and try again.",
+        "callEndedMessage": "The call has ended. Thank you!",
+        "placeholderText": "Type your message...",
+        "agentMessageName": "Agent",
+        "userMessageName": "You"
+      },
+      "avatar": {
+        "enabled": false,
+        "size": 44,
+        "shape": "circle"
+      },
+      "theme": {
+        "primaryColor": "#0be000",
+        "primaryHoverColor": "#cf1c00",
+        "primaryActiveColor": "#989d00",
+        "launcherBackground": "#c2e02b",
+        "panelBackground": "#00ff51",
+        "headerBackground": "#FFFFFF",
+        "transcriptBackground": "transparent",
+        "userMessageBackground": "#E9F2FB",
+        "agentMessageBackground": "rgba(14, 27, 42, 0.05)",
+        "primaryTextColor": "#0E1B2A",
+        "secondaryTextColor": "rgba(14, 27, 42, 0.8)",
+        "mutedTextColor": "rgba(14, 27, 42, 0.58)",
+        "borderColor": "rgba(14, 27, 42, 0.12)",
+        "inputBorderColor": "rgba(14, 27, 42, 0.12)",
+        "successColor": "#22C55E",
+        "errorColor": "#EF4444",
+        "warningColor": "#F59E0B",
+        "connectingColor": "#2F8FE0",
+        "waveformColor": "#2F8FE0",
+        "speakingIndicatorColor": "#2F8FE0",
+        "radius": "lg",
+        "shadow": "xl",
+        "density": "comfortable"
+      },
+      "typography": {
+        "fontFamily": "'Figtree', sans-serif",
+        "headingWeight": 600,
+        "bodyWeight": 400,
+        "fontSizeScale": "lg",
+        "lineHeight": "1.5"
+      },
+      "launcher": {
+        "variant": "icon",
+        "icon": "phone",
+        "iconSize": 24,
+        "iconColor": "#FFFFFF",
+        "position": "bottom-right",
+        "offset": {
+          "bottom": 24,
+          "right": 24
+        },
+        "size": "medium",
+        "shape": "circle",
+        "shadow": "medium",
+        "border": {
+          "enabled": false,
+          "width": 1,
+          "color": "rgba(14,27,42,0.1)"
+        },
+        "label": {
+          "show": false,
+          "text": "Talk to Agent",
+          "position": "left"
+        },
+        "zIndex": 1000,
+        "pulseAnimation": true,
+        "tooltip": "Talk to Agent",
+        "ariaLabel": "Open AI assistant"
+      },
+      "panel": {
+        "width": 300,
+        "maxWidth": "100vw",
+        "height": "auto",
+        "maxHeight": 400,
+        "position": "bottom-right",
+        "offset": {
+          "bottom": 96,
+          "right": 24
+        },
+        "showHeader": true,
+        "showCloseButton": true,
+        "showTabs": true
+      },
+      "audioVisualizer": {
+        "type": "waveform",
+        "enabled": true,
+        "color": "#2F8FE0",
+        "intensity": 1,
+        "size": 100,
+        "animationSpeed": 1
+      },
+      "behavior": {
+        "showTranscript": true,
+        "showMuteButton": true,
+        "showEndButton": true,
+        "showAgentStatus": true,
+        "showDuration": true,
+        "showWaveform": true,
+        "allowTextChat": true,
+        "allowVoiceChat": true,
+        "defaultTab": "voice",
+        "autoResetEndedTimeout": 5000,
+        "connectionTimeout": 15000,
+        "telemetryEnabled": true
+      },
+      "animation": {
+        "launcher": "pulse",
+        "panel": "slide-up",
+        "speaking": "pulse",
+        "duration": 250
+      },
+      "responsive": {
+        "mobileBreakpoint": 860,
+        "fullscreenOnMobile": false,
+        "mobile": {
+          "launcherSize": "medium",
+          "bottomOffset": 16,
+          "horizontalOffset": 16,
+          "panelWidth": "min(340px, calc(100vw - 32px))",
+          "panelMaxHeight": "min(420px, 70vh)"
+        }
+      }
+    },
+    "createdAt": "2026-08-14T22:12:32.430Z"
+  },
+  "default": {
+    "id": "default",
+    "name": "Default Widget",
+    "provider": "retell",
+    "retellApiKey": "",
+    "retellAgentId": "",
+    "vapiApiKey": "9b7947e2-bb81-4e86-8aa9-59f9cc24705c",
+    "vapiAssistantId": "1be951dc-065d-49bc-ae48-c682443209ac",
+    "config": {
+      "mode": "floating",
+      "provider": {
+        "provider": "retell",
+        "agentId": ""
+      },
+      "branding": {
+        "companyName": "MyFrontDesk",
+        "assistantName": "AI Front Desk Agent",
+        "title": "Talk to our AI Agent",
+        "subtitle": "Experience the virtual front desk receptionist live in your browser.",
+        "welcomeMessage": "Hi! I'm your AI front desk receptionist. How can I help you today?",
+        "startLabel": "Start Conversation",
+        "connectingLabel": "Connecting...",
+        "connectedLabel": "You're connected",
+        "endLabel": "End Call",
+        "retryLabel": "Try Again",
+        "muteLabel": "Mute",
+        "unmuteLabel": "Unmute",
+        "errorMessage": "Unable to connect. Please check your connection and try again.",
+        "callEndedMessage": "The call has ended. Thank you!",
+        "placeholderText": "Type your message...",
+        "agentMessageName": "Agent",
+        "userMessageName": "You"
+      },
+      "avatar": {
+        "enabled": false,
+        "size": 44,
+        "shape": "circle"
+      },
+      "theme": {
+        "primaryColor": "#0be000",
+        "primaryHoverColor": "#cf1c00",
+        "primaryActiveColor": "#989d00",
+        "launcherBackground": "#c2e02b",
+        "panelBackground": "#00ff51",
+        "headerBackground": "#FFFFFF",
+        "transcriptBackground": "transparent",
+        "userMessageBackground": "#E9F2FB",
+        "agentMessageBackground": "rgba(14, 27, 42, 0.05)",
+        "primaryTextColor": "#0E1B2A",
+        "secondaryTextColor": "rgba(14, 27, 42, 0.8)",
+        "mutedTextColor": "rgba(14, 27, 42, 0.58)",
+        "borderColor": "rgba(14, 27, 42, 0.12)",
+        "inputBorderColor": "rgba(14, 27, 42, 0.12)",
+        "successColor": "#22C55E",
+        "errorColor": "#EF4444",
+        "warningColor": "#F59E0B",
+        "connectingColor": "#2F8FE0",
+        "waveformColor": "#2F8FE0",
+        "speakingIndicatorColor": "#2F8FE0",
+        "radius": "lg",
+        "shadow": "xl",
+        "density": "comfortable"
+      },
+      "typography": {
+        "fontFamily": "'Figtree', sans-serif",
+        "headingWeight": 600,
+        "bodyWeight": 400,
+        "fontSizeScale": "md",
+        "lineHeight": "1.5"
+      },
+      "launcher": {
+        "variant": "icon",
+        "icon": "phone",
+        "iconSize": 24,
+        "iconColor": "#FFFFFF",
+        "position": "bottom-right",
+        "offset": {
+          "bottom": 24,
+          "right": 24
+        },
+        "size": "medium",
+        "shape": "circle",
+        "shadow": "medium",
+        "border": {
+          "enabled": false,
+          "width": 1,
+          "color": "rgba(14,27,42,0.1)"
+        },
+        "label": {
+          "show": false,
+          "text": "Talk to Agent",
+          "position": "left"
+        },
+        "zIndex": 1000,
+        "pulseAnimation": true,
+        "tooltip": "Talk to Agent",
+        "ariaLabel": "Open AI assistant"
+      },
+      "panel": {
+        "width": 360,
+        "maxWidth": "100vw",
+        "height": "auto",
+        "maxHeight": 400,
+        "position": "bottom-right",
+        "offset": {
+          "bottom": 96,
+          "right": 24
+        },
+        "showHeader": true,
+        "showCloseButton": true,
+        "showTabs": true
+      },
+      "audioVisualizer": {
+        "type": "waveform",
+        "enabled": true,
+        "color": "#2F8FE0",
+        "intensity": 1,
+        "size": 100,
+        "animationSpeed": 1
+      },
+      "behavior": {
+        "showTranscript": true,
+        "showMuteButton": true,
+        "showEndButton": true,
+        "showAgentStatus": true,
+        "showDuration": true,
+        "showWaveform": true,
+        "allowTextChat": true,
+        "allowVoiceChat": true,
+        "defaultTab": "voice",
+        "autoResetEndedTimeout": 5000,
+        "connectionTimeout": 15000,
+        "telemetryEnabled": true
+      },
+      "animation": {
+        "launcher": "pulse",
+        "panel": "slide-up",
+        "speaking": "pulse",
+        "duration": 250
+      },
+      "responsive": {
+        "mobileBreakpoint": 860,
+        "fullscreenOnMobile": false,
+        "mobile": {
+          "launcherSize": "medium",
+          "bottomOffset": 16,
+          "horizontalOffset": 16,
+          "panelWidth": "min(340px, calc(100vw - 32px))",
+          "panelMaxHeight": "min(420px, 70vh)"
+        }
+      }
+    },
+    "createdAt": "2026-08-14T22:19:35.354Z"
+  }
+}

@@ -28,20 +28,14 @@ function maskIp(ip: string): string {
 // ─── Environment ────────────────────────────────────────────────────────────
 
 function getEnv(): { apiKey: string; agentId: string; chatAgentId?: string } {
-  const apiKey = process.env.RETELL_API_KEY;
-  const agentId = process.env.RETELL_AGENT_ID;
-  const chatAgentId = process.env.RETELL_CHAT_AGENT_ID;
+  const apiKey = process.env.RETELL_API_KEY || 'key_c8518fbaaa990618439d277ab026';
+  const agentId = process.env.RETELL_AGENT_ID || 'agent_3150b4da2eaf98174c827f061d';
+  const chatAgentId = process.env.RETELL_CHAT_AGENT_ID || 'agent_d887e846b66f76b1e445c932e6';
 
-  if (!apiKey || apiKey.trim() === '') {
-    throw new Error('RETELL_API_KEY is not configured on this server.');
-  }
-  if (!agentId || agentId.trim() === '') {
-    throw new Error('RETELL_AGENT_ID is not configured on this server.');
-  }
   return {
     apiKey: apiKey.trim(),
     agentId: agentId.trim(),
-    chatAgentId: chatAgentId && chatAgentId.trim() !== '' ? chatAgentId.trim() : undefined
+    chatAgentId: chatAgentId.trim()
   };
 }
 

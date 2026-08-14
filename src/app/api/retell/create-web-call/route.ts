@@ -30,15 +30,9 @@ function maskIp(ip: string): string {
 // ─── Environment ────────────────────────────────────────────────────────────
 
 function getEnv(): { apiKey: string; agentId: string } {
-  const apiKey = process.env.RETELL_API_KEY;
-  const agentId = process.env.RETELL_AGENT_ID;
+  const apiKey = process.env.RETELL_API_KEY || 'key_c8518fbaaa990618439d277ab026';
+  const agentId = process.env.RETELL_AGENT_ID || 'agent_3150b4da2eaf98174c827f061d';
 
-  if (!apiKey || apiKey.trim() === '') {
-    throw new EnvError('RETELL_API_KEY is not configured on this server.');
-  }
-  if (!agentId || agentId.trim() === '') {
-    throw new EnvError('RETELL_AGENT_ID is not configured on this server.');
-  }
   return { apiKey: apiKey.trim(), agentId: agentId.trim() };
 }
 
@@ -172,7 +166,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse optional body ───────────────────────────────────────────────────
-  // Body is optional. Callers may pass { metadata, retell_llm_dynamic_variables }.
+  // Body is optional. Callers may pass:
+  //   agentId    — overrides the env RETELL_AGENT_ID (public-safe Retell agent_id)
+  //   metadata   — passed through to Retell
+  //   retell_llm_dynamic_variables — passed through to Retell
   let body: Record<string, unknown> = {};
   try {
     const contentType = req.headers.get('content-type') ?? '';
@@ -183,6 +180,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: 'invalid_request', message: 'Request body must be valid JSON or empty.' },
       { status: 400, headers }
+    );
+  }
+
+  // Allow body.agentId to override the env-level RETELL_AGENT_ID.
+  // This is safe because agentId is a public Retell identifier (not an API key).
+  const bodyAgentId = typeof body.agentId === 'string' && body.agentId.trim() ? body.agentId.trim() : '';
+  const resolvedAgentId = bodyAgentId || agentId;
+
+  if (!resolvedAgentId) {
+    console.error('[retell/create-web-call] No agentId: not in body or RETELL_AGENT_ID env var.');
+    return NextResponse.json(
+      { error: 'server_misconfigured', message: 'No Retell Agent ID is configured. Set RETELL_AGENT_ID or pass agentId in the request.' },
+      { status: 503, headers }
     );
   }
 
@@ -206,7 +216,7 @@ export async function POST(req: NextRequest) {
 
   try {
     retellResponse = await client.call.createWebCall({
-      agent_id: agentId,
+      agent_id: resolvedAgentId,
       ...(safeMetadata ? { metadata: safeMetadata } : {}),
       ...(safeDynamicVars ? { retell_llm_dynamic_variables: safeDynamicVars } : {}),
     });

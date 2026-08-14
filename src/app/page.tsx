@@ -668,7 +668,7 @@ export default class Page extends Component<{}, State> {
         {/* Hero + FeatureGrid pin/reveal */}
         <div ref={this.pinWrapRef} style={{ position: 'relative' }}>
           {/* Hero */}
-          <section ref={this.heroSectionRef} style={{ ...heroPinStyle, maxWidth: '1240px', margin: '0 auto', padding: '56px 32px 56px', display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined, gridTemplateColumns: isMobile ? undefined : '1.05fr 0.95fr', gap: isMobile ? '40px' : '64px', alignItems: 'center' }}>
+          <section ref={this.heroSectionRef} style={{ ...heroPinStyle, maxWidth: '1240px', margin: '0 auto', padding: isMobile ? '48px 20px 48px' : '56px 32px 56px', display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined, gridTemplateColumns: isMobile ? undefined : '1.1fr 0.9fr', gap: isMobile ? '36px' : '60px', alignItems: 'center' }}>
             <div ref={this.revealRef('hero-text') as React.RefCallback<HTMLDivElement>} style={this.revealStyle('hero-text', 0)}>
               <h1 style={{ fontFamily: "'Figtree', sans-serif", letterSpacing: '-0.025em', margin: '0 0 14px' }}>
                 <div style={{ lineHeight: 0.98 }}>
@@ -685,43 +685,9 @@ export default class Page extends Component<{}, State> {
               <p style={{ fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.72)', maxWidth: '460px', margin: '0 0 30px' }}>
                 An agent trained on your business's own hours, services, and calendar answers the call, books the appointment, and lets you review exactly what happened afterward.
               </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '22px', flexWrap: 'wrap', marginBottom: '32px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' }}>
                 <a href="#final-cta" className="btn-hover-transform" style={{ padding: '14px 28px', borderRadius: '12px', background: '#2F8FE0', color: '#FFFDF8', fontSize: '15px', fontWeight: 600, textDecoration: 'none', display: 'inline-block', whiteSpace: 'nowrap', flexShrink: 0 }}>Request Early Access</a>
-                
-                <button
-                  onClick={isCallActive ? this.stopCall : this.startCall}
-                  disabled={isLoading || this.state.callState === 'ending'}
-                  className="btn-hover-transform"
-                  style={{
-                    padding: '14px 28px',
-                    borderRadius: '12px',
-                    background: isCallActive ? '#EF4444' : 'rgba(47,143,224,0.1)',
-                    border: isCallActive ? '1px solid #EF4444' : '1px solid rgba(47,143,224,0.3)',
-                    color: isCallActive ? '#FFFDF8' : '#2F8FE0',
-                    fontSize: '15px',
-                    fontWeight: 600,
-                    cursor: (isLoading || this.state.callState === 'ending') ? 'not-allowed' : 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.25s ease'
-                  }}
-                >
-                  {isCallActive ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.8 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-5.33-5.33A19.79 19.79 0 0 1 2 4.18 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .8 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" style={{ transform: 'rotate(135deg)', transformOrigin: 'center' }} />
-                    </svg>
-                  ) : (
-                    renderIcon(PHONE_PATH, 16, 1.9, '#2F8FE0')
-                  )}
-                  {isCallActive && 'End Call'}
-                  {isLoading && 'Connecting...'}
-                  {(this.state.callState === 'idle' || this.state.callState === 'error') && 'Talk to Agent'}
-                  {this.state.callState === 'ended' && 'Call Ended'}
-                </button>
-
-                <a href="#how-it-works" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>See a call become a booking ↓</a>
+                <a href="#how-it-works" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>See how it works ↓</a>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {capabilities.map((cap, i) => (
@@ -733,18 +699,153 @@ export default class Page extends Component<{}, State> {
               </div>
             </div>
 
-            <div ref={this.revealRef('hero-visual') as React.RefCallback<HTMLDivElement>} style={this.revealStyle('hero-visual', 0.15)}>
-              <VoiceAgentWidget
-                ref={this.widgetRef}
-                onCallStateChange={(callState) => {
-                  this.setState({ callState });
-                  if (callState === 'connected') {
-                    this.pauseHeroInterval();
-                  } else if (callState === 'idle' || callState === 'ended' || callState === 'error') {
-                    this.resumeHeroInterval();
-                  }
-                }}
-              />
+            <div
+              ref={this.revealRef('hero-visual') as React.RefCallback<HTMLDivElement>}
+              style={{ ...this.revealStyle('hero-visual', 0.15), width: '100%' }}
+            >
+              {/* Original animated hero box */}
+              <div style={{
+                width: '100%',
+                maxWidth: isMobile ? '100%' : '420px',
+                margin: '0 auto',
+                background: 'rgba(251,253,255,0.92)',
+                border: '1px solid rgba(14,27,42,0.1)',
+                borderRadius: '24px',
+                padding: isMobile ? '32px 22px' : '40px 32px',
+                boxShadow: '0 24px 64px -12px rgba(14,27,42,0.16), 0 4px 16px -4px rgba(14,27,42,0.06)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0px',
+                textAlign: 'center',
+                boxSizing: 'border-box',
+              }}>
+                {/* Animated icon ring */}
+                <div style={{
+                  width: '88px',
+                  height: '88px',
+                  borderRadius: '50%',
+                  background: phase === 0
+                    ? 'rgba(47,143,224,0.08)'
+                    : phase === 1
+                    ? '#2F8FE0'
+                    : '#22C55E',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '22px',
+                  transition: 'background 0.5s ease',
+                  ...ringPulseStyle,
+                }}>
+                  <div style={{
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '50%',
+                    background: phase === 0 ? 'white' : 'rgba(255,255,255,0.22)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: phase === 0 ? '0 4px 16px rgba(47,143,224,0.18)' : 'none',
+                    transition: 'all 0.5s ease',
+                  }}>
+                    {phaseIcon}
+                  </div>
+                </div>
+
+                {/* Phase label */}
+                <div style={{
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  letterSpacing: '0.09em',
+                  textTransform: 'uppercase',
+                  color: phase === 0 ? '#2F8FE0' : phase === 1 ? '#2F8FE0' : '#22C55E',
+                  marginBottom: '10px',
+                  transition: 'color 0.5s ease',
+                }}>
+                  {phaseLabel}
+                </div>
+
+                {/* Title */}
+                <h3 style={{
+                  fontFamily: "'Figtree', sans-serif",
+                  fontSize: '19px',
+                  fontWeight: 700,
+                  color: '#0E1B2A',
+                  margin: '0 0 8px',
+                  letterSpacing: '-0.01em',
+                }}>
+                  Your AI Front Desk
+                </h3>
+                <p style={{
+                  fontSize: '13.5px',
+                  color: 'rgba(14,27,42,0.6)',
+                  margin: '0 0 24px',
+                  lineHeight: 1.55,
+                  maxWidth: '280px',
+                }}>
+                  Answers every call, books appointments, and handles the admin — automatically.
+                </p>
+
+                {/* Booking confirmation chip — fades in on phase 2 */}
+                <div style={{
+                  ...chipStyle,
+                  background: 'rgba(34,197,94,0.1)',
+                  border: '1px solid rgba(34,197,94,0.25)',
+                  borderRadius: '20px',
+                  padding: '9px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#16a34a',
+                  marginBottom: '20px',
+                }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  Appointment booked: Tue 2pm
+                </div>
+
+                {/* Divider */}
+                <div style={{ width: '100%', height: '1px', background: 'rgba(14,27,42,0.07)', marginBottom: '20px' }} />
+
+                {/* Three mini stats */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', width: '100%' }}>
+                  {[
+                    { label: 'Response', value: '< 2s', color: '#2F8FE0' },
+                    { label: 'Accuracy', value: '97%', color: '#22C55E' },
+                    { label: 'Uptime', value: '24/7', color: '#D9714B' },
+                  ].map((s, i) => (
+                    <div key={i} style={{
+                      padding: '10px 4px',
+                      borderRadius: '12px',
+                      background: 'rgba(14,27,42,0.03)',
+                      border: '1px solid rgba(14,27,42,0.07)',
+                      textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: '16px', fontWeight: 700, color: s.color, fontFamily: "'Figtree', sans-serif" }}>{s.value}</div>
+                      <div style={{ fontSize: '10.5px', color: 'rgba(14,27,42,0.5)', fontWeight: 500, marginTop: '2px' }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Hint to floating widget */}
+                <div style={{
+                  marginTop: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: 'rgba(14,27,42,0.45)',
+                }}>
+                  <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#22C55E', animation: 'pulseConnecting 1.5s infinite' }} />
+                  Talk to the agent live — bottom right ↘
+                </div>
+              </div>
             </div>
           </section>
 

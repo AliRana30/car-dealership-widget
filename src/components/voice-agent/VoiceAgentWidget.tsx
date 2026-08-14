@@ -1,45 +1,22 @@
 import React, { useImperativeHandle, forwardRef, useState, useRef, useEffect, useCallback } from 'react';
 import type { RetellWebClient } from 'retell-client-js-sdk';
+import { CallState, TranscriptMessage, VoiceWidgetConfig } from '@/config/voiceWidget/types';
+export type { CallState };
+import { defaultVoiceWidgetConfig, deepMerge } from '@/config/voiceWidget/default';
+import VoiceAgentLauncher from './VoiceAgentLauncher';
+import VoiceAgentPanel from './VoiceAgentPanel';
 
-// Icon definitions matching the existing visual system
-const PHONE_PATH = ['M6.6 4.2h3.4l1.3 5-2.5 1.6a12.4 12.4 0 0 0 5.9 5.9l1.6-2.5 5 1.3v3.4a2 2 0 0 1-2.1 2C10.7 20.2 3.8 13.3 3.1 5.9c-.1-1 .7-1.7 1.6-1.7z'];
-const CHECK_PATHS = ['M5 12.5l4.5 4.5L19 7'];
-
-function renderIcon(paths: string[], size = 20, stroke = 1.75, color = 'currentColor') {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={stroke}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ display: 'inline-block', verticalAlign: 'middle' }}
-    >
-      {paths.map((p, i) => (
-        <path key={i} d={p} />
-      ))}
-    </svg>
-  );
+interface VoiceAgentWidgetProps {
+  onCallStateChange?: (state: CallState) => void;
+  config?: Partial<VoiceWidgetConfig>;
+  overrides?: Partial<VoiceWidgetConfig>;
+  widgetId?: string;
 }
 
-export type CallState =
-  | 'idle'
-  | 'connecting'
-  | 'permission_required'
-  | 'connected'
-  | 'agent_speaking'
-  | 'user_listening'
-  | 'muted'
-  | 'ending'
-  | 'ended'
-  | 'error';
-
-export interface TranscriptMessage {
-  role: 'user' | 'agent';
-  content: string;
+export interface VoiceAgentWidgetRef {
+  startCall: () => Promise<void>;
+  stopCall: () => void;
+  callState: CallState;
 }
 
 function parseStatusMessage(content: string): { isStatus: boolean; text: string; statusType: string } {
@@ -53,7 +30,7 @@ function parseStatusMessage(content: string): { isStatus: boolean; text: string;
           return {
             isStatus: true,
             text: statusText,
-            statusType: statusText.toLowerCase()
+            statusType: statusText.toLowerCase(),
           };
         }
         if ('message' in parsed && ('event' in parsed || 'type' in parsed)) {
@@ -61,7 +38,7 @@ function parseStatusMessage(content: string): { isStatus: boolean; text: string;
           return {
             isStatus: true,
             text: statusText,
-            statusType: String(parsed.type || parsed.event || 'default').toLowerCase()
+            statusType: String(parsed.type || parsed.event || 'default').toLowerCase(),
           };
         }
       }
@@ -72,960 +49,910 @@ function parseStatusMessage(content: string): { isStatus: boolean; text: string;
   return { isStatus: false, text: content, statusType: '' };
 }
 
-interface VoiceAgentWidgetProps {
-  onCallStateChange?: (state: CallState) => void;
-}
+const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
+  ({ onCallStateChange, config: clientConfig, overrides, widgetId }, ref) => {
+    // 1. Deep merge configurations
+    const mergedConfig = React.useMemo(() => {
+      const step1 = deepMerge(defaultVoiceWidgetConfig, clientConfig);
+      return deepMerge(step1, overrides);
+    }, [clientConfig, overrides]);
 
-export interface VoiceAgentWidgetRef {
-  startCall: () => Promise<void>;
-  stopCall: () => void;
-  callState: CallState;
-}
+    const isFloating = mergedConfig.mode === 'floating';
 
-const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(({ onCallStateChange }, ref) => {
-  const [callState, setCallState] = useState<CallState>('idle');
-  const [isMuted, setIsMuted] = useState(false);
-  const [agentSpeaking, setAgentSpeaking] = useState(false);
-  const [userSpeaking, setUserSpeaking] = useState(false);
-  const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    // 2. State management
+    const [isOpen, setIsOpen] = useState(false);
+    const [callState, setCallState] = useState<CallState>('idle');
+    const [isMuted, setIsMuted] = useState(false);
+    const [agentSpeaking, setAgentSpeaking] = useState(false);
+    const [userSpeaking, setUserSpeaking] = useState(false);
+    const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
+    const [duration, setDuration] = useState(0);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // New text chat states
-  const [activeTab, setActiveTab] = useState<'voice' | 'text'>('voice');
-  const [chatId, setChatId] = useState<string | null>(null);
-  const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<TranscriptMessage[]>([
-    { role: 'agent', content: 'Hi there! I am your AI front desk receptionist. How can I help you today?' }
-  ]);
-  const [chatTyping, setChatTyping] = useState(false);
+    // Text chat states
+    const [activeTab, setActiveTab] = useState<'voice' | 'text'>(mergedConfig.behavior.defaultTab);
+    const [chatId, setChatId] = useState<string | null>(null);
+    const [chatInput, setChatInput] = useState('');
+    const [chatMessages, setChatMessages] = useState<TranscriptMessage[]>([]);
+    const [chatTyping, setChatTyping] = useState(false);
 
-  const clientRef = useRef<RetellWebClient | null>(null);
-  const sessionIdRef = useRef<string | null>(null);
-  const callIdRef = useRef<string | null>(null);
-  const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isStartingRef = useRef(false);
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
+    // Synchronize defaultTab state when configuration changes
+    useEffect(() => {
+      setActiveTab(mergedConfig.behavior.defaultTab);
+    }, [mergedConfig.behavior.defaultTab]);
 
-  // Sync state update with parent callback
-  const updateState = useCallback((newState: CallState) => {
-    setCallState(newState);
-    if (onCallStateChange) {
-      onCallStateChange(newState);
-    }
-  }, [onCallStateChange]);
-
-  // Safe client telemetry logger
-  const sendTelemetry = useCallback(async (event: 'call_start' | 'call_end' | 'call_error', errorDetails?: string) => {
-    if (!sessionIdRef.current || !callIdRef.current) return;
-    try {
-      await fetch('/api/retell/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: sessionIdRef.current,
-          callId: callIdRef.current,
-          event,
-          ...(errorDetails ? { errorDetails } : {})
-        })
+    // Synchronize initial text chat state when welcomeMessage configuration changes
+    useEffect(() => {
+      setChatMessages((prev) => {
+        // Only update the initial welcome message if user has not sent messages yet
+        if (prev.length <= 1) {
+          return [{ role: 'agent', content: mergedConfig.branding.welcomeMessage || "Hi! How can I help you today?" }];
+        }
+        return prev;
       });
-    } catch {
-      console.warn('[telemetry] Logging event failed:', event);
-    }
-  }, []);
+    }, [mergedConfig.branding.welcomeMessage]);
 
-  // Auto-scroll chat messages
-  useEffect(() => {
-    if (transcriptEndRef.current) {
-      transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages]);
+    // Refs
+    const clientRef = useRef<any>(null);
+    const providerRef = useRef<'retell' | 'vapi'>('retell');
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const sessionIdRef = useRef<string | null>(null);
+    const callIdRef = useRef<string | null>(null);
+    const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isStartingRef = useRef(false);
+    const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSendChatMessage = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = chatInput.trim();
-    if (!text) return;
-
-    setChatInput('');
-    const userMsg: TranscriptMessage = { role: 'user', content: text };
-    setChatMessages((prev) => [...prev, userMsg]);
-    setChatTyping(true);
-
-    try {
-      const res = await fetch('/api/retell/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId,
-          content: text
-        })
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to get response');
+    // Iframe postMessage communications
+    useEffect(() => {
+      if (typeof window !== 'undefined' && window !== window.parent) {
+        window.parent.postMessage({ type: isOpen ? 'widget-open' : 'widget-close' }, '*');
       }
+    }, [isOpen]);
 
-      const data = await res.json();
-      if (data.chatId) {
-        setChatId(data.chatId);
+    useEffect(() => {
+      if (typeof window !== 'undefined' && window !== window.parent) {
+        window.parent.postMessage({ type: 'widget-ready', config: mergedConfig }, '*');
       }
-      if (data.messages && Array.isArray(data.messages)) {
-        const mapped = data.messages.map((m: any) => ({
-          role: m.role === 'agent' ? 'agent' : 'user',
-          content: m.content
-        }));
-        setChatMessages((prev) => [...prev, ...mapped]);
-      }
-    } catch {
-      setChatMessages((prev) => [
-        ...prev,
-        { role: 'agent', content: 'Sorry, I encountered an issue connecting to the chat service. Please try again.' }
-      ]);
-    } finally {
-      setChatTyping(false);
-    }
-  }, [chatInput, chatId]);
+    }, [mergedConfig]);
 
-  const startCall = useCallback(async () => {
-    // 1. Guard state transitions to prevent concurrent calls or double start
-    if (callState !== 'idle' && callState !== 'ended' && callState !== 'error') {
-      return;
-    }
-    if (isStartingRef.current) return;
-    isStartingRef.current = true;
-
-    setActiveTab('voice');
-    updateState('connecting');
-    setErrorMessage(null);
-    setTranscript([]);
-    setIsMuted(false);
-    setAgentSpeaking(false);
-    setUserSpeaking(false);
-
-    let activeClient: RetellWebClient | null = null;
-
-    try {
-      // Clean up any stale instances first
+    // Helper to safely stop calls on either Retell or Vapi
+    const safeStopCurrentCall = useCallback(() => {
       if (clientRef.current) {
         try {
-          clientRef.current.stopCall();
+          if (providerRef.current === 'vapi') {
+            clientRef.current.stop();
+          } else {
+            clientRef.current.stopCall();
+          }
         } catch {}
-        clientRef.current = null;
       }
+    }, []);
 
-      // Check for HTTPS secure context (required by browsers for mic permissions)
-      if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
-        throw new Error('Microphone access requires a secure context (HTTPS). Please ensure you are visiting via a secure connection.');
-      }
+    // Sync state update with parent callback
+    const updateState = useCallback(
+      (newState: CallState) => {
+        setCallState(newState);
+        if (onCallStateChange) {
+          onCallStateChange(newState);
+        }
+      },
+      [onCallStateChange]
+    );
 
-      // 2. Request mic permissions proactively
-      updateState('permission_required');
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (micErr) {
-        const errorName = micErr instanceof Error ? micErr.name : '';
-        if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
-          throw new Error('Microphone permission was denied. Please allow microphone access in your browser settings.');
-        } else if (errorName === 'NotFoundError' || errorName === 'DevicesNotFoundError') {
-          throw new Error('No microphone detected. Please connect a microphone and try again.');
-        } else {
-          throw new Error('Microphone access failed. Please ensure no other application is using it.');
+    // Telemetry logger
+    const sendTelemetry = useCallback(
+      async (event: 'call_start' | 'call_end' | 'call_error', errorDetails?: string) => {
+        if (!mergedConfig.behavior.telemetryEnabled) return;
+        if (!sessionIdRef.current) return;
+        try {
+          await fetch('/api/retell/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: sessionIdRef.current,
+              callId: callIdRef.current || 'vapi-session',
+              event,
+              ...(errorDetails ? { errorDetails } : {}),
+            }),
+          });
+        } catch {
+          console.warn('[telemetry] Logging event failed:', event);
+        }
+      },
+      [mergedConfig.behavior.telemetryEnabled]
+    );
+
+    const isCallActive = ['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState);
+
+    // Call duration timer effect
+    useEffect(() => {
+      if (isCallActive) {
+        if (!timerRef.current) {
+          setDuration(0);
+          timerRef.current = setInterval(() => {
+            setDuration((prev) => prev + 1);
+          }, 1000);
+        }
+      } else {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
         }
       }
+      return () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+    }, [isCallActive]);
 
-      // 3. Request Access Token from backend proxy
+    // Auto-scroll chat & transcripts
+    useEffect(() => {
+      if (transcriptEndRef.current) {
+        transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, [chatMessages, transcript, chatTyping]);
+
+    const handleSendChatMessage = useCallback(
+      async (e: React.FormEvent) => {
+        e.preventDefault();
+        const text = chatInput.trim();
+        if (!text) return;
+
+        setChatInput('');
+        const userMsg: TranscriptMessage = { role: 'user', content: text };
+        setChatMessages((prev) => [...prev, userMsg]);
+        setChatTyping(true);
+
+        try {
+          const res = await fetch('/api/retell/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatId,
+              content: text,
+            }),
+          });
+
+          if (!res.ok) {
+            throw new Error('Failed to get response');
+          }
+
+          const data = await res.json();
+          if (data.chatId) {
+            setChatId(data.chatId);
+          }
+          if (data.messages && Array.isArray(data.messages)) {
+            const mapped = data.messages.map((m: any) => ({
+              role: m.role === 'agent' ? 'agent' : 'user',
+              content: m.content,
+            }));
+            setChatMessages((prev) => [...prev, ...mapped]);
+          }
+        } catch {
+          setChatMessages((prev) => [
+            ...prev,
+            { role: 'agent', content: 'Sorry, I encountered an issue connecting to the chat service. Please try again.' },
+          ]);
+        } finally {
+          setChatTyping(false);
+        }
+      },
+      [chatInput, chatId]
+    );
+
+    const startCall = useCallback(async () => {
+      if (callState !== 'idle' && callState !== 'ended' && callState !== 'error') {
+        return;
+      }
+      if (isStartingRef.current) return;
+      isStartingRef.current = true;
+
+      setActiveTab('voice');
       updateState('connecting');
-      const res = await fetch('/api/retell/create-web-call', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
+      setErrorMessage(null);
+      setTranscript([]);
+      setIsMuted(false);
+      setAgentSpeaking(false);
+      setUserSpeaking(false);
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || 'The voice receptionist service is currently unavailable. Please try again.');
-      }
+      let activeClient: any = null;
 
-      const data = await res.json();
-      if (!data.accessToken || !data.callId || !data.sessionId) {
-        throw new Error('Failed to establish a call session with our servers.');
-      }
+      try {
+        if (clientRef.current) {
+          try {
+            if (providerRef.current === 'vapi') {
+              clientRef.current.stop();
+            } else {
+              clientRef.current.stopCall();
+            }
+          } catch {}
+          clientRef.current = null;
+        }
 
-      // Keep token in memory local scope only
-      const token = data.accessToken;
-      sessionIdRef.current = data.sessionId;
-      callIdRef.current = data.callId;
+        if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
+          throw new Error(
+            'Microphone access requires a secure context (HTTPS). Please ensure you are visiting via a secure connection.'
+          );
+        }
 
-      // 4. Import SDK dynamically and instantiate client fresh
-      const { RetellWebClient } = await import('retell-client-js-sdk');
-      activeClient = new RetellWebClient();
-      clientRef.current = activeClient;
+        updateState('permission_required');
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (micErr) {
+          const errorName = micErr instanceof Error ? micErr.name : '';
+          if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
+            throw new Error('Microphone permission was denied. Please allow microphone access in your browser settings.');
+          } else if (errorName === 'NotFoundError' || errorName === 'DevicesNotFoundError') {
+            throw new Error('No microphone detected. Please connect a microphone and try again.');
+          } else {
+            throw new Error('Microphone access failed. Please ensure no other application is using it.');
+          }
+        }
 
-      // Register SDK event listeners
-      activeClient.on('call_started', () => {
+        updateState('connecting');
+
+        // Determine call endpoint + body from config.
+        // widgetId = hosted multi-tenant (goes through /api/widgets/create-call)
+        // config.provider = inline usage (goes through provider-specific endpoint)
+        const configProvider = mergedConfig.provider?.provider ?? 'retell';
+        const configAgentId = mergedConfig.provider?.agentId ?? '';
+
+        let callEndpoint: string;
+        let callBody: Record<string, unknown>;
+
+        if (widgetId) {
+          // Multi-tenant hosted widget path
+          callEndpoint = '/api/widgets/create-call';
+          callBody = { widgetId };
+        } else if (configProvider === 'vapi') {
+          // Inline Vapi path — not yet wired to a single endpoint, handled below
+          callEndpoint = '/api/vapi/create-call';
+          callBody = { agentId: configAgentId };
+        } else {
+          // Default: Retell (existing working path)
+          callEndpoint = '/api/retell/create-web-call';
+          callBody = configAgentId ? { agentId: configAgentId } : {};
+        }
+
+        const res = await fetch(callEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(callBody),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || 'The voice receptionist service is currently unavailable. Please try again.');
+        }
+
+        const data = await res.json();
+        
+        // ─── Provider: Retell ───────────────────────────────────────────────
+        if (!data.provider || data.provider === 'retell') {
+          providerRef.current = 'retell';
+          if (!data.accessToken || !data.callId || !data.sessionId) {
+            throw new Error('Failed to establish a Retell call session with our servers.');
+          }
+
+          const token = data.accessToken;
+          sessionIdRef.current = data.sessionId;
+          callIdRef.current = data.callId;
+
+          const { RetellWebClient } = await import('retell-client-js-sdk');
+          activeClient = new RetellWebClient();
+          clientRef.current = activeClient;
+
+          activeClient.on('call_started', () => {
+            if (connectionTimeoutRef.current) {
+              clearTimeout(connectionTimeoutRef.current);
+              connectionTimeoutRef.current = null;
+            }
+            updateState('connected');
+            sendTelemetry('call_start');
+          });
+
+          activeClient.on('call_ended', () => {
+            updateState('ended');
+            sendTelemetry('call_end');
+            setAgentSpeaking(false);
+            setUserSpeaking(false);
+            isStartingRef.current = false;
+            if (clientRef.current === activeClient) {
+              clientRef.current = null;
+            }
+          });
+
+          activeClient.on('agent_start_talking', () => {
+            setAgentSpeaking(true);
+            setCallState((prev) => (prev === 'muted' ? 'muted' : 'agent_speaking'));
+          });
+
+          activeClient.on('agent_stop_talking', () => {
+            setAgentSpeaking(false);
+            setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
+          });
+
+          activeClient.on('user_start_talking', () => {
+            setUserSpeaking(true);
+            setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
+          });
+
+          activeClient.on('user_stop_talking', () => {
+            setUserSpeaking(false);
+            setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
+          });
+
+          activeClient.on('update', (update: { transcript?: TranscriptMessage[] }) => {
+            if (update && update.transcript) {
+              setTranscript(update.transcript);
+            }
+          });
+
+          activeClient.on('error', (err: { message?: string }) => {
+            console.error('Retell SDK error:', err);
+            const errMsg = err.message || 'Call encountered a connection interruption.';
+            sendTelemetry('call_error', errMsg);
+            setErrorMessage(errMsg);
+            updateState('error');
+            setAgentSpeaking(false);
+            setUserSpeaking(false);
+            isStartingRef.current = false;
+            if (clientRef.current === activeClient) {
+              clientRef.current = null;
+            }
+          });
+
+          connectionTimeoutRef.current = setTimeout(() => {
+            console.warn('Call connection timed out.');
+            if (activeClient) {
+              try {
+                activeClient.stopCall();
+              } catch {}
+            }
+            if (clientRef.current === activeClient) {
+              clientRef.current = null;
+            }
+            sendTelemetry('call_error', 'connection_timeout');
+            setErrorMessage('Unable to connect right now. Please check your internet connection and try again.');
+            updateState('error');
+            isStartingRef.current = false;
+          }, mergedConfig.behavior.connectionTimeout);
+
+          await activeClient.startCall({
+            accessToken: token,
+            emitRawAudioSamples: true,
+          });
+        }
+        
+        // ─── Provider: Vapi ─────────────────────────────────────────────────
+        else if (data.provider === 'vapi') {
+          providerRef.current = 'vapi';
+          if (!data.vapiPublicApiKey || !data.vapiAssistantId || !data.sessionId) {
+            throw new Error('Failed to retrieve Vapi Web SDK initialization parameters.');
+          }
+
+          sessionIdRef.current = data.sessionId;
+          callIdRef.current = 'vapi-call';
+
+          const VapiSdk = (await import('@vapi-ai/web')).default;
+          activeClient = new VapiSdk(data.vapiPublicApiKey);
+          clientRef.current = activeClient;
+
+          let agentSpeakingTimeout: NodeJS.Timeout | null = null;
+
+          activeClient.on('call-start', () => {
+            if (connectionTimeoutRef.current) {
+              clearTimeout(connectionTimeoutRef.current);
+              connectionTimeoutRef.current = null;
+            }
+            updateState('connected');
+            sendTelemetry('call_start');
+          });
+
+          activeClient.on('call-end', () => {
+            if (agentSpeakingTimeout) {
+              clearTimeout(agentSpeakingTimeout);
+              agentSpeakingTimeout = null;
+            }
+            updateState('ended');
+            sendTelemetry('call_end');
+            setAgentSpeaking(false);
+            setUserSpeaking(false);
+            isStartingRef.current = false;
+            if (clientRef.current === activeClient) {
+              clientRef.current = null;
+            }
+          });
+
+          activeClient.on('message', (message: any) => {
+            if (message.type === 'transcript') {
+              const role = message.role === 'assistant' ? 'agent' : 'user';
+              const content = message.transcript;
+              
+              setTranscript((prev) => {
+                const filtered = prev.filter((m) => !m.isPartial);
+                if (message.transcriptType === 'final') {
+                  return [...filtered, { role, content }];
+                } else {
+                  return [...filtered, { role, content, isPartial: true }];
+                }
+              });
+            }
+          });
+
+          activeClient.on('speech-start', () => {
+            setUserSpeaking(true);
+            setAgentSpeaking(false);
+            setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
+          });
+
+          activeClient.on('speech-end', () => {
+            setUserSpeaking(false);
+            setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
+          });
+
+          activeClient.on('volume-level', (volume: number) => {
+            // Volume is between 0 and 1. Volume > 0.01 indicates assistant is active
+            if (volume > 0.01) {
+              setAgentSpeaking(true);
+              setUserSpeaking(false);
+              setCallState((prev) => (prev === 'muted' ? 'muted' : 'agent_speaking'));
+              if (agentSpeakingTimeout) {
+                clearTimeout(agentSpeakingTimeout);
+                agentSpeakingTimeout = null;
+              }
+            } else {
+              if (!agentSpeakingTimeout) {
+                agentSpeakingTimeout = setTimeout(() => {
+                  setAgentSpeaking(false);
+                  setCallState((prev) => (prev === 'muted' || prev === 'user_listening' ? prev : 'user_listening'));
+                  agentSpeakingTimeout = null;
+                }, 1000);
+              }
+            }
+          });
+
+          activeClient.on('error', (err: any) => {
+            console.error('Vapi SDK error:', err);
+            if (agentSpeakingTimeout) {
+              clearTimeout(agentSpeakingTimeout);
+              agentSpeakingTimeout = null;
+            }
+            const errMsg = err.message || 'Call encountered a connection interruption.';
+            sendTelemetry('call_error', errMsg);
+            setErrorMessage(errMsg);
+            updateState('error');
+            setAgentSpeaking(false);
+            setUserSpeaking(false);
+            isStartingRef.current = false;
+            if (clientRef.current === activeClient) {
+              clientRef.current = null;
+            }
+          });
+
+          connectionTimeoutRef.current = setTimeout(() => {
+            console.warn('Call connection timed out.');
+            if (agentSpeakingTimeout) {
+              clearTimeout(agentSpeakingTimeout);
+              agentSpeakingTimeout = null;
+            }
+            if (activeClient) {
+              try {
+                activeClient.stop();
+              } catch {}
+            }
+            if (clientRef.current === activeClient) {
+              clientRef.current = null;
+            }
+            sendTelemetry('call_error', 'connection_timeout');
+            setErrorMessage('Unable to connect right now. Please check your internet connection and try again.');
+            updateState('error');
+            isStartingRef.current = false;
+          }, mergedConfig.behavior.connectionTimeout);
+
+          await activeClient.start(data.vapiAssistantId);
+        }
+      } catch (err) {
+        console.error('Error starting voice assistant:', err);
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
           connectionTimeoutRef.current = null;
         }
-        updateState('connected');
-        sendTelemetry('call_start');
-      });
-
-      activeClient.on('call_ended', () => {
-        updateState('ended');
-        sendTelemetry('call_end');
-        setAgentSpeaking(false);
-        setUserSpeaking(false);
-        isStartingRef.current = false;
-        if (clientRef.current === activeClient) {
-          clientRef.current = null;
-        }
-      });
-
-      activeClient.on('agent_start_talking', () => {
-        setAgentSpeaking(true);
-        setCallState((prev) => (prev === 'muted' ? 'muted' : 'agent_speaking'));
-      });
-
-      activeClient.on('agent_stop_talking', () => {
-        setAgentSpeaking(false);
-        setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
-      });
-
-      activeClient.on('user_start_talking', () => {
-        setUserSpeaking(true);
-        setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
-      });
-
-      activeClient.on('user_stop_talking', () => {
-        setUserSpeaking(false);
-        setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
-      });
-
-      activeClient.on('update', (update: { transcript?: TranscriptMessage[] }) => {
-        if (update && update.transcript) {
-          setTranscript(update.transcript);
-        }
-      });
-
-      activeClient.on('error', (err: { message?: string }) => {
-        console.error('Retell SDK error:', err);
-        const errMsg = err.message || 'Call encountered a connection interruption.';
-        sendTelemetry('call_error', errMsg);
-        setErrorMessage(errMsg);
-        updateState('error');
-        setAgentSpeaking(false);
-        setUserSpeaking(false);
-        isStartingRef.current = false;
-        if (clientRef.current === activeClient) {
-          clientRef.current = null;
-        }
-      });
-
-      // 5. Connection timeout of 15 seconds
-      connectionTimeoutRef.current = setTimeout(() => {
-        console.warn('Call connection timed out.');
         if (activeClient) {
           try {
-            activeClient.stopCall();
+            if (providerRef.current === 'vapi') {
+              activeClient.stop();
+            } else {
+              activeClient.stopCall();
+            }
           } catch {}
         }
         if (clientRef.current === activeClient) {
           clientRef.current = null;
         }
-        sendTelemetry('call_error', 'connection_timeout');
-        setErrorMessage('Unable to connect right now. Please check your internet connection and try again.');
+
+        const errorMsg = err instanceof Error ? err.message : '';
+        const friendlyMsg =
+          errorMsg && !errorMsg.includes('fetch') && !errorMsg.includes('HTTP') && !errorMsg.includes('Fetch')
+            ? errorMsg
+            : 'Unable to start the voice assistant. Please try again.';
+
+        setErrorMessage(friendlyMsg);
         updateState('error');
         isStartingRef.current = false;
-      }, 15000);
+      }
+    }, [callState, updateState, sendTelemetry, mergedConfig.behavior.connectionTimeout, mergedConfig.provider, widgetId]);
 
-      // Start call
-      await activeClient.startCall({
-        accessToken: token,
-        emitRawAudioSamples: true
-      });
-
-    } catch (err) {
-      console.error('Error starting voice assistant:', err);
+    const stopCall = useCallback(() => {
+      if (callState === 'idle' || callState === 'ending' || callState === 'ended') {
+        return;
+      }
       if (connectionTimeoutRef.current) {
         clearTimeout(connectionTimeoutRef.current);
         connectionTimeoutRef.current = null;
       }
-      if (activeClient) {
-        try {
-          activeClient.stopCall();
-        } catch {}
+      updateState('ending');
+      safeStopCurrentCall();
+    }, [callState, updateState, safeStopCurrentCall]);
+
+    const toggleMute = useCallback(() => {
+      if (!['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState)) {
+        return;
       }
-      if (clientRef.current === activeClient) {
-        clientRef.current = null;
+      if (!clientRef.current) return;
+
+      const nextMute = !isMuted;
+      if (nextMute) {
+        if (providerRef.current === 'vapi') {
+          clientRef.current.setMuted(true);
+        } else {
+          clientRef.current.mute();
+        }
+        setCallState('muted');
+      } else {
+        if (providerRef.current === 'vapi') {
+          clientRef.current.setMuted(false);
+        } else {
+          clientRef.current.unmute();
+        }
+        setCallState(agentSpeaking ? 'agent_speaking' : 'user_listening');
       }
+      setIsMuted(nextMute);
+    }, [callState, isMuted, agentSpeaking]);
+
+    // Expose start/stop call controls to parent
+    useImperativeHandle(
+      ref,
+      () => ({
+        startCall,
+        stopCall,
+        callState,
+      }),
+      [startCall, stopCall, callState]
+    );
+
+    // Clean up call on unmount
+    useEffect(() => {
+      const handleBeforeUnload = () => {
+        safeStopCurrentCall();
+      };
+      window.addEventListener('beforeunload', handleBeforeUnload);
+
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+        }
+        safeStopCurrentCall();
+      };
+    }, [safeStopCurrentCall]);
+
+    // Auto-reset call state
+    useEffect(() => {
+      if (callState === 'ended') {
+        const timer = setTimeout(() => {
+          updateState('idle');
+          setTranscript([]);
+        }, mergedConfig.behavior.autoResetEndedTimeout);
+        return () => clearTimeout(timer);
+      }
+    }, [callState, updateState, mergedConfig.behavior.autoResetEndedTimeout]);
+
+    // 3. Build CSS variables mapping from merged config
+    const cssVars = React.useMemo(() => {
+      const { theme, typography } = mergedConfig;
+      const getRadiusValue = (variant: string) => {
+        switch (variant) {
+          case 'none':
+            return '0px';
+          case 'sm':
+            return '8px';
+          case 'md':
+            return '12px';
+          case 'lg':
+            return '16px';
+          case 'xl':
+            return '20px';
+          case '2xl':
+            return '24px';
+          case 'full':
+            return '9999px';
+          default:
+            return variant;
+        }
+      };
+
+      const getShadowValue = (variant: string) => {
+        switch (variant) {
+          case 'none':
+            return 'none';
+          case 'sm':
+            return '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
+          case 'md':
+            return '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
+          case 'lg':
+            return '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)';
+          case 'xl':
+            return '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+          case '2xl':
+            return '0 25px 50px -12px rgba(0, 0, 0, 0.25)';
+          default:
+            return variant;
+        }
+      };
+
+      const getFontSizes = (scale: string) => {
+        if (scale === 'sm') {
+          return {
+            xs: '11px',
+            sm: '12px',
+            base: '13px',
+            lg: '15px',
+            xl: '16px',
+          };
+        } else if (scale === 'lg') {
+          return {
+            xs: '13px',
+            sm: '14px',
+            base: '15px',
+            lg: '17.5px',
+            xl: '20px',
+          };
+        } else {
+          return {
+            xs: '12px',
+            sm: '13px',
+            base: '14px',
+            lg: '16px',
+            xl: '18px',
+          };
+        }
+      };
+
+      const fontSizes = getFontSizes(typography.fontSizeScale);
+
+      const hexToRgb = (hex: string) => {
+        const cleaned = hex.replace(/^#/, '');
+        if (cleaned.length === 3) {
+          const r = parseInt(cleaned[0] + cleaned[0], 16);
+          const g = parseInt(cleaned[1] + cleaned[1], 16);
+          const b = parseInt(cleaned[2] + cleaned[2], 16);
+          return `${r}, ${g}, ${b}`;
+        } else if (cleaned.length === 6) {
+          const r = parseInt(cleaned.substring(0, 2), 16);
+          const g = parseInt(cleaned.substring(2, 4), 16);
+          const b = parseInt(cleaned.substring(4, 6), 16);
+          return `${r}, ${g}, ${b}`;
+        }
+        return '47, 143, 224'; // fallback blue
+      };
+
+      const primaryRgb = hexToRgb(theme.primaryColor);
+
+      return {
+        '--voice-widget-primary': theme.primaryColor,
+        '--voice-widget-primary-hover': theme.primaryHoverColor || theme.primaryColor,
+        '--voice-widget-primary-ring': `rgba(${primaryRgb}, 0.4)`,
+        '--voice-widget-primary-ring-transparent': `rgba(${primaryRgb}, 0)`,
+        '--voice-widget-bg': theme.panelBackground,
+        '--voice-widget-bg-panel': theme.panelBackground,
+        '--voice-widget-bg-launcher': theme.launcherBackground,
+        '--voice-widget-bg-header': theme.headerBackground,
+        '--voice-widget-bg-transcript': theme.transcriptBackground,
+        '--voice-widget-bg-user-bubble': theme.userMessageBackground,
+        '--voice-widget-bg-agent-bubble': theme.agentMessageBackground,
+        '--voice-widget-text': theme.primaryTextColor,
+        '--voice-widget-text-secondary': theme.secondaryTextColor,
+        '--voice-widget-text-muted': theme.mutedTextColor,
+        '--voice-widget-border': theme.borderColor,
+        '--voice-widget-border-input': theme.inputBorderColor,
+        '--voice-widget-success': theme.successColor,
+        '--voice-widget-error': theme.errorColor,
+        '--voice-widget-warning': theme.warningColor,
+        '--voice-widget-connecting': theme.connectingColor,
+        '--voice-widget-wave-agent': theme.waveformColor,
+        '--voice-widget-wave-user': theme.successColor,
+        '--voice-widget-accent': theme.speakingIndicatorColor,
+        '--voice-widget-font-family': typography.fontFamily,
+        '--voice-widget-font-xs': fontSizes.xs,
+        '--voice-widget-font-sm': fontSizes.sm,
+        '--voice-widget-font-base': fontSizes.base,
+        '--voice-widget-font-lg': fontSizes.lg,
+        '--voice-widget-font-xl': fontSizes.xl,
+        '--voice-widget-font-weight-heading': String(typography.headingWeight),
+        '--voice-widget-font-weight-body': String(typography.bodyWeight),
+        '--voice-widget-line-height': typography.lineHeight || '1.5',
+        '--voice-widget-radius-panel': getRadiusValue(theme.radius),
+        '--voice-widget-shadow': getShadowValue(theme.shadow),
+      } as React.CSSProperties;
+    }, [mergedConfig]);
+
+    const activeCall = ['connected', 'agent_speaking', 'user_listening', 'muted', 'ending'].includes(callState);
+
+    const dynamicStyles = React.useMemo(() => {
+      const mobile = mergedConfig.responsive.mobile || {};
+      const mobileLauncherSize = typeof mobile.launcherSize === 'number'
+        ? `${mobile.launcherSize}px`
+        : mobile.launcherSize === 'small' ? '44px' : mobile.launcherSize === 'large' ? '68px' : '56px';
+
+      const mobileBottomOffset = mobile.bottomOffset !== undefined ? `${mobile.bottomOffset}px` : '16px';
+      const mobileHorizontalOffset = mobile.horizontalOffset !== undefined ? `${mobile.horizontalOffset}px` : '16px';
       
-      const errorMsg = err instanceof Error ? err.message : '';
-      const friendlyMsg = errorMsg && !errorMsg.includes('fetch') && !errorMsg.includes('HTTP') && !errorMsg.includes('Fetch')
-        ? errorMsg
-        : 'Unable to start the voice assistant. Please try again.';
-      
-      setErrorMessage(friendlyMsg);
-      updateState('error');
-      isStartingRef.current = false;
-    }
-  }, [callState, updateState, sendTelemetry]);
-
-  const stopCall = useCallback(() => {
-    // Guard against redundant stop calls
-    if (callState === 'idle' || callState === 'ending' || callState === 'ended') {
-      return;
-    }
-    if (connectionTimeoutRef.current) {
-      clearTimeout(connectionTimeoutRef.current);
-      connectionTimeoutRef.current = null;
-    }
-    updateState('ending');
-    if (clientRef.current) {
-      try {
-        clientRef.current.stopCall();
-      } catch (err) {
-        console.error('Error stopping call:', err);
+      let mobilePanelWidth = mobile.panelWidth !== undefined ? (typeof mobile.panelWidth === 'number' ? `${mobile.panelWidth}px` : mobile.panelWidth) : 'min(340px, calc(100vw - 32px))';
+      if (!mergedConfig.responsive.fullscreenOnMobile && mobilePanelWidth === 'calc(100vw - 32px)') {
+        mobilePanelWidth = 'min(340px, calc(100vw - 32px))';
       }
-    }
-  }, [callState, updateState]);
 
-  const toggleMute = useCallback(() => {
-    // Guard: Mute is only allowed if call is actively connected
-    if (!['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState)) {
-      return;
-    }
-    if (!clientRef.current) return;
-    
-    const nextMute = !isMuted;
-    if (nextMute) {
-      clientRef.current.mute();
-      setCallState('muted');
-    } else {
-      clientRef.current.unmute();
-      setCallState(agentSpeaking ? 'agent_speaking' : 'user_listening');
-    }
-    setIsMuted(nextMute);
-  }, [callState, isMuted, agentSpeaking]);
-
-  // Expose start/stop call controls to parent component
-  useImperativeHandle(ref, () => ({
-    startCall,
-    stopCall,
-    callState
-  }), [startCall, stopCall, callState]);
-
-  // Clean up calls and event handlers on unmount and page navigation
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (clientRef.current) {
-        try {
-          clientRef.current.stopCall();
-        } catch {}
+      let mobilePanelMaxHeight = mobile.panelMaxHeight !== undefined ? (typeof mobile.panelMaxHeight === 'number' ? `${mobile.panelMaxHeight}px` : mobile.panelMaxHeight) : 'min(420px, 70vh)';
+      if (!mergedConfig.responsive.fullscreenOnMobile && (mobilePanelMaxHeight === '90vh' || mobilePanelMaxHeight === '72vh')) {
+        mobilePanelMaxHeight = 'min(420px, 70vh)';
       }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
 
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (connectionTimeoutRef.current) {
-        clearTimeout(connectionTimeoutRef.current);
-      }
-      if (clientRef.current) {
-        try {
-          clientRef.current.stopCall();
-        } catch {}
-      }
-    };
-  }, []);
+      const launcherPos = mergedConfig.launcher.position || 'bottom-right';
+      const vertProp = launcherPos.startsWith('bottom') ? 'bottom' : 'top';
+      const horizProp = launcherPos.endsWith('right') ? 'right' : 'left';
 
-  // Idle state auto-reset when call ends successfully
-  useEffect(() => {
-    if (callState === 'ended') {
-      const timer = setTimeout(() => {
-        updateState('idle');
-        setTranscript([]);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [callState, updateState]);
+      const panelPos = mergedConfig.panel.position || launcherPos;
+      const panelVertProp = panelPos.startsWith('bottom') ? 'bottom' : 'top';
+      const panelHorizProp = panelPos.endsWith('right') ? 'right' : 'left';
 
-  const isLoading = ['connecting', 'permission_required'].includes(callState);
-  const isActive = ['connected', 'agent_speaking', 'user_listening', 'muted', 'ending'].includes(callState);
-
-  return (
-    <div style={{
-      position: 'relative',
-      padding: '40px 32px',
-      borderRadius: '24px',
-      background: 'rgba(251,253,255,0.92)',
-      border: '1px solid rgba(14,27,42,0.12)',
-      boxShadow: '0 1px 2px rgba(14,27,42,0.06), 0 30px 60px -30px rgba(14,27,42,0.22)',
-      minHeight: '350px',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '22px',
-      overflow: 'hidden',
-      transition: 'all 0.3s ease',
-      width: '100%',
-      fontFamily: "'Figtree', sans-serif"
-    }}>
-      <style dangerouslySetInnerHTML={{__html: `
+      return `
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
-      `}} />
+        @keyframes pulseRing {
+          0% { box-shadow: 0 0 0 0 var(--voice-widget-primary-ring); }
+          70% { box-shadow: 0 0 0 16px var(--voice-widget-primary-ring-transparent); }
+          100% { box-shadow: 0 0 0 0 var(--voice-widget-primary-ring-transparent); }
+        }
+        @keyframes pulseWidgetRing {
+          0% { box-shadow: 0 0 0 0 var(--voice-widget-primary-ring); }
+          70% { box-shadow: 0 0 0 12px var(--voice-widget-primary-ring-transparent); }
+          100% { box-shadow: 0 0 0 0 var(--voice-widget-primary-ring-transparent); }
+        }
+        @keyframes pulseConnecting {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+        @keyframes pulseAgentSpeaking {
+          0% { box-shadow: 0 0 0 0 var(--voice-widget-primary-ring); }
+          70% { box-shadow: 0 0 0 12px var(--voice-widget-primary-ring-transparent); }
+          100% { box-shadow: 0 0 0 0 var(--voice-widget-primary-ring-transparent); }
+        }
+        @keyframes pulseUserSpeaking {
+          0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+          70% { box-shadow: 0 0 0 12px rgba(34, 197, 94, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+        @keyframes waveScale {
+          0%, 100% { transform: scaleY(0.2); }
+          50% { transform: scaleY(1); }
+        }
+        .widget-wave-bar {
+          width: 4px;
+          border-radius: 2px;
+          transform-origin: center;
+          transition: background-color 0.3s ease;
+        }
 
-      {/* Tab Selector - Only show when callState is 'idle' */}
-      {callState === 'idle' && (
-        <div style={{
-          display: 'flex',
-          background: 'rgba(14,27,42,0.06)',
-          padding: '4px',
-          borderRadius: '12px',
-          width: '100%',
-          maxWidth: '240px',
-          marginBottom: '10px'
-        }}>
-          <button
-            onClick={() => setActiveTab('voice')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: '8px',
-              background: activeTab === 'voice' ? '#FFFFFF' : 'transparent',
-              border: 'none',
-              color: activeTab === 'voice' ? '#0E1B2A' : 'rgba(14,27,42,0.6)',
-              fontWeight: 600,
-              fontSize: '13.5px',
-              cursor: 'pointer',
-              boxShadow: activeTab === 'voice' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Voice Chat
-          </button>
-          <button
-            onClick={() => setActiveTab('text')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: '8px',
-              background: activeTab === 'text' ? '#FFFFFF' : 'transparent',
-              border: 'none',
-              color: activeTab === 'text' ? '#0E1B2A' : 'rgba(14,27,42,0.6)',
-              fontWeight: 600,
-              fontSize: '13.5px',
-              cursor: 'pointer',
-              boxShadow: activeTab === 'text' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Text Chat
-          </button>
-        </div>
-      )}
+        @media (max-width: ${mergedConfig.responsive.mobileBreakpoint}px) {
+          .voice-widget-launcher-container {
+            ${vertProp}: ${mobileBottomOffset} !important;
+            ${horizProp}: ${mobileHorizontalOffset} !important;
+          }
+          .voice-widget-launcher-btn {
+            width: ${mobileLauncherSize} !important;
+            height: ${mobileLauncherSize} !important;
+          }
+          .voice-widget-panel-container {
+            width: ${mobilePanelWidth} !important;
+            max-height: ${mobilePanelMaxHeight} !important;
+            ${panelVertProp}: ${mergedConfig.responsive.fullscreenOnMobile ? '0' : mobileBottomOffset} !important;
+            ${panelHorizProp}: ${mergedConfig.responsive.fullscreenOnMobile ? '0' : mobileHorizontalOffset} !important;
+            ${mergedConfig.responsive.fullscreenOnMobile ? `
+              position: fixed !important;
+              width: 100vw !important;
+              height: 100vh !important;
+              max-height: 100vh !important;
+              border-radius: 0px !important;
+              border: none !important;
+              top: 0 !important;
+              bottom: 0 !important;
+              left: 0 !important;
+              right: 0 !important;
+              z-index: ${(mergedConfig.launcher.zIndex ?? 1000) + 1} !important;
+            ` : ''}
+          }
+        }
 
-      {/* State 1: Idle (Voice Tab) */}
-      {callState === 'idle' && activeTab === 'voice' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '22px', textAlign: 'center', width: '100%' }}>
-          <div style={{
-            width: '72px',
-            height: '72px',
-            borderRadius: '50%',
-            background: '#2F8FE0',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            boxShadow: '0 8px 24px -6px rgba(47,143,224,0.4)',
-            animation: 'pulseRing 2s infinite'
-          }}>
-            {renderIcon(PHONE_PATH, 28, 1.9, 'white')}
-          </div>
-          <div>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 6px', color: '#0E1B2A' }}>Talk to our AI Agent</h3>
-            <p style={{ fontSize: '14.5px', color: 'rgba(14,27,42,0.6)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>
-              Experience the virtual front desk receptionist live in your browser.
-            </p>
-          </div>
-          <button
-            onClick={startCall}
-            className="btn-hover-transform"
-            style={{
-              padding: '14px 28px',
-              borderRadius: '12px',
-              background: '#2F8FE0',
-              border: 'none',
-              color: 'white',
-              fontSize: '15px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(47, 143, 224, 0.2)',
-              transition: 'all 0.25s ease'
-            }}
-          >
-            Start a Conversation
-          </button>
-        </div>
-      )}
+        @media (prefers-reduced-motion: reduce) {
+          * {
+            animation-delay: 0s !important;
+            animation-duration: 0s !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0s !important;
+            scroll-behavior: auto !important;
+          }
+        }
+      `;
+    }, [mergedConfig]);
 
-      {/* Text Chat Tab */}
-      {callState === 'idle' && activeTab === 'text' && (
-        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minHeight: '220px' }}>
-          {/* Scrollable messages container */}
-          <div style={{
-            flex: 1,
-            background: 'rgba(14, 27, 42, 0.03)',
-            border: '1px solid rgba(14, 27, 42, 0.08)',
-            borderRadius: '16px',
-            padding: '14px',
-            overflowY: 'auto',
-            maxHeight: '160px',
-            minHeight: '130px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            textAlign: 'left'
-          }}>
-            {chatMessages.map((msg, idx) => {
-              const statusInfo = parseStatusMessage(msg.content);
-              if (statusInfo.isStatus) {
-                let bgColor = 'rgba(47, 143, 224, 0.1)';
-                let textColor = '#2F8FE0';
-                let borderColor = 'rgba(47, 143, 224, 0.2)';
+    return (
+      <div
+        style={{
+          ...cssVars,
+          display: 'contents',
+          fontFamily: 'var(--voice-widget-font-family)',
+        }}
+      >
+        <style
+          dangerouslySetInnerHTML={{
+            __html: dynamicStyles,
+          }}
+        />
 
-                const type = statusInfo.statusType;
-                if (type.includes('success') || type.includes('booked') || type.includes('completed')) {
-                  bgColor = 'rgba(46, 204, 113, 0.1)';
-                  textColor = '#2ecc71';
-                  borderColor = 'rgba(46, 204, 113, 0.2)';
-                } else if (type.includes('fail') || type.includes('error') || type.includes('reject')) {
-                  bgColor = 'rgba(231, 76, 60, 0.1)';
-                  textColor = '#e74c3c';
-                  borderColor = 'rgba(231, 76, 60, 0.2)';
-                } else if (type.includes('transfer') || type.includes('redirect')) {
-                  bgColor = 'rgba(155, 89, 182, 0.1)';
-                  textColor = '#9b59b6';
-                  borderColor = 'rgba(155, 89, 182, 0.2)';
-                } else if (type.includes('progress') || type.includes('wait') || type.includes('pend') || type.includes('process') || type.includes('look')) {
-                  bgColor = 'rgba(241, 196, 15, 0.1)';
-                  textColor = '#f1c40f';
-                  borderColor = 'rgba(241, 196, 15, 0.2)';
-                }
+        {isFloating && (
+          <VoiceAgentLauncher
+            onClick={() => setIsOpen((prev) => !prev)}
+            config={mergedConfig}
+            isOpen={isOpen}
+            isActive={activeCall}
+          />
+        )}
 
-                return (
-                  <div key={idx} style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    width: '100%',
-                    margin: '6px 0'
-                  }}>
-                    <div style={{
-                      background: bgColor,
-                      color: textColor,
-                      border: `1px solid ${borderColor}`,
-                      borderRadius: '12px',
-                      padding: '8px 16px',
-                      fontSize: '12.5px',
-                      fontWeight: 600,
-                      textAlign: 'center',
-                      maxWidth: '90%',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                      textTransform: 'capitalize'
-                    }}>
-                      {statusInfo.text}
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={idx} style={{
-                  display: 'flex',
-                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  width: '100%'
-                }}>
-                  <div style={{
-                    maxWidth: '85%',
-                    background: msg.role === 'user' ? '#2F8FE0' : '#FFFFFF',
-                    color: msg.role === 'user' ? '#FFFFFF' : '#0E1B2A',
-                    border: msg.role === 'user' ? 'none' : '1px solid rgba(14, 27, 42, 0.1)',
-                    borderRadius: msg.role === 'user' ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
-                    padding: '8px 12px',
-                    fontSize: '13.5px',
-                    lineHeight: 1.45,
-                    boxShadow: '0 2px 6px rgba(14,27,42,0.03)'
-                  }}>
-                    {msg.content}
-                  </div>
-                </div>
-              );
-            })}
-            {chatTyping && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
-                <div style={{
-                  background: '#FFFFFF',
-                  border: '1px solid rgba(14, 27, 42, 0.1)',
-                  borderRadius: '14px 14px 14px 2px',
-                  padding: '8px 12px',
-                  fontSize: '13.5px',
-                  color: 'rgba(14,27,42,0.5)',
-                  boxShadow: '0 2px 6px rgba(14,27,42,0.03)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <span>Agent is typing</span>
-                  <span style={{ animation: 'pulseConnecting 1.5s infinite', fontWeight: 'bold' }}>...</span>
-                </div>
-              </div>
-            )}
-            <div ref={transcriptEndRef} />
-          </div>
-
-          {/* Form input */}
-          <form onSubmit={handleSendChatMessage} style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Type your message to the agent..."
-              disabled={chatTyping}
-              style={{
-                flex: 1,
-                border: '1px solid rgba(14,27,42,0.15)',
-                borderRadius: '10px',
-                padding: '10px 14px',
-                fontSize: '13.5px',
-                background: '#FFFFFF',
-                outline: 'none',
-                color: '#0E1B2A',
-                fontFamily: "'Figtree', sans-serif"
-              }}
-            />
-            <button
-              type="submit"
-              disabled={chatTyping || !chatInput.trim()}
-              style={{
-                background: '#2F8FE0',
-                color: 'white',
-                border: 'none',
-                borderRadius: '10px',
-                padding: '0 18px',
-                cursor: (chatTyping || !chatInput.trim()) ? 'not-allowed' : 'pointer',
-                opacity: (chatTyping || !chatInput.trim()) ? 0.6 : 1,
-                fontWeight: 600,
-                fontSize: '13.5px',
-                fontFamily: "'Figtree', sans-serif",
-                boxShadow: '0 4px 12px rgba(47, 143, 224, 0.15)',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              Send
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* State 2: Connecting & Microphone permission */}
-      {isLoading && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '22px', textAlign: 'center', width: '100%' }}>
-          <div style={{
-            width: '72px',
-            height: '72px',
-            borderRadius: '50%',
-            background: '#D9714B',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            animation: 'pulseConnecting 1.5s infinite'
-          }}>
-            <svg style={{ width: '28px', height: '28px', animation: 'spin 1.5s linear infinite' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <circle cx="12" cy="12" r="10" strokeDasharray="38 12" strokeDashoffset="0" />
-            </svg>
-          </div>
-          <div>
-            <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '0 0 6px', color: '#0E1B2A' }}>Connecting...</h3>
-            <p style={{ fontSize: '13.5px', color: 'rgba(14,27,42,0.6)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>
-              {callState === 'permission_required' ? 'Please allow microphone access when prompted...' : 'Connecting to front desk...'}
-            </p>
-          </div>
-          <button
-            disabled
-            style={{
-              padding: '14px 28px',
-              borderRadius: '12px',
-              background: 'rgba(14,27,42,0.1)',
-              border: 'none',
-              color: 'rgba(14,27,42,0.4)',
-              fontSize: '15px',
-              fontWeight: 600,
-              cursor: 'not-allowed'
-            }}
-          >
-            Please Wait
-          </button>
-        </div>
-      )}
-
-      {/* State 3: Connected / Agent speaking / User speaking */}
-      {isActive && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%' }}>
-          <div style={{
-            width: '76px',
-            height: '76px',
-            borderRadius: '50%',
-            background: agentSpeaking ? '#2F8FE0' : userSpeaking ? '#22C55E' : 'rgba(14,27,42,0.15)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            transition: 'background-color 0.4s ease, transform 0.4s ease',
-            animation: agentSpeaking
-              ? 'pulseAgentSpeaking 1.2s infinite'
-              : userSpeaking
-              ? 'pulseUserSpeaking 1.2s infinite'
-              : 'none'
-          }}>
-            {agentSpeaking ? (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M3 10v4M6 6v12M9 4v16M12 7v10M15 5v14M18 8v8M21 10v4" />
-              </svg>
-            ) : userSpeaking ? (
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-              </svg>
-            ) : (
-              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'white' }} />
-            )}
-          </div>
-
-          <div>
-            <h3 style={{ fontSize: '15px', fontWeight: 600, margin: '0 0 4px', color: '#0E1B2A', textAlign: 'center' }}>
-              {callState === 'ending' ? 'Ending call...' : "You're connected"}
-            </h3>
-            <p style={{ fontSize: '13px', color: 'rgba(14,27,42,0.5)', margin: 0, textAlign: 'center' }}>
-              {isMuted
-                ? 'Microphone muted'
-                : callState === 'ending'
-                ? 'Closing session'
-                : agentSpeaking
-                ? 'Front Desk speaking'
-                : userSpeaking
-                ? 'Listening to you...'
-                : 'Front Desk listening'}
-            </p>
-          </div>
-
-          {/* Safe Live Transcript Area */}
-          <div style={{
-            width: '100%',
-            background: 'rgba(14,27,42,0.04)',
-            borderRadius: '16px',
-            padding: '16px',
-            minHeight: '80px',
-            maxHeight: '120px',
-            overflowY: 'auto',
-            fontSize: '13.5px',
-            lineHeight: '1.5',
-            color: 'rgba(14,27,42,0.78)',
-            textAlign: 'left',
-            border: '1px solid rgba(14,27,42,0.06)'
-          }}>
-            {transcript && transcript.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {transcript.map((msg: any, idx: number) => (
-                  <div key={idx} style={{ fontSize: '13px', lineHeight: 1.4 }}>
-                    <span style={{ fontWeight: 700, color: msg.role === 'user' ? '#22C55E' : '#2F8FE0' }}>
-                      {msg.role === 'user' ? 'You' : 'Agent'}:
-                    </span>{' '}
-                    <span style={{ color: '#0E1B2A' }}>{msg.content}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span style={{ color: 'rgba(14,27,42,0.4)', fontStyle: 'italic' }}>
-                {"Say \"Hello\" or ask a question to start..."}
-              </span>
-            )}
-          </div>
-
-          {/* Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button
-              onClick={toggleMute}
-              disabled={callState === 'ending'}
-              style={{
-                width: '46px',
-                height: '46px',
-                borderRadius: '50%',
-                background: isMuted ? '#EF4444' : 'rgba(14,27,42,0.06)',
-                color: isMuted ? 'white' : '#0E1B2A',
-                border: 'none',
-                cursor: callState === 'ending' ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.2s ease',
-                opacity: callState === 'ending' ? 0.5 : 1
-              }}
-              title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-            >
-              {isMuted ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="1" y1="1" x2="23" y2="23" />
-                  <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6" />
-                  <path d="M17 11a6.97 6.97 0 0 1-1.78 4.62" />
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-                </svg>
-              )}
-            </button>
-
-            <button
-              onClick={stopCall}
-              disabled={callState === 'ending'}
-              style={{
-                width: '52px',
-                height: '52px',
-                borderRadius: '50%',
-                background: '#EF4444',
-                color: 'white',
-                border: 'none',
-                cursor: callState === 'ending' ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
-                transition: 'all 0.2s ease',
-                opacity: callState === 'ending' ? 0.5 : 1
-              }}
-              title="End call"
-              aria-label="End call"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: 'rotate(135deg)', transformOrigin: 'center' }}>
-                <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.8 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-5.33-5.33A19.79 19.79 0 0 1 2 4.18 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .8 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* State 4: Error */}
-      {callState === 'error' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '18px', textAlign: 'center', width: '100%' }}>
-          <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            background: 'rgba(239, 68, 68, 0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#EF4444'
-          }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
-          <div>
-            <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 6px', color: '#EF4444' }}>Connection Failed</h3>
-            <p style={{ fontSize: '13.5px', color: 'rgba(14,27,42,0.6)', margin: 0, lineHeight: 1.5, maxWidth: '260px' }}>
-              {errorMessage || 'Unable to start the voice assistant. Please try again.'}
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '12px', width: '100%', justifyContent: 'center' }}>
-            <button
-              onClick={() => updateState('idle')}
-              style={{
-                padding: '10px 18px',
-                borderRadius: '10px',
-                background: 'rgba(14,27,42,0.06)',
-                border: 'none',
-                color: '#0E1B2A',
-                fontSize: '13.5px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={startCall}
-              style={{
-                padding: '10px 18px',
-                borderRadius: '10px',
-                background: '#2F8FE0',
-                border: 'none',
-                color: 'white',
-                fontSize: '13.5px',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              Try Again
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* State 5: Ended */}
-      {callState === 'ended' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '22px', textAlign: 'center', width: '100%' }}>
-          <div style={{
-            width: '72px',
-            height: '72px',
-            borderRadius: '50%',
-            background: 'rgba(14,27,42,0.06)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#0E1B2A'
-          }}>
-            {renderIcon(CHECK_PATHS, 26, 2.2, '#2F8FE0')}
-          </div>
-          <div>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 6px', color: '#0E1B2A' }}>Conversation ended</h3>
-            <p style={{ fontSize: '13.5px', color: 'rgba(14,27,42,0.6)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>
-              Thank you for trying out MyFrontDesk. Feel free to start another conversation at any time.
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              updateState('idle');
-              setTranscript([]);
-            }}
-            className="btn-hover-transform"
-            style={{
-              padding: '12px 24px',
-              borderRadius: '10px',
-              background: 'rgba(47,143,224,0.1)',
-              border: '1px solid rgba(47,143,224,0.3)',
-              color: '#2F8FE0',
-              fontSize: '14.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Start Another Call
-          </button>
-        </div>
-      )}
-    </div>
-  );
-});
+        <VoiceAgentPanel
+          config={mergedConfig}
+          isOpen={isFloating ? isOpen : true}
+          onClose={() => setIsOpen(false)}
+          callState={callState}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          isLoading={['connecting', 'permission_required'].includes(callState)}
+          isActive={activeCall}
+          errorMessage={errorMessage}
+          duration={duration}
+          isMuted={isMuted}
+          agentSpeaking={agentSpeaking}
+          userSpeaking={userSpeaking}
+          onStartCall={startCall}
+          onStopCall={stopCall}
+          onToggleMute={toggleMute}
+          chatMessages={chatMessages}
+          chatInput={chatInput}
+          onChatInputChange={setChatInput}
+          onSendChatMessage={handleSendChatMessage}
+          chatTyping={chatTyping}
+          transcript={transcript}
+          transcriptEndRef={transcriptEndRef}
+          parseStatusMessage={parseStatusMessage}
+        />
+      </div>
+    );
+  }
+);
 
 VoiceAgentWidget.displayName = 'VoiceAgentWidget';
 export default VoiceAgentWidget;
