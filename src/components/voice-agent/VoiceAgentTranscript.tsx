@@ -1,9 +1,12 @@
 import React from 'react';
 import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
+import type { WebsiteDataResult } from './IntelligenceResultCard';
 
 export interface TranscriptMessage {
   role: 'user' | 'agent';
   content: string;
+  /** Structured data results from the Website Intelligence system */
+  results?: WebsiteDataResult[];
 }
 
 interface VoiceAgentTranscriptProps {
@@ -25,7 +28,7 @@ export default function VoiceAgentTranscript({
   transcriptEndRef,
   parseStatusMessage,
 }: VoiceAgentTranscriptProps) {
-  const { branding, panel, behavior } = config;
+  const { branding, behavior } = config;
 
   if (activeTab === 'text') {
     return (
@@ -110,34 +113,52 @@ export default function VoiceAgentTranscript({
           }
 
           const isUser = msg.role === 'user';
+
           return (
             <div
               key={idx}
               style={{
                 display: 'flex',
-                justifyContent: isUser ? 'flex-end' : 'flex-start',
+                flexDirection: 'column',
+                alignItems: isUser ? 'flex-end' : 'flex-start',
                 width: '100%',
+                gap: '4px',
               }}
             >
-              <div
-                style={{
-                  maxWidth: '85%',
-                  background: isUser ? 'var(--voice-widget-bg-user-bubble, var(--voice-widget-primary))' : 'var(--voice-widget-bg-agent-bubble, #FFFFFF)',
-                  color: isUser ? '#FFFFFF' : 'var(--voice-widget-text, #0E1B2A)',
-                  border: isUser ? 'none' : '1px solid var(--voice-widget-border)',
-                  borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
-                  padding: '8px 12px',
-                  fontSize: 'var(--voice-widget-font-sm)',
-                  fontWeight: 'var(--voice-widget-font-weight-body)',
-                  lineHeight: 'var(--voice-widget-line-height)',
-                  boxShadow: '0 2px 6px rgba(14,27,42,0.03)',
-                }}
-              >
-                {msg.content}
-              </div>
+              {/* Chat bubble */}
+              {msg.content && (
+                <div
+                  style={{
+                    maxWidth: '85%',
+                    background: isUser
+                      ? 'var(--voice-widget-bg-user-bubble, var(--voice-widget-primary))'
+                      : 'var(--voice-widget-bg-agent-bubble, #FFFFFF)',
+                    color: isUser ? '#FFFFFF' : 'var(--voice-widget-text, #0E1B2A)',
+                    border: isUser ? 'none' : '1px solid var(--voice-widget-border)',
+                    borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                    padding: '8px 12px',
+                    fontSize: 'var(--voice-widget-font-sm)',
+                    fontWeight: 'var(--voice-widget-font-weight-body)',
+                    lineHeight: 'var(--voice-widget-line-height)',
+                    boxShadow: '0 2px 6px rgba(14,27,42,0.03)',
+                  }}
+                >
+                  {msg.content}
+                </div>
+              )}
+
+              {/* Intelligence result cards — agent messages only */}
+              {!isUser && msg.results && msg.results.length > 0 && (
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {msg.results.map((result, ri) => (
+                    <LazyResultCard key={ri} result={result} />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
+
         {chatTyping && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
             <div
@@ -165,7 +186,7 @@ export default function VoiceAgentTranscript({
     );
   }
 
-  // Voice Chat Transcript Panel
+  // ── Voice Chat Transcript Panel ────────────────────────────────────────────
   if (!behavior.showTranscript) return null;
 
   return (
@@ -191,18 +212,28 @@ export default function VoiceAgentTranscript({
           {transcript.map((msg, idx) => {
             const isUser = msg.role === 'user';
             return (
-              <div key={idx} style={{ fontSize: 'var(--voice-widget-font-sm)', lineHeight: 'var(--voice-widget-line-height)' }}>
-                <span
-                  style={{
-                    fontWeight: 'var(--voice-widget-font-weight-heading)',
-                    color: isUser ? 'var(--voice-widget-wave-user, #22C55E)' : 'var(--voice-widget-primary, #2F8FE0)',
-                  }}
-                >
-                  {isUser ? branding.userMessageName : branding.agentMessageName}:
-                </span>{' '}
-                <span style={{ color: 'var(--voice-widget-text)', fontWeight: 'var(--voice-widget-font-weight-body)' }}>
-                  {msg.content}
-                </span>
+              <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ fontSize: 'var(--voice-widget-font-sm)', lineHeight: 'var(--voice-widget-line-height)' }}>
+                  <span
+                    style={{
+                      fontWeight: 'var(--voice-widget-font-weight-heading)',
+                      color: isUser ? 'var(--voice-widget-wave-user, #22C55E)' : 'var(--voice-widget-primary, #2F8FE0)',
+                    }}
+                  >
+                    {isUser ? branding.userMessageName : branding.agentMessageName}:
+                  </span>{' '}
+                  <span style={{ color: 'var(--voice-widget-text)', fontWeight: 'var(--voice-widget-font-weight-body)' }}>
+                    {msg.content}
+                  </span>
+                </div>
+                {/* Visual results display in Voice Tab! */}
+                {msg.results && msg.results.length > 0 && (
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px', margin: '4px 0' }}>
+                    {msg.results.map((result, ri) => (
+                      <LazyResultCard key={ri} result={result} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -223,4 +254,19 @@ export default function VoiceAgentTranscript({
       <div ref={transcriptEndRef} />
     </div>
   );
+}
+
+// ── Lazy-loaded result card (avoids direct dep cycle) ─────────────────────────
+
+function LazyResultCard({ result }: { result: WebsiteDataResult }) {
+  const [Card, setCard] = React.useState<React.ComponentType<{ result: WebsiteDataResult; primaryColor?: string }> | null>(null);
+
+  React.useEffect(() => {
+    import('./IntelligenceResultCard').then((mod) => {
+      setCard(() => mod.default);
+    });
+  }, []);
+
+  if (!Card) return null;
+  return <Card result={result} primaryColor="var(--voice-widget-primary, #2F8FE0)" />;
 }

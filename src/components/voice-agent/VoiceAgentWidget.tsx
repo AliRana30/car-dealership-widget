@@ -92,6 +92,49 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       });
     }, [mergedConfig.branding.welcomeMessage]);
 
+    // Cache for voice transcript results to avoid redundant network calls
+    const [voiceResults, setVoiceResults] = useState<Record<string, any[]>>({});
+    const fetchedContents = useRef<Set<string>>(new Set());
+
+    useEffect(() => {
+      const isCallActive = ['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState);
+      if (!isCallActive) {
+        setVoiceResults({});
+        fetchedContents.current.clear();
+        return;
+      }
+
+      transcript.forEach((msg) => {
+        const content = msg.content?.trim();
+        if (!content || content.length < 5 || msg.isPartial) return;
+        if (fetchedContents.current.has(content)) return;
+        fetchedContents.current.add(content);
+
+        const targetId = widgetId || 'default';
+        fetch(`/api/widgets/${encodeURIComponent(targetId)}/search?query=${encodeURIComponent(content)}`)
+          .then((res) => (res.ok ? res.json() : []))
+          .then((data) => {
+            if (data && Array.isArray(data) && data.length > 0) {
+              setVoiceResults((prev) => ({
+                ...prev,
+                [content]: data,
+              }));
+            }
+          })
+          .catch((err) => {
+            console.warn('[voice-agent] Failed to search website records for:', content, err);
+          });
+      });
+    }, [transcript, callState, widgetId]);
+
+    const enrichedTranscript = React.useMemo(() => {
+      return transcript.map((msg) => {
+        const content = msg.content?.trim();
+        const results = voiceResults[content] || undefined;
+        return { ...msg, results };
+      });
+    }, [transcript, voiceResults]);
+
     // Refs
     const clientRef = useRef<any>(null);
     const providerRef = useRef<'retell' | 'vapi'>('retell');
@@ -228,7 +271,11 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             const mapped = data.messages.map((m: any) => ({
               role: m.role === 'agent' ? 'agent' : 'user',
               content: m.content,
-            }));
+              // Carry through structured results from Website Intelligence
+              ...(m.results && Array.isArray(m.results) && m.results.length > 0
+                ? { results: m.results }
+                : {}),
+            })) as TranscriptMessage[];
             setChatMessages((prev) => [...prev, ...mapped]);
           }
         } catch {
@@ -553,7 +600,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             isStartingRef.current = false;
           }, mergedConfig.behavior.connectionTimeout);
 
-          await activeClient.start(data.vapiAssistantId);
+          await activeClient.start(data.vapiAssistantId, data.vapiAssistantOverrides);
         }
       } catch (err) {
         console.error('Error starting voice assistant:', err);
@@ -946,7 +993,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           onChatInputChange={setChatInput}
           onSendChatMessage={handleSendChatMessage}
           chatTyping={chatTyping}
-          transcript={transcript}
+          transcript={enrichedTranscript}
           transcriptEndRef={transcriptEndRef}
           parseStatusMessage={parseStatusMessage}
         />

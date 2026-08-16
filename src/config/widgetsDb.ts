@@ -129,6 +129,11 @@ export async function getWidget(idOrWidgetId: string): Promise<WidgetRecord | nu
   }
 }
 
+const isUuid = (val?: string): boolean => {
+  if (!val) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+};
+
 export async function saveWidget(
   record: Omit<WidgetRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
 ): Promise<WidgetRecord> {
@@ -217,11 +222,15 @@ export async function saveWidget(
   const widgetRowPayload = {
     ...(primaryId ? { id: primaryId } : {}),
     widget_id: normalizedSlug,
-    organization_id: record.organizationId || existing?.organizationId || '00000000-0000-0000-0000-000000000000',
+    organization_id: isUuid(record.organizationId) 
+      ? record.organizationId! 
+      : (isUuid(existing?.organizationId) ? existing?.organizationId! : '00000000-0000-0000-0000-000000000000'),
     name: record.name.trim(),
     status: record.status || existing?.status || 'active',
     agent_id: agentUuid,
-    website_id: record.websiteId || existing?.websiteId || '00000000-0000-0000-0000-000000000000',
+    website_id: isUuid(record.websiteId) 
+      ? record.websiteId! 
+      : (isUuid(existing?.websiteId) ? existing?.websiteId! : '00000000-0000-0000-0000-000000000000'),
     allowed_domains: record.allowedDomains || existing?.allowedDomains || [],
     config: record.config,
   };
@@ -447,6 +456,158 @@ export async function saveWidgetConfiguration(
   } catch (err) {
     console.error(`[widgetsDb] Error in saveWidgetConfiguration for ${idOrWidgetId}:`, err);
     return null;
+  }
+}
+
+export async function getRelevantWebsiteData(websiteId: string, query: string): Promise<string> {
+  try {
+    const { data: records, error } = await supabase
+      .from('website_data')
+      .select('*')
+      .eq('website_id', websiteId);
+
+    if (error || !records || records.length === 0) {
+      return '';
+    }
+
+    // Score records based on keyword matches with the query
+    const queryWords = query.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    if (queryWords.length === 0) {
+      // If no good keywords, return first 3 records as fallback
+      return records.slice(0, 3).map(r => `Title: ${r.title}\nContent: ${r.content}`).join('\n\n');
+    }
+
+    const scored = records.map(record => {
+      let score = 0;
+      const titleLower = (record.title || '').toLowerCase();
+      const contentLower = record.content.toLowerCase();
+
+      for (const word of queryWords) {
+        if (titleLower.includes(word)) score += 10;
+        if (contentLower.includes(word)) {
+          const matches = contentLower.split(word).length - 1;
+          score += matches * 2;
+        }
+      }
+      return { record, score };
+    });
+
+    const sorted = scored.sort((a, b) => b.score - a.score);
+    const matched = sorted.filter(s => s.score > 0).map(s => s.record);
+    const finalRecords = matched.length > 0 ? matched : records.slice(0, 3);
+
+    return finalRecords.slice(0, 3).map(r => `Title: ${r.title}\nContent: ${r.content}`).join('\n\n');
+  } catch (err) {
+    console.error(`[widgetsDb] Error in getRelevantWebsiteData:`, err);
+    return '';
+  }
+}
+
+// ── Structured result objects for frontend rendering ──────────────────────────
+
+export interface WebsiteDataRecord {
+  title?: string;
+  description?: string;
+  images?: string[];
+  price?: string | number;
+  currency?: string;
+  availability?: string;
+  rating?: number | string;
+  reviews?: number | string;
+  attributes?: Record<string, string | number | boolean>;
+  sourceUrl?: string;
+  entityType?: string;
+}
+
+/**
+ * Returns scored, structured website data records for frontend card rendering.
+ * Only records scoring above 0 are returned (max 3).
+ * Falls back to top-3 records when query has no useful keywords.
+ */
+export async function getRelevantWebsiteRecords(
+  websiteId: string,
+  query: string,
+  limit = 3
+): Promise<WebsiteDataRecord[]> {
+  try {
+    const { data: records, error } = await supabase
+      .from('website_data')
+      .select('*')
+      .eq('website_id', websiteId);
+
+    if (error || !records || records.length === 0) return [];
+
+    const queryWords = query.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+
+    let finalRecords = records;
+    if (queryWords.length > 0) {
+      const scored = records.map(record => {
+        let score = 0;
+        const titleLower = (record.title || '').toLowerCase();
+        const contentLower = (record.content || '').toLowerCase();
+        for (const word of queryWords) {
+          if (titleLower.includes(word)) score += 10;
+          const hits = contentLower.split(word).length - 1;
+          score += hits * 2;
+        }
+        return { record, score };
+      });
+      const matched = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).map(s => s.record);
+      finalRecords = matched.length > 0 ? matched : records;
+    }
+
+    return finalRecords.slice(0, limit).map(r => {
+      const meta = (r.metadata || {}) as Record<string, any>;
+      const result: WebsiteDataRecord = { entityType: r.data_type };
+      if (r.title) result.title = r.title;
+      // description: for general text nodes, use content preview. Otherwise, prefer metadata.description
+      if (r.data_type === 'text' && r.content) {
+        result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
+      } else if (meta.description) {
+        result.description = String(meta.description);
+      } else if (r.content) {
+        result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
+      }
+      if (meta.images && Array.isArray(meta.images)) result.images = meta.images.filter(Boolean);
+      else if (meta.image) result.images = [String(meta.image)];
+      if (meta.price !== undefined) result.price = meta.price;
+      if (meta.currency) result.currency = String(meta.currency);
+      if (meta.availability) result.availability = String(meta.availability);
+      if (meta.rating !== undefined) result.rating = meta.rating;
+      if (meta.reviews !== undefined) result.reviews = meta.reviews;
+      if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
+      if (r.url) result.sourceUrl = r.url;
+      return result;
+    });
+  } catch (err) {
+    console.error(`[widgetsDb] Error in getRelevantWebsiteRecords:`, err);
+    return [];
+  }
+}
+
+export async function getWebsiteContextSummary(websiteId: string): Promise<string> {
+  try {
+    const { data: records, error } = await supabase
+      .from('website_data')
+      .select('*')
+      .eq('website_id', websiteId);
+
+    if (error || !records || records.length === 0) {
+      return '';
+    }
+
+    return records.map(r => {
+      const meta = r.metadata || {};
+      const details = [];
+      if (meta.price !== undefined) details.push(`Price: ${meta.price} ${meta.currency || 'USD'}`);
+      if (meta.rating !== undefined) details.push(`Rating: ${meta.rating}/5 stars (${meta.reviews || 0} reviews)`);
+      if (meta.availability) details.push(`Availability: ${meta.availability}`);
+      const detailsStr = details.length > 0 ? ` [${details.join(' | ')}]` : '';
+      return `[Category: ${r.data_type || 'General'}] ${r.title}${detailsStr}:\n${r.content}`;
+    }).join('\n\n');
+  } catch (err) {
+    console.error(`[widgetsDb] Error in getWebsiteContextSummary:`, err);
+    return '';
   }
 }
 

@@ -135,3 +135,39 @@ ALTER TABLE widget_configurations ENABLE ROW LEVEL SECURITY;
 -- Policy to allow all operations from Next.js server-side route handlers
 DROP POLICY IF EXISTS "Allow all access to server-side operations" ON widget_configurations;
 CREATE POLICY "Allow all access to server-side operations" ON widget_configurations FOR ALL USING (true) WITH CHECK (true);
+
+-- Create the website data table to store indexed/crawled site intelligence
+CREATE TABLE IF NOT EXISTS website_data (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+    url TEXT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    data_type TEXT NOT NULL DEFAULT 'text',
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Index for fast relational lookup
+CREATE INDEX IF NOT EXISTS idx_website_data_website_id ON website_data(website_id);
+
+-- Automatic updated_at trigger
+DROP TRIGGER IF EXISTS update_website_data_updated_at ON website_data;
+CREATE TRIGGER update_website_data_updated_at BEFORE UPDATE ON website_data
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE website_data ENABLE ROW LEVEL SECURITY;
+
+-- Policy to allow all operations from Next.js server-side route handlers
+DROP POLICY IF EXISTS "Allow all access to server-side operations" ON website_data;
+CREATE POLICY "Allow all access to server-side operations" ON website_data FOR ALL USING (true) WITH CHECK (true);
+
+-- Insert seed website intelligence data for the Default Website
+INSERT INTO website_data (website_id, url, title, content, data_type)
+VALUES 
+('00000000-0000-0000-0000-000000000000', 'https://example.com/services', 'CarePoint Clinic Services', 'We provide general consultations ($50), pediatric care ($60), vaccinations ($30), and specialized cardiovascular exams ($150). Appointments can be booked online. We are open Mon-Fri 8am-6pm.', 'service'),
+('00000000-0000-0000-0000-000000000000', 'https://example.com/inventory', 'Available Vehicle Inventory', 'We have the following vehicles in stock: 2023 Tesla Model Y (Long Range, White, $42,990), 2022 Ford F-150 (Lightning Electric, Blue, $54,500), 2021 Toyota RAV4 (Hybrid, Silver, $28,400). Contact us for test drives.', 'product'),
+('00000000-0000-0000-0000-000000000000', 'https://example.com/pricing', 'Front Desk Widget Product FAQ', 'The Front Desk Widget integrates voice and text AI agents on your site. Pricing plans: Starter ($49/mo, 1000 mins), Professional ($149/mo, 5000 mins), Enterprise (custom). Supports Retell and Vapi integrations.', 'text')
+ON CONFLICT (id) DO NOTHING;

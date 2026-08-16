@@ -427,6 +427,7 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       showDuration: config.behavior?.showDuration !== false,
       showWaveform: config.behavior?.showWaveform !== false,
       telemetryEnabled: config.behavior?.telemetryEnabled !== false,
+      installationType: config.behavior?.installationType || 'javascript',
     },
     responsive: config.responsive || {},
   };
@@ -480,6 +481,7 @@ export function fromConfigurationRecord(record: WidgetConfigurationRecord): Voic
       autoResetEndedTimeout: record.call?.autoResetEndedTimeout || 5000,
       connectionTimeout: record.call?.connectionTimeout || 15000,
       telemetryEnabled: !!record.behavior?.telemetryEnabled,
+      installationType: record.behavior?.installationType || 'javascript',
     },
     animation: record.call?.animation || {
       launcher: 'pulse',

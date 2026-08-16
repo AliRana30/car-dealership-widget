@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Retell from 'retell-sdk';
-import { getWidget } from '@/config/widgetsDb';
+import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords } from '@/config/widgetsDb';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -169,6 +169,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Resolve relevant website intelligence data dynamically through the backend
+  const websiteId = widget.websiteId || '00000000-0000-0000-0000-000000000000';
+  // Run text context + structured records retrieval in parallel
+  const [relevantData, relevantRecords] = await Promise.all([
+    getRelevantWebsiteData(websiteId, content),
+    getRelevantWebsiteRecords(websiteId, content),
+  ]);
+
   // ── Initialize Retell SDK Client ──────────────────────────────────────────
   const client = new Retell({ apiKey });
 
@@ -178,33 +186,15 @@ export async function POST(req: NextRequest) {
     if (!finalChatAgentId) {
       try {
         const chatAgents = await client.chatAgent.list();
-        const found = chatAgents.items?.find((a: any) => a.channel === 'chat');
-        if (found) {
-          finalChatAgentId = found.agent_id;
-        } else {
-          const voiceAgent = await client.agent.retrieve(agentId);
-          const responseEngine = voiceAgent.response_engine as any;
-          const llmId = responseEngine?.llm_id;
-          if (!llmId) {
-            throw new Error('Voice agent response engine LLM ID not found.');
-          }
-          const created = await client.chatAgent.create({
-            agent_name: `${voiceAgent.agent_name || 'AI Front Desk'} Chat`,
-            response_engine: {
-              type: 'retell-llm',
-              llm_id: llmId
-            }
-          });
-          finalChatAgentId = created.agent_id;
-          console.log('[retell/chat] Created chat agent on-the-fly:', finalChatAgentId);
-        }
+        const found = chatAgents.items?.find((a: any) => a.agent_name?.toLowerCase().includes('chat') || a.agent_name?.toLowerCase().includes('text'));
+        finalChatAgentId = found ? found.agent_id : agentId;
       } catch (err) {
-        console.error('[retell/chat] Failed to resolve chat agent dynamically:', err);
-        finalChatAgentId = agentId; // Fallback
+        console.warn('[retell/chat] Failed to list agents, falling back to widget agent:', err instanceof Error ? err.message : err);
+        finalChatAgentId = agentId;
       }
     }
 
-    // 1. Create a new chat session if chatId is not provided
+    // 1. Create or retrieve existing chat session
     if (!chatId) {
       const chatSession = await client.chat.create({
         agent_id: finalChatAgentId,
@@ -219,9 +209,13 @@ export async function POST(req: NextRequest) {
     // 2. Post user message content to get completion response
     let completion;
     try {
+      const promptContent = relevantData
+        ? `[Relevant Website Context:\n${relevantData}\n]\nUser Message: ${content.trim()}`
+        : content.trim();
+
       completion = await client.chat.createChatCompletion({
         chat_id: chatId,
-        content: content.trim(),
+        content: promptContent,
       });
     } catch (err) {
       console.warn('[retell/chat] Failed on existing session, starting new session:', err instanceof Error ? err.message : err);
@@ -233,19 +227,40 @@ export async function POST(req: NextRequest) {
       if (!chatId) {
         throw new Error('Failed to create a new chat session during recovery.');
       }
+
+      const promptContent = relevantData
+        ? `[Relevant Website Context:\n${relevantData}\n]\nUser Message: ${content.trim()}`
+        : content.trim();
+
       completion = await client.chat.createChatCompletion({
         chat_id: chatId,
-        content: content.trim(),
+        content: promptContent,
       });
     }
 
     // Clean up tone/emotion tags (e.g. [empathetic]) from the agent response
-    const cleanMessages = (completion.messages || []).map((m: any) => ({
-      ...m,
-      content: typeof m.content === 'string'
-        ? m.content.replace(/\[[a-z_-\s]+\]/gi, '').replace(/\s+/g, ' ').trim()
-        : m.content
-    }));
+    // and strip out any injected website context from history so the client bubble stays clean.
+    const rawMessages: any[] = completion.messages || [];
+    const cleanMessages = rawMessages.map((m: any, idx: number) => {
+      let textContent = m.content;
+      if (typeof textContent === 'string') {
+        textContent = textContent.replace(/\[[a-z_-\s]+\]/gi, '').replace(/\s+/g, ' ').trim();
+        if (textContent.includes('User Message:')) {
+          const parts = textContent.split('User Message:');
+          textContent = parts[parts.length - 1].trim();
+        }
+      }
+      const cleaned: any = { ...m, content: textContent };
+      // Attach structured result cards to the last agent message only
+      const isLastAgentMsg =
+        m.role === 'agent' &&
+        idx === rawMessages.length - 1 &&
+        relevantRecords.length > 0;
+      if (isLastAgentMsg) {
+        cleaned.results = relevantRecords;
+      }
+      return cleaned;
+    });
 
     console.log(`[RETELL_OBSERVABILITY] ${JSON.stringify({
       timestamp: new Date().toISOString(),

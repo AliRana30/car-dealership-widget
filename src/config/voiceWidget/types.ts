@@ -111,6 +111,8 @@ export interface TranscriptMessage {
   content: string;
   /** For streaming providers (e.g. Vapi), marks a transcript entry as partial/interim */
   isPartial?: boolean;
+  /** Structured data results from the Website Intelligence system */
+  results?: any[];
 }
 
 // -------------------------------------------------------
@@ -309,6 +311,7 @@ export interface VoiceWidgetBehaviorConfig {
   /** ms before marking connection as failed */
   connectionTimeout: number;
   telemetryEnabled: boolean;
+  installationType?: string;
 }
 
 // -------------------------------------------------------

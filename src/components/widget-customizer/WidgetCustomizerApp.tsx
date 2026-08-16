@@ -76,6 +76,10 @@ export default function WidgetCustomizerApp() {
   const [retellApiKey, setRetellApiKey] = useState('');
   const [vapiApiKey, setVapiApiKey] = useState('');
   const [isSavedOnServer, setIsSavedOnServer] = useState(false);
+  const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
+  const [websiteId, setWebsiteId] = useState('');
+  const [websiteName, setWebsiteName] = useState('Default Website');
+  const [widgetStatus, setWidgetStatus] = useState<'active' | 'inactive' | 'paused'>('active');
 
   // Fetch on mount if id is in query params
   useEffect(() => {
@@ -106,6 +110,10 @@ export default function WidgetCustomizerApp() {
             }
             setRetellApiKey(metaData.hasRetellApiKey ? '••••••••' : '');
             setVapiApiKey(metaData.hasVapiApiKey ? '••••••••' : '');
+            setAllowedDomains(metaData.allowedDomains || []);
+            setWebsiteId(metaData.websiteId || '');
+            setWebsiteName(metaData.websiteName || 'Default Website');
+            setWidgetStatus(metaData.status || 'active');
           }
         }
 
@@ -145,6 +153,10 @@ export default function WidgetCustomizerApp() {
     setRetellApiKey('');
     setVapiApiKey('');
     setIsSavedOnServer(false);
+    setAllowedDomains([]);
+    setWebsiteId('');
+    setWebsiteName('Default Website');
+    setWidgetStatus('active');
     setOpenColorTokenId(null);
     setSaved(false);
   };
@@ -166,6 +178,8 @@ export default function WidgetCustomizerApp() {
           vapiApiKey,
           vapiAssistantId: draft.provider?.provider === 'vapi' ? (draft.provider?.agentId || '') : '',
           config: draft,
+          websiteId,
+          allowedDomains,
         }),
       });
 
@@ -287,6 +301,12 @@ export default function WidgetCustomizerApp() {
                 apiKey={draft.provider?.provider === 'vapi' ? vapiApiKey : retellApiKey}
                 setApiKey={draft.provider?.provider === 'vapi' ? setVapiApiKey : setRetellApiKey}
                 isSavedOnServer={isSavedOnServer}
+                allowedDomains={allowedDomains}
+                websiteId={websiteId}
+                setWebsiteId={setWebsiteId}
+                websiteName={websiteName}
+                setWebsiteName={setWebsiteName}
+                widgetStatus={widgetStatus}
               />
             )}
           </div>

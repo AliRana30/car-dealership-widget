@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWidget } from '@/config/widgetsDb';
+import { getWidget, getWebsiteContextSummary } from '@/config/widgetsDb';
 import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 
@@ -111,6 +111,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Resolve website intelligence context for the widget
+    const websiteId = widget.websiteId || '00000000-0000-0000-0000-000000000000';
+    const websiteContext = await getWebsiteContextSummary(websiteId);
+
     // ─── Provider: Retell ──────────────────────────────────────────────────
     if (widget.provider === 'retell') {
       const apiKey = (widget.retellApiKey || '').trim();
@@ -125,13 +129,16 @@ export async function POST(req: NextRequest) {
 
       const client = new Retell({ apiKey });
       const safeMetadata = metadata && typeof metadata === 'object' ? metadata : undefined;
-      const safeDynamicVars = retell_llm_dynamic_variables && typeof retell_llm_dynamic_variables === 'object' ? retell_llm_dynamic_variables : undefined;
+      const safeDynamicVars = {
+        ...(retell_llm_dynamic_variables && typeof retell_llm_dynamic_variables === 'object' ? retell_llm_dynamic_variables : {}),
+        ...(websiteContext ? { website_context: websiteContext } : {}),
+      };
 
       try {
         const retellResponse = await client.call.createWebCall({
           agent_id: agentId,
           ...(safeMetadata ? { metadata: safeMetadata } : {}),
-          ...(safeDynamicVars ? { retell_llm_dynamic_variables: safeDynamicVars } : {}),
+          retell_llm_dynamic_variables: safeDynamicVars,
         });
 
         const accessToken = retellResponse.access_token;
@@ -197,6 +204,12 @@ export async function POST(req: NextRequest) {
         event: 'call_created'
       })}`);
 
+      const vapiAssistantOverrides = websiteContext ? {
+        variableValues: {
+          website_context: websiteContext
+        }
+      } : undefined;
+
       // Vapi Web client SDK handles call signaling directly client-side via WebRTC
       // utilizing the Public API Key and Assistant ID.
       return NextResponse.json(
@@ -204,6 +217,7 @@ export async function POST(req: NextRequest) {
           provider: 'vapi',
           vapiPublicApiKey: apiKey,
           vapiAssistantId: assistantId,
+          vapiAssistantOverrides,
           sessionId,
         },
         { status: 200, headers }

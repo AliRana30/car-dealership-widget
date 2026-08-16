@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWidget, saveWidget, listWidgets, deleteWidget } from '@/config/widgetsDb';
+import { getWidget, saveWidget, listWidgets, deleteWidget, supabase } from '@/config/widgetsDb';
 
 // GET /api/widgets
 // If ID is provided, returns client-safe visual config and provider name.
@@ -15,6 +15,18 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'not_found', message: 'Widget not found' }, { status: 404 });
       }
 
+      let websiteName = 'Default Website';
+      if (widget.websiteId) {
+        const { data: websiteRow } = await supabase
+          .from('websites')
+          .select('name')
+          .eq('id', widget.websiteId)
+          .single();
+        if (websiteRow) {
+          websiteName = websiteRow.name;
+        }
+      }
+
       // Return ONLY client-safe configurations
       return NextResponse.json({
         id: widget.widgetId, // Use slug for client compatibility
@@ -25,6 +37,10 @@ export async function GET(req: NextRequest) {
         hasRetellApiKey: !!widget.retellApiKey,
         hasVapiApiKey: !!widget.vapiApiKey,
         config: widget.config,
+        allowedDomains: widget.allowedDomains || [],
+        websiteId: widget.websiteId || '',
+        websiteName,
+        status: widget.status || 'active',
       }, { status: 200 });
     }
 
@@ -88,7 +104,7 @@ export async function POST(req: NextRequest) {
 
     const savedRecord = await saveWidget({
       widgetId: id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-'),
-      organizationId: body.organizationId || 'default-org',
+      organizationId: body.organizationId || '00000000-0000-0000-0000-000000000000',
       name: name.trim(),
       status: body.status || 'active',
       provider,
@@ -96,7 +112,7 @@ export async function POST(req: NextRequest) {
       assistantId: vapiAssistantId ? vapiAssistantId.trim() : undefined,
       retellApiKey: retellApiKey ? retellApiKey.trim() : undefined,
       vapiApiKey: vapiApiKey ? vapiApiKey.trim() : undefined,
-      websiteId: body.websiteId || '',
+      websiteId: body.websiteId || '00000000-0000-0000-0000-000000000000',
       allowedDomains: body.allowedDomains || [],
       config,
     });
