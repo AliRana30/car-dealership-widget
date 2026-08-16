@@ -47,7 +47,7 @@ graph TD
     A[Client Webpage] -->|Embeds widget.js| B(Widget Loader Script)
     B -->|Initializes Widget Frame| C[VoiceAgentWidget.tsx]
     C -->|Fetch Config| D[API Route /api/widgets]
-    D -->|Read/Write JSON| E[(db-mock.json)]
+    D -->|Read/Write SQL| E[(Supabase PostgreSQL)]
     C -->|Start Call Request| F[API Route /api/widgets/create-call]
     F -->|Secure Call Signaling| G[Vapi WebRTC / Retell Session Ticket]
 ```

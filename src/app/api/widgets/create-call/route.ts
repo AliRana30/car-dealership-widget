@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWidget } from '@/config/db-mock';
+import { getWidget } from '@/config/widgetsDb';
 import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const widget = getWidget(widgetId);
+    const widget = await getWidget(widgetId);
     if (!widget) {
       return NextResponse.json(
         { error: 'not_found', message: `Widget with ID '${widgetId}' not found.` },

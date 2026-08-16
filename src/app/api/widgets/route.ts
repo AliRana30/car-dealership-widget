@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWidget, saveWidget, listWidgets, deleteWidget } from '@/config/db-mock';
+import { getWidget, saveWidget, listWidgets, deleteWidget } from '@/config/widgetsDb';
 
 // GET /api/widgets
 // If ID is provided, returns client-safe visual config and provider name.
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const id = searchParams.get('id');
 
     if (id) {
-      const widget = getWidget(id);
+      const widget = await getWidget(id);
       if (!widget) {
         return NextResponse.json({ error: 'not_found', message: 'Widget not found' }, { status: 404 });
       }
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     }
 
     // List all widgets for dashboard/admin view
-    const list = listWidgets();
+    const list = await listWidgets();
     
     // For admin view, we sanitize API keys (mask them) for security
     const sanitizedList = list.map(w => ({
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const savedRecord = saveWidget({
+    const savedRecord = await saveWidget({
       id: id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-'),
       name: name.trim(),
       provider,
@@ -119,7 +119,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'bad_request', message: 'Missing widget ID' }, { status: 400 });
     }
 
-    const success = deleteWidget(id);
+    const success = await deleteWidget(id);
     if (!success) {
       return NextResponse.json({ error: 'not_found', message: 'Widget not found' }, { status: 404 });
     }
