@@ -38,7 +38,7 @@ export default function SettingsSidebar({ active, onSelect }: Props) {
 
       {/* Widget Fleet link */}
       <div style={styles.sidebarFooter}>
-        <Link href="/widgets" style={styles.fleetLink}>
+        <Link href="/" style={styles.fleetLink}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <rect x="4" y="4" width="6" height="6" rx="1" />
             <rect x="14" y="4" width="6" height="6" rx="1" />

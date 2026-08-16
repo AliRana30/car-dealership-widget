@@ -96,7 +96,7 @@ export default function DeploySection({
 
       {/* ── Widget Fleet link ──────────────────────────────── */}
       <Link
-        href="/widgets"
+        href="/"
         style={{
           display: 'flex', alignItems: 'center', gap: '7px',
           padding: '8px 10px', borderRadius: '8px',
