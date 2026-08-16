@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Retell from 'retell-sdk';
+import { getWidget } from '@/config/widgetsDb';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -25,19 +26,7 @@ function maskIp(ip: string): string {
   return 'unknown';
 }
 
-// ─── Environment ────────────────────────────────────────────────────────────
-
-function getEnv(): { apiKey: string; agentId: string; chatAgentId?: string } {
-  const apiKey = process.env.RETELL_API_KEY || 'key_c8518fbaaa990618439d277ab026';
-  const agentId = process.env.RETELL_AGENT_ID || 'agent_3150b4da2eaf98174c827f061d';
-  const chatAgentId = process.env.RETELL_CHAT_AGENT_ID || 'agent_d887e846b66f76b1e445c932e6';
-
-  return {
-    apiKey: apiKey.trim(),
-    agentId: agentId.trim(),
-    chatAgentId: chatAgentId.trim()
-  };
-}
+// (getEnv removed to support dynamic record-based keys)
 
 // ─── In-memory rate limiter ─────────────────────────────────────────────────
 
@@ -130,23 +119,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Validate env ──────────────────────────────────────────────────────────
-  let apiKey: string;
-  let agentId: string;
-  let chatAgentId: string | undefined;
-
-  try {
-    ({ apiKey, agentId, chatAgentId } = getEnv());
-  } catch (err) {
-    console.error('[retell/chat] Configuration error:', err instanceof Error ? err.message : err);
-    return NextResponse.json(
-      { error: 'server_misconfigured', message: 'Chat system is not correctly configured.' },
-      { status: 503, headers }
-    );
-  }
-
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { chatId?: string | null; content?: string } = {};
+  let body: { chatId?: string | null; content?: string; widgetId?: string } = {};
   try {
     body = (await req.json()) ?? {};
   } catch {
@@ -156,13 +130,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { content } = body;
+  const { content, widgetId } = body;
   let { chatId } = body;
 
   if (!content || typeof content !== 'string' || content.trim() === '') {
     return NextResponse.json(
       { error: 'invalid_request', message: 'Content field is required and must be a non-empty string.' },
       { status: 400, headers }
+    );
+  }
+
+  // ── Retrieve Widget Credentials ───────────────────────────────────────────
+  const targetId = widgetId || 'default';
+  const widget = await getWidget(targetId);
+  if (!widget) {
+    return NextResponse.json(
+      { error: 'not_found', message: `Widget with ID '${targetId}' not found.` },
+      { status: 404, headers }
+    );
+  }
+
+  if (widget.provider !== 'retell') {
+    return NextResponse.json(
+      { error: 'misconfigured', message: 'Text chat is only supported on Retell provider widgets.' },
+      { status: 400, headers }
+    );
+  }
+
+  const apiKey = (widget.retellApiKey || '').trim();
+  const agentId = (widget.agentId || '').trim();
+  // Check if a specific chat agent has been configured in the config overrides, or fallback to main agentId
+  const chatAgentId = (widget.config?.behavior as any)?.chatAgentId || undefined;
+
+  if (!apiKey || !agentId) {
+    return NextResponse.json(
+      { error: 'misconfigured', message: 'Retell credentials or Agent ID are not configured for this widget.' },
+      { status: 503, headers }
     );
   }
 

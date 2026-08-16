@@ -17,12 +17,13 @@ export async function GET(req: NextRequest) {
 
       // Return ONLY client-safe configurations
       return NextResponse.json({
-        id: widget.id,
+        id: widget.widgetId, // Use slug for client compatibility
         name: widget.name,
         provider: widget.provider,
+        retellAgentId: widget.agentId,
+        vapiAssistantId: widget.assistantId,
         hasRetellApiKey: !!widget.retellApiKey,
         hasVapiApiKey: !!widget.vapiApiKey,
-        // Send only safe visual config - no API keys!
         config: widget.config,
       }, { status: 200 });
     }
@@ -32,13 +33,15 @@ export async function GET(req: NextRequest) {
     
     // For admin view, we sanitize API keys (mask them) for security
     const sanitizedList = list.map(w => ({
-      id: w.id,
+      id: w.widgetId, // Use slug for client compatibility
       name: w.name,
       provider: w.provider,
+      retellAgentId: w.agentId,
+      vapiAssistantId: w.assistantId,
       hasRetellKey: !!w.retellApiKey,
-      hasRetellAgentId: !!w.retellAgentId,
+      hasRetellAgentId: !!w.agentId,
       hasVapiKey: !!w.vapiApiKey,
-      hasVapiAssistantId: !!w.vapiAssistantId,
+      hasVapiAssistantId: !!w.assistantId,
       config: w.config,
       createdAt: w.createdAt
     }));
@@ -84,20 +87,24 @@ export async function POST(req: NextRequest) {
     }
 
     const savedRecord = await saveWidget({
-      id: id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-'),
+      widgetId: id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-'),
+      organizationId: body.organizationId || 'default-org',
       name: name.trim(),
+      status: body.status || 'active',
       provider,
+      agentId: retellAgentId ? retellAgentId.trim() : undefined,
+      assistantId: vapiAssistantId ? vapiAssistantId.trim() : undefined,
       retellApiKey: retellApiKey ? retellApiKey.trim() : undefined,
-      retellAgentId: retellAgentId ? retellAgentId.trim() : undefined,
       vapiApiKey: vapiApiKey ? vapiApiKey.trim() : undefined,
-      vapiAssistantId: vapiAssistantId ? vapiAssistantId.trim() : undefined,
+      websiteId: body.websiteId || '',
+      allowedDomains: body.allowedDomains || [],
       config,
     });
 
     return NextResponse.json({
       message: 'Widget saved successfully',
       widget: {
-        id: savedRecord.id,
+        id: savedRecord.widgetId, // Use slug for client compatibility
         name: savedRecord.name,
         provider: savedRecord.provider,
         config: savedRecord.config,

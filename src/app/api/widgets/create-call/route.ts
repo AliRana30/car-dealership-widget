@@ -113,8 +113,8 @@ export async function POST(req: NextRequest) {
 
     // ─── Provider: Retell ──────────────────────────────────────────────────
     if (widget.provider === 'retell') {
-      const apiKey = (widget.retellApiKey || process.env.RETELL_API_KEY || 'key_c8518fbaaa990618439d277ab026').trim();
-      const agentId = (widget.retellAgentId || process.env.RETELL_AGENT_ID || 'agent_3150b4da2eaf98174c827f061d').trim();
+      const apiKey = (widget.retellApiKey || '').trim();
+      const agentId = (widget.agentId || '').trim();
 
       if (!apiKey || !agentId) {
         return NextResponse.json(
@@ -171,8 +171,8 @@ export async function POST(req: NextRequest) {
 
     // ─── Provider: Vapi ────────────────────────────────────────────────────
     if (widget.provider === 'vapi') {
-      const apiKey = (widget.vapiApiKey || process.env.VAPI_API_KEY || '').trim();
-      const assistantId = (widget.vapiAssistantId || process.env.VAPI_ASSISTANT_ID || '').trim();
+      const apiKey = (widget.vapiApiKey || '').trim();
+      const assistantId = (widget.assistantId || '').trim();
 
       if (!apiKey || !assistantId) {
         return NextResponse.json(

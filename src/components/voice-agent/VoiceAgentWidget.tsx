@@ -212,6 +212,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             body: JSON.stringify({
               chatId,
               content: text,
+              widgetId: widgetId || 'default',
             }),
           });
 

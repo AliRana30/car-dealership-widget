@@ -1,20 +1,64 @@
--- Create the widgets table in Supabase
-CREATE TABLE IF NOT EXISTS widgets (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    provider TEXT NOT NULL CHECK (provider IN ('retell', 'vapi')),
+-- Create the widget secrets table to isolate API keys
+CREATE TABLE IF NOT EXISTS widget_secrets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     retell_api_key TEXT,
-    retell_agent_id TEXT,
     vapi_api_key TEXT,
-    vapi_assistant_id TEXT,
-    config JSONB NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
+-- Create the widgets table representing the complete Widget Model
+CREATE TABLE IF NOT EXISTS widgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    widget_id TEXT NOT NULL UNIQUE,
+    organization_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'paused')),
+    provider TEXT NOT NULL CHECK (provider IN ('retell', 'vapi')),
+    agent_id TEXT,
+    assistant_id TEXT,
+    credential_secret_id UUID REFERENCES widget_secrets(id) ON DELETE SET NULL,
+    website_id TEXT,
+    allowed_domains TEXT[] DEFAULT '{}'::TEXT[],
+    config JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Indexes for performance and relational lookups
+CREATE INDEX IF NOT EXISTS idx_widgets_widget_id ON widgets(widget_id);
+CREATE INDEX IF NOT EXISTS idx_widgets_organization_id ON widgets(organization_id);
+CREATE INDEX IF NOT EXISTS idx_widgets_website_id ON widgets(website_id);
+CREATE INDEX IF NOT EXISTS idx_widgets_credential_secret_id ON widgets(credential_secret_id);
+
+-- Automatic updated_at triggers
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_widgets_updated_at ON widgets;
+CREATE TRIGGER update_widgets_updated_at BEFORE UPDATE ON widgets
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_widget_secrets_updated_at ON widget_secrets;
+CREATE TRIGGER update_widget_secrets_updated_at BEFORE UPDATE ON widget_secrets
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Enable Row Level Security (RLS)
+ALTER TABLE widget_secrets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE widgets ENABLE ROW LEVEL SECURITY;
 
--- Create policy to allow all operations from Next.js server-side route handlers
+-- Create policies to allow operations from Next.js server-side route handlers
+DROP POLICY IF EXISTS "Allow all access to server-side operations" ON widget_secrets;
+CREATE POLICY "Allow all access to server-side operations" ON widget_secrets
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
 DROP POLICY IF EXISTS "Allow all access to server-side operations" ON widgets;
 CREATE POLICY "Allow all access to server-side operations" ON widgets
     FOR ALL
