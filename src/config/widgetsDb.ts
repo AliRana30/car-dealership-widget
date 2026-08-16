@@ -27,7 +27,7 @@ export interface WidgetRecord {
   vapiApiKey?: string;
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
+let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -35,6 +35,22 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     '[Supabase] Warning: NEXT_PUBLIC_SUPABASE_URL is not defined in env. ' +
     'Please set this environment variable to connect to PostgreSQL.'
   );
+}
+
+// Self-healing: if a PostgreSQL connection string is mistakenly provided, parse it and extract the HTTP API URL
+if (supabaseUrl.startsWith('postgresql://') || supabaseUrl.startsWith('postgres://')) {
+  try {
+    const urlParts = supabaseUrl.split('@');
+    const hostAndPort = urlParts[urlParts.length - 1];
+    const host = hostAndPort.split(':')[0]; // e.g. db.oygkvdituwljqpfdxwaf.supabase.co
+    
+    if (host.includes('.supabase.co')) {
+      const projectRef = host.split('.')[1]; // e.g. oygkvdituwljqpfdxwaf
+      supabaseUrl = `https://${projectRef}.supabase.co`;
+    }
+  } catch (e) {
+    console.error('[Supabase] Failed to auto-convert postgresql url to HTTP API url:', e);
+  }
 }
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
