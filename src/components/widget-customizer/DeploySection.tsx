@@ -22,240 +22,205 @@ interface DeploySectionProps {
   widgetStatus?: 'active' | 'inactive' | 'paused';
 }
 
-const PLATFORMS: Record<string, {
-  label: string;
-  lang: string;
-  code: (origin: string, widgetId: string) => string;
-  instructions: string[];
-}> = {
-  javascript: {
-    label: 'JavaScript / HTML',
-    lang: 'html',
-    code: (origin, widgetId) => `<!-- Voice Agent Widget -->
+// ── Universal embed code helpers ─────────────────────────────────────────────
+function getUniversalSnippet(origin: string, widgetId: string) {
+  return `<!-- Voice Agent Widget -->
 <script
   src="${origin}/widget.js"
   data-widget-id="${widgetId || 'your-widget-id'}"
   defer
-></script>`,
-    instructions: [
-      'Copy the script snippet above.',
-      'Paste it before the closing </body> tag of your website\'s HTML file.',
-      'The launcher button will automatically appear in the configured position.'
-    ]
-  },
-  react: {
-    label: 'React',
-    lang: 'javascript',
-    code: (origin, widgetId) => `import { useEffect } from 'react';
-
-export default function VoiceWidget() {
-  useEffect(() => {
-    // Dynamically insert the widget script into the document body
-    const script = document.createElement('script');
-    script.src = '${origin}/widget.js';
-    script.setAttribute('data-widget-id', '${widgetId || 'your-widget-id'}');
-    script.defer = true;
-    document.body.appendChild(script);
-
-    return () => {
-      // Cleanup script on component unmount
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-      const container = document.getElementById('voice-agent-widget-container');
-      if (container) container.remove();
-    };
-  }, []);
-
-  return null;
-}`,
-    instructions: [
-      'Create a new component file named VoiceWidget.jsx/VoiceWidget.tsx.',
-      'Paste the React component code above inside it.',
-      'Render <VoiceWidget /> inside your main layout (e.g., App.jsx) to load the widget globally.'
-    ]
-  },
-  nextjs: {
-    label: 'Next.js',
-    lang: 'javascript',
-    code: (origin, widgetId) => `import Script from 'next/script';
-
-export default function VoiceWidget() {
-  return (
-    <Script
-      src="${origin}/widget.js"
-      data-widget-id="${widgetId || 'your-widget-id'}"
-      strategy="lazyOnload"
-    />
-  );
-}`,
-    instructions: [
-      'Create a file components/VoiceWidget.tsx and paste the code above.',
-      'Import and include <VoiceWidget /> inside your root layout file (app/layout.tsx for App Router or pages/_app.tsx for Pages Router).',
-      'The widget uses Next.js Script optimization for fast, non-blocking loading.'
-    ]
-  },
-  vue: {
-    label: 'Vue',
-    lang: 'javascript',
-    code: (origin, widgetId) => `<template>
-  <!-- Voice Widget Loader -->
-  <div v-if="false"></div>
-</template>
-
-<script>
-export default {
-  name: 'VoiceWidget',
-  mounted() {
-    this.script = document.createElement('script');
-    this.script.src = '${origin}/widget.js';
-    this.script.setAttribute('data-widget-id', '${widgetId || 'your-widget-id'}');
-    this.script.defer = true;
-    document.body.appendChild(this.script);
-  },
-  beforeUnmount() {
-    if (this.script && document.body.contains(this.script)) {
-      document.body.removeChild(this.script);
-    }
-    const container = document.getElementById('voice-agent-widget-container');
-    if (container) container.remove();
-  }
+></script>`;
 }
-</script>`,
-    instructions: [
-      'Create a file VoiceWidget.vue and paste the template-script code above.',
-      'Register and render the component inside your main layout component (e.g., App.vue).',
-      'The component handles lifecycle mounting and automatic unmounting.'
-    ]
-  },
-  angular: {
-    label: 'Angular',
-    lang: 'javascript',
-    code: (origin, widgetId) => `import { Component, OnInit, OnDestroy } from '@angular/core';
 
-@Component({
-  selector: 'app-voice-widget',
-  template: ''
-})
-export class VoiceWidgetComponent implements OnInit, OnDestroy {
-  private script: HTMLScriptElement | null = null;
-
-  ngOnInit() {
-    this.script = document.createElement('script');
-    this.script.src = '${origin}/widget.js';
-    this.script.setAttribute('data-widget-id', '${widgetId || 'your-widget-id'}');
-    this.script.defer = true;
-    document.body.appendChild(this.script);
-  }
-
-  ngOnDestroy() {
-    if (this.script && document.body.contains(this.script)) {
-      document.body.removeChild(this.script);
-    }
-    const container = document.getElementById('voice-agent-widget-container');
-    if (container) container.remove();
-  }
-}`,
-    instructions: [
-      'Generate a component using Angular CLI: ng g component voice-widget.',
-      'Paste the component class code above into the voice-widget.component.ts file.',
-      'Include <app-voice-widget></app-voice-widget> inside your root template (app.component.html).'
-    ]
-  },
-  wordpress: {
-    label: 'WordPress',
-    lang: 'wordpress',
-    code: (origin, widgetId) => `<?php
-/*
-Plugin Name: Front Desk Voice Widget
-Description: Embedded Voice Widget client integrations.
-Version: 1.0
-Author: Front Desk
-*/
-
-function enqueue_voice_widget() {
-    wp_enqueue_script(
-        'front-desk-voice-widget',
-        '${origin}/widget.js',
-        array(),
-        '1.0',
-        true
-    );
-    wp_script_add_data('front-desk-voice-widget', 'data-widget-id', '${widgetId || 'your-widget-id'}');
-}
-add_action('wp_enqueue_scripts', 'enqueue_voice_widget');`,
-    instructions: [
-      'Create a new directory named /wp-content/plugins/front-desk-widget/ inside your WordPress directory.',
-      'Create a file named front-desk-widget.php inside that directory, and paste the code above.',
-      'Go to the WordPress Admin Panel → Plugins page and activate "Front Desk Voice Widget".'
-    ]
-  },
-  php: {
-    label: 'PHP',
-    lang: 'php',
-    code: (origin, widgetId) => `<?php
-// Paste this inside your PHP template (e.g. footer.php or index.php)
-?>
-<!-- Voice Agent Widget -->
-<script
-  src="<?php echo '${origin}/widget.js'; ?>"
-  data-widget-id="<?php echo '${widgetId || 'your-widget-id'}'; ?>"
-  defer
-></script>`,
-    instructions: [
-      'Paste the script tag snippet inside your PHP layout template (e.g., footer.php).',
-      'Ensure it is inserted just before the closing </body> tag.',
-      'This will automatically load the script onto all server-generated PHP pages.'
-    ]
-  },
-  iframe: {
-    label: 'iframe',
-    lang: 'html',
-    code: (origin, widgetId) => `<iframe
+function getIframeSnippet(origin: string, widgetId: string) {
+  return `<iframe
   src="${origin}/embed/${widgetId || 'your-widget-id'}"
   width="100%"
-  height="600px"
-  style="border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"
+  height="620px"
+  style="border:none;border-radius:12px;"
   allow="microphone"
-></iframe>`,
-    instructions: [
-      'Paste the <iframe> tag code into your page template or WYSIWYG editor.',
-      'Important: The allow="microphone" attribute is required so the iframe can request microphone access for voice calls.',
-      'This displays the full interface inline in the page layout instead of a launcher button.'
-    ]
-  }
-};
+></iframe>`;
+}
 
-function highlightCode(code: string, lang: string) {
+const WHERE_TO_PASTE = [
+  { platform: 'WordPress', icon: '⬜', tip: 'Install the free "Insert Headers and Footers" plugin → Settings → paste in Footer section.' },
+  { platform: 'Shopify', icon: '🛍️', tip: 'Online Store → Themes → Edit Code → layout/theme.liquid → paste before </body>.' },
+  { platform: 'Webflow', icon: '🌐', tip: 'Project Settings → Custom Code → Footer Code → paste and publish.' },
+  { platform: 'Squarespace', icon: '⬛', tip: 'Settings → Advanced → Code Injection → Footer → paste.' },
+  { platform: 'Wix', icon: '🔷', tip: 'Settings → Custom Code → Add Custom Code → Body (end) → paste.' },
+  { platform: 'PHP / Laravel', icon: '🐘', tip: 'Open your layout file (e.g. layout.blade.php or footer.php) → paste before </body>.' },
+  { platform: 'HTML / Static', icon: '📄', tip: 'Open any .html file → paste before </body>.' },
+  { platform: 'React / Next.js / Vue', icon: '⚛️', tip: 'Add to root layout file (index.html or layout.tsx) before </body>. Works without a component wrapper.' },
+];
+
+function highlightHtml(code: string) {
   let html = code
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-
-  if (lang === 'html' || lang === 'iframe') {
-    html = html.replace(/(&lt;\/?[a-zA-Z0-9-]+)(&gt;|\s)/g, '<span style="color:#F43F5E">$1</span>$2');
-    html = html.replace(/(&lt;\/?[a-zA-Z0-9-]+$)/g, '<span style="color:#F43F5E">$1</span>');
-    html = html.replace(/(\s[a-zA-Z0-9-]+)=/g, '<span style="color:#F59E0B">$1</span>=');
-    html = html.replace(/(["'].*?["'])/g, '<span style="color:#10B981">$1</span>');
-    html = html.replace(/(&lt;!--.*?--&gt;)/g, '<span style="color:#64748B;font-style:italic">$1</span>');
-  } else if (lang === 'javascript' || lang === 'react' || lang === 'nextjs' || lang === 'vue' || lang === 'angular') {
-    const keywords = /\b(import|export|default|function|const|let|var|return|null|true|false|if|else|new|class|private|extends|strategy)\b/g;
-    html = html.replace(keywords, '<span style="color:#F43F5E">$1</span>');
-    const apis = /\b(document|body|appendChild|removeChild|createElement|setAttribute|remove|getElementById|console|window)\b/g;
-    html = html.replace(apis, '<span style="color:#6366F1">$1</span>');
-    html = html.replace(/(&lt;\/?[a-zA-Z0-9-]+)(&gt;|\s)/g, '<span style="color:#0EA5E9">$1</span>$2');
-    html = html.replace(/(["'`].*?["'`])/g, '<span style="color:#10B981">$1</span>');
-    html = html.replace(/(\/\/.*)/g, '<span style="color:#64748B;font-style:italic">$1</span>');
-  } else if (lang === 'wordpress' || lang === 'php') {
-    const phpKeywords = /\b(function|array|true|false|add_action|wp_enqueue_script|wp_script_add_data)\b/g;
-    html = html.replace(phpKeywords, '<span style="color:#F43F5E">$1</span>');
-    html = html.replace(/(&lt;\?php|\?&gt;)/g, '<span style="color:#EF4444;font-weight:bold">$1</span>');
-    html = html.replace(/(["'].*?["'])/g, '<span style="color:#10B981">$1</span>');
-    html = html.replace(/(\/\/.*|\/\*[\s\S]*?\*\/|#.*)/g, '<span style="color:#64748B;font-style:italic">$1</span>');
-  }
-
+  html = html.replace(/(&lt;\/?[a-zA-Z0-9-]+)(&gt;|\s)/g, '<span style="color:#F43F5E">$1</span>$2');
+  html = html.replace(/(&lt;\/?[a-zA-Z0-9-]+$)/g, '<span style="color:#F43F5E">$1</span>');
+  html = html.replace(/(\s[a-zA-Z0-9-]+)=/g, '<span style="color:#F59E0B">$1</span>=');
+  html = html.replace(/(["'].*?["'])/g, '<span style="color:#10B981">$1</span>');
+  html = html.replace(/(&lt;!--.*?--&gt;)/g, '<span style="color:#64748B;font-style:italic">$1</span>');
   return <code dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+// ── UniversalEmbedSection ────────────────────────────────────────────────────
+interface UniversalEmbedSectionProps {
+  origin: string;
+  widgetId: string;
+  copied: boolean;
+  setCopied: (v: boolean) => void;
+}
+
+function UniversalEmbedSection({ origin, widgetId, copied, setCopied }: UniversalEmbedSectionProps) {
+  const [tab, setTab] = React.useState<'script' | 'iframe'>('script');
+  const [openTip, setOpenTip] = React.useState<string | null>(null);
+
+  const code = tab === 'script'
+    ? getUniversalSnippet(origin, widgetId)
+    : getIframeSnippet(origin, widgetId);
+
+  const handleCopy = () => {
+    if (!widgetId) return;
+    navigator.clipboard.writeText(code).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = code;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2200);
+  };
+
+  const tabStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1, padding: '6px 10px', fontSize: '11px', fontWeight: 600,
+    borderRadius: '6px', border: 'none', cursor: 'pointer',
+    background: active ? '#2563EB' : 'transparent',
+    color: active ? '#fff' : '#64748B',
+    transition: 'background 0.15s',
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* Intro */}
+      <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.6' }}>
+        One snippet — works on <strong>every</strong> website platform. Copy, paste once, done.
+      </p>
+
+      {/* Tab switch: Script / iframe */}
+      <div style={{
+        display: 'flex', gap: '4px', background: '#F1F5F9',
+        borderRadius: '8px', padding: '3px',
+      }}>
+        <button style={tabStyle(tab === 'script')} onClick={() => setTab('script')}>
+          📜 Script Tag
+          <span style={{ fontSize: '9px', marginLeft: '4px', opacity: 0.8 }}>(recommended)</span>
+        </button>
+        <button style={tabStyle(tab === 'iframe')} onClick={() => setTab('iframe')}>
+          🖼️ Inline iframe
+        </button>
+      </div>
+
+      {/* Code block */}
+      <div style={{ background: '#0F172A', borderRadius: '10px', overflow: 'hidden', border: '1px solid #334155' }}>
+        {/* Mac chrome header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 12px', background: '#1E293B', borderBottom: '1px solid #334155',
+        }}>
+          <div style={{ display: 'flex', gap: '5px' }}>
+            {['#EF4444', '#F59E0B', '#10B981'].map((c, i) => (
+              <span key={i} style={{ width: '8px', height: '8px', borderRadius: '50%', background: c }} />
+            ))}
+          </div>
+          <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#94A3B8', fontWeight: 500 }}>
+            {tab === 'script' ? 'widget.js — Universal Embed' : 'Inline iframe Embed'}
+          </span>
+        </div>
+        <div style={{ padding: '14px' }}>
+          <pre style={{
+            margin: 0, overflowX: 'auto', fontSize: '11px',
+            fontFamily: 'monospace', lineHeight: '1.6', color: '#E2E8F0',
+          }}>
+            {highlightHtml(code)}
+          </pre>
+        </div>
+      </div>
+
+      {/* Copy button */}
+      <button
+        onClick={handleCopy}
+        disabled={!widgetId}
+        style={{
+          padding: '9px 16px', borderRadius: '8px', border: 'none',
+          background: copied ? '#10B981' : '#2563EB',
+          color: '#fff', fontSize: '12px', fontWeight: 700,
+          cursor: widgetId ? 'pointer' : 'not-allowed',
+          opacity: widgetId ? 1 : 0.5,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+          transition: 'background 0.2s',
+        }}
+      >
+        {copied ? (
+          <><span>✓</span> Copied!</>
+        ) : (
+          <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg> Copy Snippet</>
+        )}
+      </button>
+
+      {/* Note for iframe */}
+      {tab === 'iframe' && (
+        <div style={{ fontSize: '10px', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '7px', padding: '8px 10px' }}>
+          ⚠️ <strong>allow=&quot;microphone&quot;</strong> is required for voice calls inside iframes. Use the Script Tag approach for the floating launcher button experience.
+        </div>
+      )}
+
+      {/* Where to paste — platform tips */}
+      <div style={{ marginTop: '2px' }}>
+        <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#94A3B8', margin: '0 0 6px' }}>
+          Where to paste it:
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {WHERE_TO_PASTE.map(({ platform, icon, tip }) => (
+            <div
+              key={platform}
+              style={{
+                border: '1px solid #E2E8F0', borderRadius: '7px',
+                background: openTip === platform ? '#F8FAFC' : '#fff',
+                overflow: 'hidden',
+              }}
+            >
+              <button
+                onClick={() => setOpenTip(openTip === platform ? null : platform)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '6px 10px', background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '11px', fontWeight: 600, color: '#334155',
+                }}
+              >
+                <span>{icon} {platform}</span>
+                <span style={{ fontSize: '10px', color: '#94A3B8' }}>{openTip === platform ? '▲' : '▼'}</span>
+              </button>
+              {openTip === platform && (
+                <div style={{ padding: '0 10px 8px', fontSize: '11px', color: '#475569', lineHeight: '1.5' }}>
+                  {tip}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ── WebsiteConnectedPanel ──────────────────────────────────────────────────────
 interface WebsiteConnectedPanelProps {
@@ -621,25 +586,7 @@ export default function DeploySection({
     setWidgetId(val.toLowerCase().replace(/[^a-z0-9-_]/g, '-'));
   };
 
-  // Persisted Platform selector
-  const selectedPlatform = draft.behavior?.installationType || 'javascript';
-  const platform = PLATFORMS[selectedPlatform] || PLATFORMS.javascript;
-  const embedCode = platform.code(origin, widgetId);
 
-  const handlePlatformChange = (val: string) => {
-    onChange({
-      behavior: {
-        ...draft.behavior,
-        installationType: val,
-      }
-    } as any);
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(embedCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const sandboxUrl = isSavedOnServer ? `/embed/${widgetId}` : null;
 
@@ -989,115 +936,17 @@ export default function DeploySection({
 
       <hr style={divider} />
 
-      {/* ── Platform Specific Code Generator ─────────────────── */}
+      {/* ── Universal Embed ─────────────────────────────────────── */}
       <section>
-        <h4 style={sectionTitle}>Installation Code Generator</h4>
+        <h4 style={sectionTitle}>Embed on Your Website</h4>
 
-        <Field label="Installation Platform / Script Language">
-          <select
-            style={select}
-            value={selectedPlatform}
-            onChange={(e) => handlePlatformChange(e.target.value)}
-          >
-            {Object.keys(PLATFORMS).map((key) => (
-              <option key={key} value={key}>
-                {PLATFORMS[key].label}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        {/* OS style Code Box */}
-        <div style={{
-          background: '#0F172A',
-          borderRadius: '10px',
-          overflow: 'hidden',
-          border: '1px solid #334155',
-          marginTop: '12px',
-        }}>
-          {/* Header */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '8px 12px',
-            background: '#1E293B',
-            borderBottom: '1px solid #334155',
-          }}>
-            <div style={{ display: 'flex', gap: '5px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444' }} />
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#F59E0B' }} />
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
-            </div>
-            <span style={{
-              fontSize: '10px',
-              fontFamily: 'monospace',
-              color: '#94A3B8',
-              fontWeight: 500
-            }}>
-              {platform.label} Snippet
-            </span>
-          </div>
-
-          {/* Editor Container */}
-          <div style={{ position: 'relative', padding: '14px' }}>
-            <pre style={codeStyle}>
-              {highlightCode(embedCode, platform.lang)}
-            </pre>
-          </div>
-        </div>
-
-        {/* Copy & Status Bar */}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-          <button
-            onClick={handleCopy}
-            disabled={!widgetId}
-            style={{
-              ...copyBtn,
-              background: copied ? '#10B981' : '#2563EB',
-              flex: 1,
-              padding: '8px 12px',
-              textAlign: 'center',
-              boxShadow: '0 2px 4px rgba(37,99,235,0.15)',
-            }}
-          >
-            {copied ? 'Copied ✓' : 'Copy Integration Code'}
-          </button>
-        </div>
-
-        {/* Instructions */}
-        <div style={{
-          background: '#F8FAFC',
-          border: '1px solid #E2E8F0',
-          borderRadius: '8px',
-          padding: '12px',
-          marginTop: '12px',
-        }}>
-          <h5 style={{
-            fontSize: '10px',
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            color: '#475569',
-            margin: '0 0 8px',
-          }}>
-            Installation Instructions:
-          </h5>
-          <ol style={{
-            margin: 0,
-            paddingLeft: '18px',
-            fontSize: '11px',
-            color: '#475569',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-            lineHeight: '1.4',
-          }}>
-            {platform.instructions.map((step, i) => (
-              <li key={i}>{step}</li>
-            ))}
-          </ol>
-        </div>
+        {/* Tab switcher: Script vs iframe */}
+        <UniversalEmbedSection
+          origin={origin}
+          widgetId={widgetId}
+          copied={copied}
+          setCopied={setCopied}
+        />
       </section>
     </div>
   );
