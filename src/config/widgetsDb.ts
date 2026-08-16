@@ -39,18 +39,21 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-function fromDbRow(widgetRow: any, secretRow?: any): WidgetRecord {
+function fromDbRow(widgetRow: any, agentRow?: any, secretRow?: any): WidgetRecord {
+  const provider = (agentRow?.provider || 'retell') as 'retell' | 'vapi';
+  const externalAgentId = agentRow?.external_agent_id || '';
+
   return {
     id: widgetRow.id,
     widgetId: widgetRow.widget_id,
-    organizationId: widgetRow.organization_id || 'default-org',
+    organizationId: widgetRow.organization_id || '00000000-0000-0000-0000-000000000000',
     name: widgetRow.name,
     status: (widgetRow.status || 'active') as 'active' | 'inactive' | 'paused',
-    provider: widgetRow.provider as 'retell' | 'vapi',
-    agentId: widgetRow.agent_id || '',
-    assistantId: widgetRow.assistant_id || '',
-    credentialSecretId: widgetRow.credential_secret_id || '',
-    websiteId: widgetRow.website_id || '',
+    provider,
+    agentId: provider === 'retell' ? externalAgentId : '',
+    assistantId: provider === 'vapi' ? externalAgentId : '',
+    credentialSecretId: agentRow?.credential_secret_id || '',
+    websiteId: widgetRow.website_id || '00000000-0000-0000-0000-000000000000',
     allowedDomains: widgetRow.allowed_domains || [],
     config: widgetRow.config,
     createdAt: widgetRow.created_at,
@@ -82,17 +85,28 @@ export async function getWidget(idOrWidgetId: string): Promise<WidgetRecord | nu
       throw error;
     }
 
+    let agentRow: any = null;
     let secretRow: any = null;
-    if (widgetRow.credential_secret_id) {
-      const { data: secretData } = await supabase
-        .from('widget_secrets')
+
+    if (widgetRow.agent_id) {
+      const { data: agentData } = await supabase
+        .from('agents')
         .select('*')
-        .eq('id', widgetRow.credential_secret_id)
+        .eq('id', widgetRow.agent_id)
         .single();
-      secretRow = secretData;
+      agentRow = agentData;
+
+      if (agentRow && agentRow.credential_secret_id) {
+        const { data: secretData } = await supabase
+          .from('widget_secrets')
+          .select('*')
+          .eq('id', agentRow.credential_secret_id)
+          .single();
+        secretRow = secretData;
+      }
     }
 
-    return fromDbRow(widgetRow, secretRow);
+    return fromDbRow(widgetRow, agentRow, secretRow);
   } catch (err) {
     console.error(`[widgetsDb] Error in getWidget for ${normalizedSearchId}:`, err);
     return null;
@@ -108,7 +122,17 @@ export async function saveWidget(
   // 1. Check for existing widget to merge or reuse ID
   const existing = await getWidget(normalizedSlug) || (record.id ? await getWidget(record.id) : null);
 
-  let credentialSecretId = existing?.credentialSecretId || undefined;
+  let agentUuid: string | null = null;
+  if (existing) {
+    const { data: rawWidget } = await supabase
+      .from('widgets')
+      .select('agent_id')
+      .eq('id', existing.id)
+      .single();
+    if (rawWidget) {
+      agentUuid = rawWidget.agent_id;
+    }
+  }
 
   // 2. Resolve credentials API keys (preserve existing if masked or empty)
   const retellApiKey = (record.retellApiKey === undefined || record.retellApiKey === '••••••••' || record.retellApiKey === '') 
@@ -118,6 +142,8 @@ export async function saveWidget(
   const vapiApiKey = (record.vapiApiKey === undefined || record.vapiApiKey === '••••••••' || record.vapiApiKey === '') 
     ? (existing?.vapiApiKey || '') 
     : record.vapiApiKey;
+
+  let credentialSecretId = existing?.credentialSecretId || undefined;
 
   // 3. Insert or Update widget_secrets
   if (retellApiKey || vapiApiKey || credentialSecretId) {
@@ -145,24 +171,46 @@ export async function saveWidget(
     }
   }
 
-  // 4. Construct widget payload
+  // 4. Insert or Update agents table
+  const externalAgentId = record.agentId || record.assistantId || record.config?.provider?.agentId || existing?.agentId || '';
+  const agentPayload = {
+    provider: record.provider,
+    external_agent_id: externalAgentId,
+    name: record.name.trim() + ' Agent',
+    credential_secret_id: credentialSecretId || null,
+  };
+
+  if (agentUuid) {
+    const { error: agentErr } = await supabase
+      .from('agents')
+      .update(agentPayload)
+      .eq('id', agentUuid);
+    if (agentErr) throw agentErr;
+  } else {
+    const { data: agentData, error: agentErr } = await supabase
+      .from('agents')
+      .insert(agentPayload)
+      .select('*')
+      .single();
+    if (agentErr) throw agentErr;
+    agentUuid = agentData.id;
+  }
+
+  // 5. Construct widget payload
   const primaryId = record.id || existing?.id;
   const widgetRowPayload = {
     ...(primaryId ? { id: primaryId } : {}),
     widget_id: normalizedSlug,
-    organization_id: record.organizationId || existing?.organizationId || 'default-org',
+    organization_id: record.organizationId || existing?.organizationId || '00000000-0000-0000-0000-000000000000',
     name: record.name.trim(),
     status: record.status || existing?.status || 'active',
-    provider: record.provider,
-    agent_id: record.agentId || record.config?.provider?.agentId || existing?.agentId || '',
-    assistant_id: record.assistantId || record.config?.provider?.agentId || existing?.assistantId || '',
-    credential_secret_id: credentialSecretId || null,
-    website_id: record.websiteId || existing?.websiteId || '',
+    agent_id: agentUuid,
+    website_id: record.websiteId || existing?.websiteId || '00000000-0000-0000-0000-000000000000',
     allowed_domains: record.allowedDomains || existing?.allowedDomains || [],
     config: record.config,
   };
 
-  // 5. Upsert widget
+  // 6. Upsert widget
   const { data: savedWidgetRow, error: widgetErr } = await supabase
     .from('widgets')
     .upsert(widgetRowPayload)
@@ -171,18 +219,29 @@ export async function saveWidget(
 
   if (widgetErr) throw widgetErr;
 
-  // 6. Return mapped record
+  // 7. Fetch the fully updated data to return it
+  let savedAgentRow: any = null;
   let savedSecretRow: any = null;
-  if (credentialSecretId) {
-    const { data } = await supabase
-      .from('widget_secrets')
+
+  if (savedWidgetRow.agent_id) {
+    const { data: agentData } = await supabase
+      .from('agents')
       .select('*')
-      .eq('id', credentialSecretId)
+      .eq('id', savedWidgetRow.agent_id)
       .single();
-    savedSecretRow = data;
+    savedAgentRow = agentData;
+
+    if (savedAgentRow && savedAgentRow.credential_secret_id) {
+      const { data: secretData } = await supabase
+        .from('widget_secrets')
+        .select('*')
+        .eq('id', savedAgentRow.credential_secret_id)
+        .single();
+      savedSecretRow = secretData;
+    }
   }
 
-  return fromDbRow(savedWidgetRow, savedSecretRow);
+  return fromDbRow(savedWidgetRow, savedAgentRow, savedSecretRow);
 }
 
 export async function deleteWidget(idOrWidgetId: string): Promise<boolean> {
@@ -190,6 +249,16 @@ export async function deleteWidget(idOrWidgetId: string): Promise<boolean> {
   if (!existing) return false;
 
   try {
+    // 1. Get raw widget to find agent_id
+    const { data: rawWidget } = await supabase
+      .from('widgets')
+      .select('agent_id')
+      .eq('id', existing.id)
+      .single();
+
+    const agentUuid = rawWidget?.agent_id;
+
+    // 2. Delete widget (deletes widget_configurations via CASCADE)
     const { error: widgetErr } = await supabase
       .from('widgets')
       .delete()
@@ -197,11 +266,25 @@ export async function deleteWidget(idOrWidgetId: string): Promise<boolean> {
 
     if (widgetErr) throw widgetErr;
 
-    if (existing.credentialSecretId) {
+    // 3. Delete linked agent and secret
+    if (agentUuid) {
+      const { data: rawAgent } = await supabase
+        .from('agents')
+        .select('credential_secret_id')
+        .eq('id', agentUuid)
+        .single();
+
       await supabase
-        .from('widget_secrets')
+        .from('agents')
         .delete()
-        .eq('id', existing.credentialSecretId);
+        .eq('id', agentUuid);
+
+      if (rawAgent?.credential_secret_id) {
+        await supabase
+          .from('widget_secrets')
+          .delete()
+          .eq('id', rawAgent.credential_secret_id);
+      }
     }
 
     return true;
@@ -210,6 +293,7 @@ export async function deleteWidget(idOrWidgetId: string): Promise<boolean> {
     return false;
   }
 }
+
 export async function listWidgets(): Promise<WidgetRecord[]> {
   try {
     const { data: widgets, error } = await supabase
@@ -220,23 +304,39 @@ export async function listWidgets(): Promise<WidgetRecord[]> {
     if (error) throw error;
     if (!widgets || widgets.length === 0) return [];
 
-    const secretIds = widgets
-      .map(w => w.credential_secret_id)
-      .filter((id): id is string => !!id);
-
+    // Fetch all agents
+    const agentIds = widgets.map(w => w.agent_id).filter((id): id is string => !!id);
+    const agentsMap = new Map<string, any>();
     const secretsMap = new Map<string, any>();
-    if (secretIds.length > 0) {
-      const { data: secrets } = await supabase
-        .from('widget_secrets')
+
+    if (agentIds.length > 0) {
+      const { data: agents } = await supabase
+        .from('agents')
         .select('*')
-        .in('id', secretIds);
+        .in('id', agentIds);
       
-      if (secrets) {
-        secrets.forEach(s => secretsMap.set(s.id, s));
+      if (agents) {
+        agents.forEach(a => agentsMap.set(a.id, a));
+
+        const secretIds = agents.map(a => a.credential_secret_id).filter((id): id is string => !!id);
+        if (secretIds.length > 0) {
+          const { data: secrets } = await supabase
+            .from('widget_secrets')
+            .select('*')
+            .in('id', secretIds);
+          
+          if (secrets) {
+            secrets.forEach(s => secretsMap.set(s.id, s));
+          }
+        }
       }
     }
 
-    return widgets.map(w => fromDbRow(w, secretsMap.get(w.credential_secret_id)));
+    return widgets.map(w => {
+      const agent = w.agent_id ? agentsMap.get(w.agent_id) : null;
+      const secret = agent?.credential_secret_id ? secretsMap.get(agent.credential_secret_id) : null;
+      return fromDbRow(w, agent, secret);
+    });
   } catch (err) {
     console.error('[widgetsDb] Error in listWidgets:', err);
     return [];
