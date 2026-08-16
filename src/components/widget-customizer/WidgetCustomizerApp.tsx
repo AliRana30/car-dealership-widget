@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { defaultVoiceWidgetConfig, deepMerge } from '@/config/voiceWidget/default';
+import { defaultVoiceWidgetConfig, deepMerge, fromConfigurationRecord, toConfigurationRecord } from '@/config/voiceWidget/default';
 import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
 import { CustomizerSection } from './customizerTypes';
 import SettingsSidebar from './SettingsSidebar';
@@ -92,32 +92,33 @@ export default function WidgetCustomizerApp() {
           console.warn('loadWidget: window.fetch is not available.');
           return;
         }
-        const res = await fetchFn(`/api/widgets?id=${encodeURIComponent(idParam)}`);
-        if (!res) {
-          console.warn('loadWidget: API fetch returned a null response.');
-          return;
-        }
-        if (!res.ok) {
-          console.warn(`loadWidget: API response is not ok (status: ${res.status}).`);
-          return;
-        }
-        const data = await res.json().catch(() => null);
-        if (!data) {
-          console.warn('loadWidget: failed to parse JSON or returned empty data.');
-          return;
+
+        // 1. Fetch widget metadata/keys
+        const resMeta = await fetchFn(`/api/widgets?id=${encodeURIComponent(idParam)}`);
+        if (resMeta && resMeta.ok) {
+          const metaData = await resMeta.json().catch(() => null);
+          if (metaData) {
+            if (metaData.id !== undefined && metaData.id !== null) {
+              setWidgetId(String(metaData.id));
+            }
+            if (metaData.name !== undefined && metaData.name !== null) {
+              setWidgetName(String(metaData.name));
+            }
+            setRetellApiKey(metaData.hasRetellApiKey ? '••••••••' : '');
+            setVapiApiKey(metaData.hasVapiApiKey ? '••••••••' : '');
+          }
         }
 
-        if (data.id !== undefined && data.id !== null) {
-          setWidgetId(String(data.id));
+        // 2. Fetch exact widget configuration
+        const resConfig = await fetchFn(`/api/widgets/${encodeURIComponent(idParam)}/configuration`);
+        if (resConfig && resConfig.ok) {
+          const configRecord = await resConfig.json().catch(() => null);
+          if (configRecord) {
+            const voiceConfig = fromConfigurationRecord(configRecord);
+            setDraft(deepMerge(defaultVoiceWidgetConfig, voiceConfig));
+          }
         }
-        if (data.name !== undefined && data.name !== null) {
-          setWidgetName(String(data.name));
-        }
-        setRetellApiKey(data.hasRetellApiKey ? '••••••••' : '');
-        setVapiApiKey(data.hasVapiApiKey ? '••••••••' : '');
-        if (data.config) {
-          setDraft(deepMerge(defaultVoiceWidgetConfig, data.config));
-        }
+
         setIsSavedOnServer(true);
       } catch (err) {
         console.error('Failed to load widget config:', err);
@@ -151,6 +152,8 @@ export default function WidgetCustomizerApp() {
   const handleSave = async () => {
     try {
       const provider = draft.provider?.provider ?? 'retell';
+      
+      // 1. Save widget metadata and credentials
       const res = await fetch('/api/widgets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -168,15 +171,30 @@ export default function WidgetCustomizerApp() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.message || 'Failed to save configuration');
+        throw new Error(data.message || 'Failed to save widget metadata');
       }
 
       const data = await res.json();
+      const savedWidgetId = data.widget.id;
+
+      // 2. Save the customization configuration record via PUT
+      const configRecord = toConfigurationRecord(draft);
+      const resConfig = await fetch(`/api/widgets/${encodeURIComponent(savedWidgetId)}/configuration`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configRecord),
+      });
+
+      if (!resConfig.ok) {
+        const dataConfig = await resConfig.json();
+        throw new Error(dataConfig.message || 'Failed to save widget configuration');
+      }
+
       setIsSavedOnServer(true);
       setSaved(true);
 
       if (typeof window !== 'undefined') {
-        const nextUrl = `${window.location.pathname}?id=${encodeURIComponent(data.widget.id)}`;
+        const nextUrl = `${window.location.pathname}?id=${encodeURIComponent(savedWidgetId)}`;
         window.history.replaceState({ ...window.history.state, as: nextUrl, url: nextUrl }, '', nextUrl);
       }
 

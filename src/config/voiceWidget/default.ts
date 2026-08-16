@@ -377,3 +377,117 @@ export function buildVoiceWidgetConfig(
     return validateConfig(defaultVoiceWidgetConfig);
   }
 }
+
+export interface WidgetConfigurationRecord {
+  branding: Record<string, any>;
+  theme: Record<string, any>;
+  typography: Record<string, any>;
+  launcher: Record<string, any>;
+  panel: Record<string, any>;
+  call: Record<string, any>;
+  chat: Record<string, any>;
+  behavior: Record<string, any>;
+  responsive: Record<string, any>;
+}
+
+export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigurationRecord {
+  return {
+    branding: {
+      companyName: config.branding?.companyName || '',
+      assistantName: config.branding?.assistantName || '',
+      title: config.branding?.title || '',
+      subtitle: config.branding?.subtitle || '',
+      welcomeMessage: config.branding?.welcomeMessage || '',
+      avatar: config.avatar || {},
+    },
+    theme: config.theme || {},
+    typography: config.typography || {},
+    launcher: config.launcher || {},
+    panel: config.panel || {},
+    call: {
+      provider: config.provider || { provider: 'retell', agentId: '' },
+      audioVisualizer: config.audioVisualizer || {},
+      animation: config.animation || {},
+      connectionTimeout: config.behavior?.connectionTimeout || 15000,
+      autoResetEndedTimeout: config.behavior?.autoResetEndedTimeout || 5000,
+      allowVoiceChat: config.behavior?.allowVoiceChat !== false,
+    },
+    chat: {
+      allowTextChat: config.behavior?.allowTextChat !== false,
+      defaultTab: config.behavior?.defaultTab || 'voice',
+      placeholderText: config.branding?.placeholderText || '',
+      agentMessageName: config.branding?.agentMessageName || '',
+      userMessageName: config.branding?.userMessageName || '',
+    },
+    behavior: {
+      showTranscript: config.behavior?.showTranscript !== false,
+      showMuteButton: config.behavior?.showMuteButton !== false,
+      showEndButton: config.behavior?.showEndButton !== false,
+      showAgentStatus: config.behavior?.showAgentStatus !== false,
+      showDuration: config.behavior?.showDuration !== false,
+      showWaveform: config.behavior?.showWaveform !== false,
+      telemetryEnabled: config.behavior?.telemetryEnabled !== false,
+    },
+    responsive: config.responsive || {},
+  };
+}
+
+export function fromConfigurationRecord(record: WidgetConfigurationRecord): VoiceWidgetConfig {
+  return {
+    mode: 'floating',
+    provider: record.call?.provider || { provider: 'retell', agentId: '' },
+    branding: {
+      companyName: record.branding?.companyName || 'MyFrontDesk',
+      assistantName: record.branding?.assistantName || 'AI Front Desk Agent',
+      title: record.branding?.title || 'Talk to our AI Agent',
+      subtitle: record.branding?.subtitle || 'Experience the virtual front desk receptionist live in your browser.',
+      welcomeMessage: record.branding?.welcomeMessage || 'Hi! I\'m your AI front desk receptionist. How can I help you today?',
+      startLabel: 'Start Conversation',
+      connectingLabel: 'Connecting...',
+      connectedLabel: "You're connected",
+      endLabel: 'End Call',
+      retryLabel: 'Try Again',
+      muteLabel: 'Mute',
+      unmuteLabel: 'Unmute',
+      errorMessage: 'Unable to connect. Please check your connection and try again.',
+      callEndedMessage: 'The call has ended. Thank you!',
+      placeholderText: record.chat?.placeholderText || 'Type your message...',
+      agentMessageName: record.chat?.agentMessageName || 'Agent',
+      userMessageName: record.chat?.userMessageName || 'You',
+    },
+    avatar: record.branding?.avatar || {
+      enabled: false,
+      src: undefined,
+      fallbackText: undefined,
+      size: 44,
+      shape: 'circle',
+    },
+    theme: record.theme as any,
+    typography: record.typography as any,
+    launcher: record.launcher as any,
+    panel: record.panel as any,
+    audioVisualizer: record.call?.audioVisualizer as any,
+    behavior: {
+      showTranscript: !!record.behavior?.showTranscript,
+      showMuteButton: !!record.behavior?.showMuteButton,
+      showEndButton: !!record.behavior?.showEndButton,
+      showAgentStatus: !!record.behavior?.showAgentStatus,
+      showDuration: !!record.behavior?.showDuration,
+      showWaveform: !!record.behavior?.showWaveform,
+      allowTextChat: !!record.chat?.allowTextChat,
+      allowVoiceChat: !!record.call?.allowVoiceChat,
+      defaultTab: record.chat?.defaultTab || 'voice',
+      autoResetEndedTimeout: record.call?.autoResetEndedTimeout || 5000,
+      connectionTimeout: record.call?.connectionTimeout || 15000,
+      telemetryEnabled: !!record.behavior?.telemetryEnabled,
+    },
+    animation: record.call?.animation || {
+      launcher: 'pulse',
+      panel: 'slide-up',
+      speaking: 'pulse',
+      duration: 250,
+    },
+    responsive: record.responsive as any,
+  };
+}
+

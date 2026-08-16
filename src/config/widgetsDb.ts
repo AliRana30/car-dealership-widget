@@ -1,5 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { VoiceWidgetConfig } from './voiceWidget/types';
+import {
+  WidgetConfigurationRecord,
+  toConfigurationRecord,
+  fromConfigurationRecord,
+} from './voiceWidget/default';
 
 export interface WidgetRecord {
   id: string; // UUID primary key in DB
@@ -205,7 +210,6 @@ export async function deleteWidget(idOrWidgetId: string): Promise<boolean> {
     return false;
   }
 }
-
 export async function listWidgets(): Promise<WidgetRecord[]> {
   try {
     const { data: widgets, error } = await supabase
@@ -238,3 +242,95 @@ export async function listWidgets(): Promise<WidgetRecord[]> {
     return [];
   }
 }
+
+
+
+export async function getWidgetConfiguration(idOrWidgetId: string): Promise<WidgetConfigurationRecord | null> {
+  const widget = await getWidget(idOrWidgetId);
+  if (!widget) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('widget_configurations')
+      .select('*')
+      .eq('widget_id', widget.id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No custom configuration found in DB, return a default record converted from its current widget config
+        return toConfigurationRecord(widget.config);
+      }
+      throw error;
+    }
+
+    return {
+      branding: data.branding,
+      theme: data.theme,
+      typography: data.typography,
+      launcher: data.launcher,
+      panel: data.panel,
+      call: data.call,
+      chat: data.chat,
+      behavior: data.behavior,
+      responsive: data.responsive,
+    };
+  } catch (err) {
+    console.error(`[widgetsDb] Error in getWidgetConfiguration for ${idOrWidgetId}:`, err);
+    return null;
+  }
+}
+
+export async function saveWidgetConfiguration(
+  idOrWidgetId: string,
+  configRecord: WidgetConfigurationRecord
+): Promise<WidgetConfigurationRecord | null> {
+  const widget = await getWidget(idOrWidgetId);
+  if (!widget) return null;
+
+  try {
+    const payload = {
+      widget_id: widget.id,
+      branding: configRecord.branding,
+      theme: configRecord.theme,
+      typography: configRecord.typography,
+      launcher: configRecord.launcher,
+      panel: configRecord.panel,
+      call: configRecord.call,
+      chat: configRecord.chat,
+      behavior: configRecord.behavior,
+      responsive: configRecord.responsive,
+    };
+
+    const { data, error } = await supabase
+      .from('widget_configurations')
+      .upsert(payload, { onConflict: 'widget_id' })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+
+    // Synchronize back to the main widgets table's config column to keep systems aligned
+    const updatedVoiceConfig = fromConfigurationRecord(configRecord);
+    await supabase
+      .from('widgets')
+      .update({ config: updatedVoiceConfig })
+      .eq('id', widget.id);
+
+    return {
+      branding: data.branding,
+      theme: data.theme,
+      typography: data.typography,
+      launcher: data.launcher,
+      panel: data.panel,
+      call: data.call,
+      chat: data.chat,
+      behavior: data.behavior,
+      responsive: data.responsive,
+    };
+  } catch (err) {
+    console.error(`[widgetsDb] Error in saveWidgetConfiguration for ${idOrWidgetId}:`, err);
+    return null;
+  }
+}
+

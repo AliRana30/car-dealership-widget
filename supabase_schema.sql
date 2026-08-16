@@ -64,3 +64,39 @@ CREATE POLICY "Allow all access to server-side operations" ON widgets
     FOR ALL
     USING (true)
     WITH CHECK (true);
+
+-- Create the widget configurations table representing the complete customization state
+CREATE TABLE IF NOT EXISTS widget_configurations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    widget_id UUID REFERENCES widgets(id) ON DELETE CASCADE UNIQUE,
+    branding JSONB NOT NULL DEFAULT '{}'::jsonb,
+    theme JSONB NOT NULL DEFAULT '{}'::jsonb,
+    typography JSONB NOT NULL DEFAULT '{}'::jsonb,
+    launcher JSONB NOT NULL DEFAULT '{}'::jsonb,
+    panel JSONB NOT NULL DEFAULT '{}'::jsonb,
+    call JSONB NOT NULL DEFAULT '{}'::jsonb,
+    chat JSONB NOT NULL DEFAULT '{}'::jsonb,
+    behavior JSONB NOT NULL DEFAULT '{}'::jsonb,
+    responsive JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Index for relational lookups
+CREATE INDEX IF NOT EXISTS idx_widget_configurations_widget_id ON widget_configurations(widget_id);
+
+-- Automatic updated_at trigger
+DROP TRIGGER IF EXISTS update_widget_configurations_updated_at ON widget_configurations;
+CREATE TRIGGER update_widget_configurations_updated_at BEFORE UPDATE ON widget_configurations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE widget_configurations ENABLE ROW LEVEL SECURITY;
+
+-- Policy to allow all operations from Next.js server-side route handlers
+DROP POLICY IF EXISTS "Allow all access to server-side operations" ON widget_configurations;
+CREATE POLICY "Allow all access to server-side operations" ON widget_configurations
+    FOR ALL
+    USING (true)
+    WITH CHECK (true);
+
