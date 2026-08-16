@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import VoiceAgentWidget from '@/components/voice-agent/VoiceAgentWidget';
 import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
+import { fromConfigurationRecord } from '@/config/voiceWidget/default';
 
 export default function EmbedWidgetPage() {
   const params = useParams();
@@ -18,15 +19,16 @@ export default function EmbedWidgetPage() {
 
     async function fetchWidget() {
       try {
-        const res = await fetch(`/api/widgets?id=${encodeURIComponent(id)}`);
+        const res = await fetch(`/api/widgets/${encodeURIComponent(id)}/configuration`);
         if (!res.ok) {
           if (res.status === 404) {
             throw new Error('Widget configuration not found.');
           }
           throw new Error('Failed to load widget configuration.');
         }
-        const data = await res.json();
-        setWidgetData(data);
+        const configRecord = await res.json();
+        const voiceConfig = fromConfigurationRecord(configRecord);
+        setWidgetData({ config: voiceConfig, provider: voiceConfig.provider?.provider || 'retell' });
       } catch (err: any) {
         console.error('[EmbedWidget] Fetch failed:', err);
         setError(err.message || 'Error loading widget.');
