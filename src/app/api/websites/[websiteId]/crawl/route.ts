@@ -17,16 +17,37 @@ type Params = { params: Promise<{ websiteId: string }> };
 
 // ─── GET — latest job status ──────────────────────────────────────────────────
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   const { websiteId } = await params;
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
+    const supabase = getSupabase();
+
+    // Verify ownership
+    const { data: existingWebsite, error: checkError } = await supabase
+      .from('websites')
+      .select('id')
+      .eq('id', websiteId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError || !existingWebsite) {
+      return NextResponse.json(
+        { error: 'not_found', message: 'Website not found or access denied' },
+        { status: 404 }
+      );
+    }
+
     const job = await getLatestCrawlJob(websiteId);
     if (!job) {
       return NextResponse.json({ status: 'never_crawled', websiteId }, { status: 200 });
     }
 
     // Also get count of indexed records
-    const supabase = getSupabase();
     const { count } = await supabase
       .from('website_data')
       .select('id', { count: 'exact', head: true })
@@ -54,18 +75,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { websiteId } = await params;
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const supabase = getSupabase();
 
-    // Fetch the website to get its domain
+    // Fetch the website to verify ownership and get allowed domain
     const { data: website, error } = await supabase
       .from('websites')
       .select('id, name, allowed_domains')
       .eq('id', websiteId)
-      .single();
+      .eq('user_id', userId)
+      .maybeSingle();
 
     if (error || !website) {
       return NextResponse.json(
-        { error: 'not_found', message: `Website '${websiteId}' not found` },
+        { error: 'not_found', message: `Website '${websiteId}' not found or access denied` },
         { status: 404 }
       );
     }

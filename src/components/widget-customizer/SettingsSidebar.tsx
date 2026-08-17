@@ -10,11 +10,11 @@ interface Props {
 
 export default function SettingsSidebar({ active, onSelect }: Props) {
   return (
-    <aside style={styles.sidebar}>
-      <div style={styles.sidebarHeader}>
+    <aside style={styles.sidebar} className="customizer-sidebar">
+      <div style={styles.sidebarHeader} className="sidebar-header">
         <span style={styles.sidebarTitle}>Sections</span>
       </div>
-      <nav style={styles.nav}>
+      <nav style={styles.nav} className="sidebar-nav">
         {SECTION_NAV.map((item) => {
           const isActive = active === item.id;
           return (
@@ -25,19 +25,20 @@ export default function SettingsSidebar({ active, onSelect }: Props) {
                 ...styles.navItem,
                 ...(isActive ? styles.navItemActive : {}),
               }}
+              className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
             >
               <span style={{ ...styles.navIcon, ...(isActive ? styles.navIconActive : {}) }}>
                 {item.icon}
               </span>
-              <span style={styles.navLabel}>{item.label}</span>
-              {isActive && <span style={styles.activeBar} />}
+              <span style={styles.navLabel} className="sidebar-nav-label">{item.label}</span>
+              {isActive && <span style={styles.activeBar} className="sidebar-active-bar" />}
             </button>
           );
         })}
       </nav>
 
       {/* Widget Fleet link */}
-      <div style={styles.sidebarFooter}>
+      <div style={styles.sidebarFooter} className="sidebar-footer">
         <Link href="/" style={styles.fleetLink}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <rect x="4" y="4" width="6" height="6" rx="1" />

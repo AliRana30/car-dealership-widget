@@ -45,7 +45,12 @@ export async function GET(req: NextRequest) {
     }
 
     // List all widgets for dashboard/admin view
-    const list = await listWidgets();
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
+    const list = await listWidgets(userId);
     
     // For admin view, we sanitize API keys (mask them) for security
     const sanitizedList = list.map(w => ({
@@ -73,6 +78,11 @@ export async function GET(req: NextRequest) {
 // Saves or updates a widget configuration and API keys.
 export async function POST(req: NextRequest) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const body = await req.json();
     const {
       id,
@@ -105,6 +115,7 @@ export async function POST(req: NextRequest) {
     const savedRecord = await saveWidget({
       widgetId: id.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-'),
       organizationId: body.organizationId || '00000000-0000-0000-0000-000000000000',
+      userId,
       name: name.trim(),
       status: body.status || 'active',
       provider,
@@ -135,6 +146,11 @@ export async function POST(req: NextRequest) {
 // DELETE /api/widgets
 export async function DELETE(req: NextRequest) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -142,7 +158,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'bad_request', message: 'Missing widget ID' }, { status: 400 });
     }
 
-    const success = await deleteWidget(id);
+    const success = await deleteWidget(id, userId);
     if (!success) {
       return NextResponse.json({ error: 'not_found', message: 'Widget not found' }, { status: 404 });
     }

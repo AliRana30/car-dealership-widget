@@ -5,11 +5,13 @@ import {
   toConfigurationRecord,
   fromConfigurationRecord,
 } from './voiceWidget/default';
+import { encrypt, decrypt } from '@/lib/encryption';
 
 export interface WidgetRecord {
   id: string; // UUID primary key in DB
   widgetId: string; // Unique slug identifier (e.g. 'front-desk')
   organizationId: string;
+  userId?: string; // Owner user ID — enforces data isolation
   name: string;
   status: 'active' | 'inactive' | 'paused';
   provider: 'retell' | 'vapi';
@@ -22,7 +24,7 @@ export interface WidgetRecord {
   createdAt?: string;
   updatedAt?: string;
 
-  // Masked or real API keys (strictly kept in widget_secrets table)
+  // Decrypted API keys — only available server-side, never sent to client
   retellApiKey?: string;
   vapiApiKey?: string;
 }
@@ -59,10 +61,15 @@ function fromDbRow(widgetRow: any, agentRow?: any, secretRow?: any): WidgetRecor
   const provider = (agentRow?.provider || 'retell') as 'retell' | 'vapi';
   const externalAgentId = agentRow?.external_agent_id || '';
 
+  // Decrypt API keys stored encrypted at rest
+  const retellApiKey = secretRow?.retell_api_key ? (decrypt(secretRow.retell_api_key) || '') : '';
+  const vapiApiKey = secretRow?.vapi_api_key ? (decrypt(secretRow.vapi_api_key) || '') : '';
+
   return {
     id: widgetRow.id,
     widgetId: widgetRow.widget_id,
     organizationId: widgetRow.organization_id || '00000000-0000-0000-0000-000000000000',
+    userId: widgetRow.user_id || undefined,
     name: widgetRow.name,
     status: (widgetRow.status || 'active') as 'active' | 'inactive' | 'paused',
     provider,
@@ -74,22 +81,30 @@ function fromDbRow(widgetRow: any, agentRow?: any, secretRow?: any): WidgetRecor
     config: widgetRow.config,
     createdAt: widgetRow.created_at,
     updatedAt: widgetRow.updated_at,
-    retellApiKey: secretRow?.retell_api_key || '',
-    vapiApiKey: secretRow?.vapi_api_key || '',
+    retellApiKey,
+    vapiApiKey,
   };
 }
 
-export async function getWidget(idOrWidgetId: string): Promise<WidgetRecord | null> {
+/**
+ * Get a widget by ID or slug. Optionally scoped to a specific user.
+ * The userId parameter enforces server-side ownership isolation.
+ */
+export async function getWidget(idOrWidgetId: string, userId?: string): Promise<WidgetRecord | null> {
   const searchId = idOrWidgetId.toLowerCase();
   const normalizedSearchId = searchId === 'myfrontdesk' ? 'front-desk' : searchId;
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedSearchId);
 
   try {
-    const query = supabase.from('widgets').select('*');
+    let query = supabase.from('widgets').select('*');
     if (isUuid) {
-      query.eq('id', normalizedSearchId);
+      query = query.eq('id', normalizedSearchId);
     } else {
-      query.eq('widget_id', normalizedSearchId);
+      query = query.eq('widget_id', normalizedSearchId);
+    }
+    // Enforce user isolation when userId is provided
+    if (userId) {
+      query = query.eq('user_id', userId);
     }
 
     const { data: widgetRow, error } = await query.single();
@@ -134,6 +149,10 @@ const isUuid = (val?: string): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 };
 
+/**
+ * Save (create or update) a widget. The userId is required for new widgets.
+ * On update, the userId is used to verify ownership before writing.
+ */
 export async function saveWidget(
   record: Omit<WidgetRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
 ): Promise<WidgetRecord> {
@@ -142,6 +161,9 @@ export async function saveWidget(
 
   // 1. Check for existing widget to merge or reuse ID
   const existing = await getWidget(normalizedSlug) || (record.id ? await getWidget(record.id) : null);
+  if (existing && record.userId && existing.userId && existing.userId !== record.userId) {
+    throw new Error('Unauthorized: Widget belongs to another user.');
+  }
 
   let agentUuid: string | null = null;
   if (existing) {
@@ -166,23 +188,28 @@ export async function saveWidget(
 
   let credentialSecretId = existing?.credentialSecretId || undefined;
 
-  // 3. Insert or Update widget_secrets
+  // 3. Insert or Update widget_secrets — store keys AES-256-GCM encrypted
+  const encryptedRetellKey = retellApiKey ? encrypt(retellApiKey) : null;
+  const encryptedVapiKey = vapiApiKey ? encrypt(vapiApiKey) : null;
+
   if (retellApiKey || vapiApiKey || credentialSecretId) {
     if (credentialSecretId) {
+      const updatePayload: any = { encrypted: true };
+      if (encryptedRetellKey) updatePayload.retell_api_key = encryptedRetellKey;
+      if (encryptedVapiKey) updatePayload.vapi_api_key = encryptedVapiKey;
+      if (record.userId) updatePayload.user_id = record.userId;
       const { error: secretErr } = await supabase
         .from('widget_secrets')
-        .upsert({
-          id: credentialSecretId,
-          retell_api_key: retellApiKey,
-          vapi_api_key: vapiApiKey,
-        });
+        .upsert({ id: credentialSecretId, ...updatePayload });
       if (secretErr) throw secretErr;
     } else {
       const { data: secretData, error: secretErr } = await supabase
         .from('widget_secrets')
         .insert({
-          retell_api_key: retellApiKey,
-          vapi_api_key: vapiApiKey,
+          retell_api_key: encryptedRetellKey,
+          vapi_api_key: encryptedVapiKey,
+          user_id: record.userId || null,
+          encrypted: true,
         })
         .select('*')
         .single();
@@ -225,6 +252,7 @@ export async function saveWidget(
     organization_id: isUuid(record.organizationId) 
       ? record.organizationId! 
       : (isUuid(existing?.organizationId) ? existing?.organizationId! : '00000000-0000-0000-0000-000000000000'),
+    user_id: record.userId || existing?.userId || null,
     name: record.name.trim(),
     status: record.status || existing?.status || 'active',
     agent_id: agentUuid,
@@ -269,8 +297,11 @@ export async function saveWidget(
   return fromDbRow(savedWidgetRow, savedAgentRow, savedSecretRow);
 }
 
-export async function deleteWidget(idOrWidgetId: string): Promise<boolean> {
-  const existing = await getWidget(idOrWidgetId);
+/**
+ * Delete a widget. When userId is provided, verifies ownership before deletion.
+ */
+export async function deleteWidget(idOrWidgetId: string, userId?: string): Promise<boolean> {
+  const existing = await getWidget(idOrWidgetId, userId);
   if (!existing) return false;
 
   try {
@@ -319,12 +350,22 @@ export async function deleteWidget(idOrWidgetId: string): Promise<boolean> {
   }
 }
 
-export async function listWidgets(): Promise<WidgetRecord[]> {
+/**
+ * List all widgets. When userId is provided, only returns that user's widgets.
+ */
+export async function listWidgets(userId?: string): Promise<WidgetRecord[]> {
   try {
-    const { data: widgets, error } = await supabase
+    let query = supabase
       .from('widgets')
       .select('*')
       .order('created_at', { ascending: false });
+
+    // Enforce user isolation
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data: widgets, error } = await query;
 
     if (error) throw error;
     if (!widgets || widgets.length === 0) return [];
@@ -370,8 +411,8 @@ export async function listWidgets(): Promise<WidgetRecord[]> {
 
 
 
-export async function getWidgetConfiguration(idOrWidgetId: string): Promise<WidgetConfigurationRecord | null> {
-  const widget = await getWidget(idOrWidgetId);
+export async function getWidgetConfiguration(idOrWidgetId: string, userId?: string): Promise<WidgetConfigurationRecord | null> {
+  const widget = await getWidget(idOrWidgetId, userId);
   if (!widget) return null;
 
   try {
@@ -408,9 +449,10 @@ export async function getWidgetConfiguration(idOrWidgetId: string): Promise<Widg
 
 export async function saveWidgetConfiguration(
   idOrWidgetId: string,
-  configRecord: WidgetConfigurationRecord
+  configRecord: WidgetConfigurationRecord,
+  userId?: string
 ): Promise<WidgetConfigurationRecord | null> {
-  const widget = await getWidget(idOrWidgetId);
+  const widget = await getWidget(idOrWidgetId, userId);
   if (!widget) return null;
 
   try {

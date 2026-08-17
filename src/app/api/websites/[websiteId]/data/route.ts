@@ -11,8 +11,25 @@ type Params = { params: Promise<{ websiteId: string }> };
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return new NextResponse('Authentication required', { status: 401 });
+    }
+
     const { websiteId } = await params;
     const supabase = getSupabase();
+
+    // Verify ownership
+    const { data: existingWebsite, error: checkError } = await supabase
+      .from('websites')
+      .select('id')
+      .eq('id', websiteId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError || !existingWebsite) {
+      return new NextResponse('Website not found or access denied', { status: 404 });
+    }
 
     const { data: records, error } = await supabase
       .from('website_data')

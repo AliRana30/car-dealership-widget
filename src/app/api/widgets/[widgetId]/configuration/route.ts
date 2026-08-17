@@ -8,6 +8,11 @@ type RouteContext = {
 // GET /api/widgets/[widgetId]/configuration
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const resolvedParams = await context.params;
     const { widgetId } = resolvedParams;
 
@@ -15,7 +20,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'bad_request', message: 'Missing widget ID' }, { status: 400 });
     }
 
-    const config = await getWidgetConfiguration(widgetId);
+    const config = await getWidgetConfiguration(widgetId, userId);
     if (!config) {
       return NextResponse.json({ error: 'not_found', message: 'Widget or configuration not found' }, { status: 404 });
     }
@@ -30,6 +35,11 @@ export async function GET(req: NextRequest, context: RouteContext) {
 // PUT /api/widgets/[widgetId]/configuration
 export async function PUT(req: NextRequest, context: RouteContext) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const resolvedParams = await context.params;
     const { widgetId } = resolvedParams;
 
@@ -81,7 +91,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       chat,
       behavior,
       responsive,
-    });
+    }, userId);
 
     if (!savedConfig) {
       return NextResponse.json({ error: 'not_found', message: 'Widget not found' }, { status: 404 });

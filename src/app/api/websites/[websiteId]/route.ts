@@ -17,10 +17,30 @@ type Params = { params: Promise<{ websiteId: string }> };
 export async function PUT(req: NextRequest, { params }: Params) {
   const { websiteId } = await params;
   try {
-    const body = await req.json();
-    const { name, domain } = body;
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
 
     const supabase = getSupabase();
+
+    // Verify ownership
+    const { data: existingWebsite, error: checkError } = await supabase
+      .from('websites')
+      .select('id')
+      .eq('id', websiteId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError || !existingWebsite) {
+      return NextResponse.json(
+        { error: 'not_found', message: 'Website not found or access denied' },
+        { status: 404 }
+      );
+    }
+
+    const body = await req.json();
+    const { name, domain } = body;
     const updateData: Record<string, any> = {};
 
     if (name !== undefined) {
@@ -58,10 +78,30 @@ export async function PUT(req: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const { websiteId } = await params;
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const supabase = getSupabase();
+
+    // Verify ownership
+    const { data: existingWebsite, error: checkError } = await supabase
+      .from('websites')
+      .select('id')
+      .eq('id', websiteId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError || !existingWebsite) {
+      return NextResponse.json(
+        { error: 'not_found', message: 'Website not found or access denied' },
+        { status: 404 }
+      );
+    }
 
     const { error } = await supabase
       .from('websites')

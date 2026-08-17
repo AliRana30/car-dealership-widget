@@ -20,14 +20,17 @@ function getSupabase() {
 
 export async function GET(req: NextRequest) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const supabase = getSupabase();
-    const { searchParams } = new URL(req.url);
-    const orgId = searchParams.get('orgId') || '00000000-0000-0000-0000-000000000000';
 
     const { data: websites, error } = await supabase
       .from('websites')
       .select('id, name, allowed_domains, created_at')
-      .eq('organization_id', orgId)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -55,6 +58,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const userId = req.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { name, domain, orgId = '00000000-0000-0000-0000-000000000000', triggerCrawl = true } = body;
 
@@ -89,6 +97,7 @@ export async function POST(req: NextRequest) {
       .from('websites')
       .insert({
         organization_id: orgId,
+        user_id: userId,
         name: name.trim(),
         allowed_domains: [new URL(validatedUrl).hostname],
       })

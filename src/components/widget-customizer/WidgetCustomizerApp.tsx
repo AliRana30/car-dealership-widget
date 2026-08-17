@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import { defaultVoiceWidgetConfig, deepMerge, fromConfigurationRecord, toConfigurationRecord } from '@/config/voiceWidget/default';
 import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
 import { CustomizerSection } from './customizerTypes';
@@ -18,7 +19,7 @@ import {
   ResponsiveSection,
 } from './ConfigSections';
 
-// Toggle styles (injected once)
+// Toggle styles and mobile overrides (injected once)
 const TOGGLE_CSS = `
   .cust-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
   .cust-toggle span {
@@ -48,6 +49,91 @@ const TOGGLE_CSS = `
 
   /* iro picker overrides */
   .IroColorPicker { user-select: none; }
+
+  /* Responsive Mobile Customizer */
+  .mobile-tabs-container {
+    display: none;
+    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+  }
+
+  @media (max-width: 900px) {
+    .mobile-tabs-container {
+      display: flex;
+      width: 100%;
+      height: 44px;
+      flex-shrink: 0;
+    }
+    .customizer-body {
+      flex-direction: column !important;
+    }
+    
+    /* Hide columns based on active tab */
+    .tab-editor-active .customizer-preview-col {
+      display: none !important;
+    }
+    .tab-preview-active .customizer-sidebar,
+    .tab-preview-active .customizer-editor-col {
+      display: none !important;
+    }
+
+    /* Horizontal sidebar on mobile */
+    .customizer-sidebar {
+      width: 100% !important;
+      min-width: 100% !important;
+      height: auto !important;
+      flex-direction: row !important;
+      border-right: none !important;
+      border-bottom: 1px solid #e5e7eb !important;
+      background: #fafafa !important;
+    }
+    .sidebar-header, .sidebar-footer {
+      display: none !important;
+    }
+    .sidebar-nav {
+      flex-direction: row !important;
+      padding: 6px 12px !important;
+      overflow-x: auto !important;
+      width: 100% !important;
+      flex-wrap: nowrap !important;
+      -webkit-overflow-scrolling: touch;
+      gap: 8px !important;
+    }
+    .sidebar-nav-item {
+      width: auto !important;
+      flex-shrink: 0 !important;
+      white-space: nowrap !important;
+      padding: 6px 12px !important;
+      border-radius: 8px !important;
+    }
+    .sidebar-nav-label {
+      font-size: 12px !important;
+    }
+    .sidebar-active-bar {
+      bottom: 0 !important;
+      left: 6px !important;
+      right: 6px !important;
+      height: 3px !important;
+      width: auto !important;
+      top: auto !important;
+      border-radius: 2px 2px 0 0 !important;
+    }
+    .customizer-editor-col {
+      width: 100% !important;
+      min-width: 100% !important;
+      border-right: none !important;
+      flex: 1 !important;
+    }
+    .customizer-preview-col {
+      flex: 1 !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .customizer-header-actions button {
+      padding: 0 10px !important;
+      font-size: 12px !important;
+    }
+  }
 `;
 
 const SECTION_TITLES: Record<CustomizerSection, string> = {
@@ -68,6 +154,7 @@ export default function WidgetCustomizerApp() {
   const [activeSection, setActiveSection] = useState<CustomizerSection>('colors');
   const [openColorTokenId, setOpenColorTokenId] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const originalRef = useRef<VoiceWidgetConfig>(draft);
 
   // Deploy-specific metadata (not part of visual config)
@@ -109,7 +196,7 @@ export default function WidgetCustomizerApp() {
               setWidgetName(String(metaData.name));
             }
             setRetellApiKey(metaData.hasRetellApiKey ? '••••••••' : '');
-            setVapiApiKey(metaData.hasVapiApiKey ? '••••••••' : '');
+            setVapiApiKey(metaData.hasVapiKey ? '••••••••' : '');
             setAllowedDomains(metaData.allowedDomains || []);
             setWebsiteId(metaData.websiteId || '');
             setWebsiteName(metaData.websiteName || 'Default Website');
@@ -130,6 +217,7 @@ export default function WidgetCustomizerApp() {
         setIsSavedOnServer(true);
       } catch (err) {
         console.error('Failed to load widget config:', err);
+        toast.error('Failed to load widget configurations');
       }
     }
     loadWidget();
@@ -159,12 +247,13 @@ export default function WidgetCustomizerApp() {
     setWidgetStatus('active');
     setOpenColorTokenId(null);
     setSaved(false);
+    toast.success('Configurations reset to default values.');
   };
 
   const handleSave = async () => {
+    const provider = draft.provider?.provider ?? 'retell';
+    const toastId = toast.loading('Saving widget customizer settings...');
     try {
-      const provider = draft.provider?.provider ?? 'retell';
-      
       // 1. Save widget metadata and credentials
       const res = await fetch('/api/widgets', {
         method: 'POST',
@@ -206,6 +295,7 @@ export default function WidgetCustomizerApp() {
 
       setIsSavedOnServer(true);
       setSaved(true);
+      toast.success('Widget customized configuration saved successfully!', { id: toastId });
 
       if (typeof window !== 'undefined') {
         const nextUrl = `${window.location.pathname}?id=${encodeURIComponent(savedWidgetId)}`;
@@ -214,7 +304,7 @@ export default function WidgetCustomizerApp() {
 
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
-      alert(err.message || 'Failed to save widget configuration');
+      toast.error(err.message || 'Failed to save widget configurations', { id: toastId });
     }
   };
 
@@ -242,7 +332,7 @@ export default function WidgetCustomizerApp() {
           <div style={styles.headerDivider} />
           <div style={styles.headerTitle}>Widget Customizer</div>
         </div>
-        <div style={styles.headerActions}>
+        <div style={styles.headerActions} className="customizer-header-actions">
           <button onClick={handleReset} style={styles.btnSecondary}>Reset</button>
           <button onClick={handleSave} style={{
             ...styles.btnPrimary,
@@ -253,14 +343,36 @@ export default function WidgetCustomizerApp() {
         </div>
       </header>
 
+      {/* Mobile Tab Switcher */}
+      <div style={styles.mobileTabs} className="mobile-tabs-container">
+        <button
+          onClick={() => setMobileTab('editor')}
+          style={{
+            ...styles.mobileTabBtn,
+            ...(mobileTab === 'editor' ? styles.mobileTabBtnActive : {}),
+          }}
+        >
+          Customize Settings
+        </button>
+        <button
+          onClick={() => setMobileTab('preview')}
+          style={{
+            ...styles.mobileTabBtn,
+            ...(mobileTab === 'preview' ? styles.mobileTabBtnActive : {}),
+          }}
+        >
+          Live Preview
+        </button>
+      </div>
+
       {/* ── Main Layout ──────────────────────────────── */}
-      <div style={styles.body}>
+      <div style={styles.body} className={`customizer-body ${mobileTab === 'editor' ? 'tab-editor-active' : 'tab-preview-active'}`}>
 
         {/* LEFT: Section nav */}
         <SettingsSidebar active={activeSection} onSelect={handleSectionChange} />
 
         {/* CENTER-LEFT: Section editor */}
-        <div style={styles.editorCol}>
+        <div style={styles.editorCol} className="customizer-editor-col">
           <div style={styles.editorHeader}>
             <span style={styles.editorTitle}>{SECTION_TITLES[activeSection]}</span>
           </div>
@@ -313,7 +425,7 @@ export default function WidgetCustomizerApp() {
         </div>
 
         {/* CENTER: Live preview */}
-        <div style={styles.previewCol}>
+        <div style={styles.previewCol} className="customizer-preview-col">
           <PreviewArea draft={draft} widgetId={widgetId} />
         </div>
 
@@ -401,6 +513,29 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     transition: 'background 0.2s',
     fontFamily: 'inherit',
+  },
+  mobileTabs: {
+    display: 'flex',
+    width: '100%',
+    height: '44px',
+    borderBottom: '1px solid #e5e7eb',
+  },
+  mobileTabBtn: {
+    flex: 1,
+    background: '#ffffff',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#64748B',
+    outline: 'none',
+    borderBottom: '2px solid transparent',
+    transition: 'all 0.15s ease',
+  },
+  mobileTabBtnActive: {
+    color: '#2563eb',
+    borderBottomColor: '#2563eb',
+    background: '#EFF6FF',
   },
   body: {
     flex: 1,

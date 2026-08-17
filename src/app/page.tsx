@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 
 interface WidgetSummary {
   id: string;
@@ -198,7 +199,7 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
       <div style={{ padding: '20px 20px 16px' }}>
         {/* Header row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '12px' }}>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {widget.name}
             </h3>
@@ -239,7 +240,8 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
         borderTop: '1px solid #F1F5F9', padding: '12px 16px',
         display: 'flex', alignItems: 'center', gap: '8px',
         background: '#FAFBFC',
-      }}>
+        flexWrap: 'wrap',
+      }} className="card-actions">
         {/* Edit */}
         <Link
           href={`/widget-customizer?id=${encodeURIComponent(widget.id)}`}
@@ -277,7 +279,7 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
           {isCopied ? 'Copied!' : 'Copy Snippet'}
         </button>
 
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: '1 1 0' }} className="flex-divider" />
 
         {/* Delete */}
         <button
@@ -309,12 +311,41 @@ export default function WidgetsPage() {
     return 'https://your-domain.vercel.app';
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [user, setUser] = useState<{ fullName: string; email: string } | null>(null);
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_BASE_URL) {
       setOrigin(process.env.NEXT_PUBLIC_BASE_URL);
     } else if (typeof window !== 'undefined') {
       setOrigin(window.location.origin);
+    }
+
+    async function loadUser() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const data = await res.json();
+          setUser(data);
+        }
+      } catch (err) {
+        console.error('Failed to load user info:', err);
+      }
+    }
+    loadUser();
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    const toastId = toast.loading('Logging out...');
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) {
+        toast.success('Logged out successfully', { id: toastId });
+        window.location.href = '/login';
+      } else {
+        toast.error('Logout failed', { id: toastId });
+      }
+    } catch (err) {
+      toast.error('Logout error occurred', { id: toastId });
     }
   }, []);
 
@@ -338,6 +369,7 @@ export default function WidgetsPage() {
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
+    const toastId = toast.loading(`Deleting widget "${deleteTarget.name}"...`);
     try {
       const res = await fetch(`/api/widgets?id=${encodeURIComponent(deleteTarget.id)}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -346,8 +378,9 @@ export default function WidgetsPage() {
       }
       setWidgets(prev => prev.filter(w => w.id !== deleteTarget.id));
       setDeleteTarget(null);
+      toast.success('Widget deleted successfully!', { id: toastId });
     } catch (err: any) {
-      alert(err.message || 'Failed to delete widget');
+      toast.error(err.message || 'Failed to delete widget', { id: toastId });
     } finally {
       setIsDeleting(false);
     }
@@ -355,9 +388,15 @@ export default function WidgetsPage() {
 
   const handleCopySnippet = useCallback((id: string) => {
     const snippet = `<!-- Voice Agent Widget -->\n<script\n  src="${origin}/widget.js"\n  data-widget-id="${id}"\n  defer\n></script>`;
-    navigator.clipboard.writeText(snippet).catch(() => {});
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2500);
+    navigator.clipboard.writeText(snippet)
+      .then(() => {
+        toast.success('Widget script code copied!');
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2500);
+      })
+      .catch(() => {
+        toast.error('Failed to copy widget code.');
+      });
   }, [origin]);
 
   const filteredWidgets = widgets.filter(w =>
@@ -367,13 +406,58 @@ export default function WidgetsPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: "'Inter', 'Figtree', system-ui, sans-serif" }}>
+      {/* Responsive dashboard header & components style */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        @media (max-width: 768px) {
+          .dashboard-header {
+            flex-direction: column !important;
+            height: auto !important;
+            padding: 16px !important;
+            gap: 12px !important;
+            align-items: stretch !important;
+            position: relative !important;
+          }
+          .dashboard-header-left {
+            justify-content: space-between !important;
+            width: 100% !important;
+          }
+          .dashboard-header-right {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            width: 100% !important;
+            gap: 10px !important;
+          }
+          .search-input {
+            width: 100% !important;
+          }
+          .user-badge {
+            border-left: none !important;
+            padding-left: 0 !important;
+            padding-top: 10px !important;
+            border-top: 1px solid #E5E7EB !important;
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+          .card-actions {
+            gap: 12px !important;
+          }
+          .flex-divider {
+            display: none !important;
+          }
+        }
+      `}} />
+
       {/* Header */}
       <header style={{
         height: '60px', background: '#FFFFFF', borderBottom: '1px solid #E5E7EB',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 24px', position: 'sticky', top: 0, zIndex: 20,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      }} className="dashboard-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }} className="dashboard-header-left">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
               width: '28px', height: '28px', borderRadius: '8px',
@@ -396,7 +480,7 @@ export default function WidgetsPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }} className="dashboard-header-right">
           <input
             type="search"
             placeholder="Search widgets…"
@@ -410,17 +494,40 @@ export default function WidgetsPage() {
               width: '200px',
               fontFamily: 'inherit',
             }}
+            className="search-input"
           />
           <Link
             href="/widget-customizer"
             style={{
               ...btn.primary, textDecoration: 'none', display: 'flex',
-              alignItems: 'center', gap: '6px',
+              alignItems: 'center', gap: '6px', justifyContent: 'center',
             }}
           >
             <Icon d={ICONS.plus} size={14} />
             New Widget
           </Link>
+          {user && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '8px', borderLeft: '1px solid #E5E7EB', paddingLeft: '12px' }} className="user-badge">
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#111827' }}>{user.fullName}</span>
+                <span style={{ fontSize: '10px', color: '#6B7280' }}>{user.email}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                style={{
+                  ...btn.secondary,
+                  height: '30px',
+                  padding: '0 10px',
+                  fontSize: '12px',
+                  borderColor: '#DC2626',
+                  color: '#DC2626',
+                  background: 'transparent',
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -442,7 +549,7 @@ export default function WidgetsPage() {
 
         {/* Loading skeleton */}
         {loading && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
             {[1, 2, 3].map(i => (
               <div key={i} style={{
                 background: '#fff', borderRadius: '14px', border: '1px solid #E5E7EB',
@@ -467,7 +574,7 @@ export default function WidgetsPage() {
 
         {/* Widget grid */}
         {!loading && filteredWidgets.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
             {filteredWidgets.map(widget => (
               <WidgetCard
                 key={widget.id}
@@ -491,13 +598,6 @@ export default function WidgetsPage() {
           isDeleting={isDeleting}
         />
       )}
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}</style>
     </div>
   );
 }
