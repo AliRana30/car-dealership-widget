@@ -1,5 +1,22 @@
 // ─── Crawler Types ────────────────────────────────────────────────────────────
 
+export interface Entity {
+  id: string;
+  widgetId: string;
+  title: string;
+  shortDescription?: string;
+  imageUrls: string[];
+  sourceUrl?: string;
+  entityType: string;          // informational label, e.g. "vehicle" | "service" | "product" — never a UI branch condition
+  metadata: Record<string, unknown>;
+  dataType: 'crawl' | 'shopify' | 'woocommerce' | 'feed' | 'manual';
+  categoryPath?: string[];
+  embedding?: number[];
+  contentHash?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CrawledEntity {
   url: string;
   title?: string;
@@ -31,6 +48,8 @@ export interface CrawlResult {
   startUrl: string;
   pagesVisited: number;
   entitiesFound: number;
+  blockedPages: number;
+  isBlocked: boolean;
   entities: CrawledEntity[];
   errors: string[];
   durationMs: number;
@@ -39,11 +58,13 @@ export interface CrawlResult {
 export interface CrawlJobStatus {
   id: string;
   websiteId: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
   startUrl: string;
   pagesVisited: number;
   entitiesFound: number;
+  blockedPages: number;
   error?: string;
   startedAt: string;
   completedAt?: string;
 }
+
