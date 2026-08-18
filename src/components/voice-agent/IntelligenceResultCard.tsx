@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
+import { Entity } from '@/lib/crawler/types';
 
 export interface WebsiteDataResult {
+  id?: string;
   title?: string;
+  shortDescription?: string;
   description?: string;
+  imageUrls?: string[];
   images?: string[];
   price?: string | number;
   currency?: string;
@@ -12,17 +16,66 @@ export interface WebsiteDataResult {
   attributes?: Record<string, string | number | boolean>;
   sourceUrl?: string;
   entityType?: string;
+  metadata?: Record<string, any>;
 }
 
 interface IntelligenceResultCardProps {
-  result: WebsiteDataResult;
+  result: WebsiteDataResult | Entity;
   primaryColor?: string;
 }
+
+const METADATA_LABEL_MAP: Record<string, string> = {
+  durationMinutes: 'Duration',
+  duration: 'Duration',
+  mileage: 'Mileage',
+  vin: 'VIN',
+  year: 'Year',
+  make: 'Make',
+  model: 'Model',
+  trim: 'Trim',
+  color: 'Color',
+  transmission: 'Transmission',
+  fuelType: 'Fuel Type',
+  engine: 'Engine',
+  sku: 'SKU',
+  brand: 'Brand',
+  vendor: 'Vendor',
+  instructor: 'Instructor',
+  location: 'Location',
+  specialty: 'Specialty',
+  doctor: 'Practitioner',
+  practitioner: 'Practitioner',
+  capacity: 'Capacity',
+  warranty: 'Warranty',
+  condition: 'Condition',
+  weight: 'Weight',
+  dimensions: 'Dimensions',
+  material: 'Material',
+  category: 'Category',
+  author: 'Author',
+  department: 'Department',
+};
+
+const IGNORED_METADATA_KEYS = new Set([
+  'images',
+  'image',
+  'imageSource',
+  'shopifyId',
+  'wooId',
+  'variants',
+  'description',
+  'price',
+  'currency',
+  'availability',
+  'rating',
+  'reviews',
+  'tags',
+]);
 
 function formatPrice(price: string | number, currency?: string): string {
   const symbol = currency
     ? { USD: '$', GBP: '£', EUR: '€', PKR: '₨', INR: '₹', CAD: 'CA$', AUD: 'A$' }[currency.toUpperCase()] || currency + ' '
-    : '';
+    : '$';
   return `${symbol}${price}`;
 }
 
@@ -101,8 +154,12 @@ function ImageGallery({ images, title }: { images: string[]; title?: string }) {
                 flexShrink: 0, background: '#F1F5F9',
               }}
             >
-              <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <img
+                src={src}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
             </button>
           ))}
         </div>
@@ -111,16 +168,59 @@ function ImageGallery({ images, title }: { images: string[]; title?: string }) {
   );
 }
 
-export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0' }: IntelligenceResultCardProps) {
-  const {
-    title, description, images, price, currency, availability,
-    rating, reviews, attributes, sourceUrl, entityType,
-  } = result;
+function formatKeyLabel(key: string): string {
+  if (METADATA_LABEL_MAP[key]) return METADATA_LABEL_MAP[key];
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/^\w/, c => c.toUpperCase())
+    .trim();
+}
 
-  const hasImages = images && images.length > 0;
+export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0' }: IntelligenceResultCardProps) {
+  const meta = (result.metadata || {}) as Record<string, any>;
+
+  const title = result.title || '';
+  const description =
+    (result as any).shortDescription ||
+    (result as any).description ||
+    (meta.description as string) ||
+    '';
+
+  const rawImages =
+    (result as any).imageUrls ||
+    (result as any).images ||
+    (meta.images as string[]) ||
+    (meta.image ? [String(meta.image)] : []);
+
+  const images = Array.isArray(rawImages) ? rawImages.filter(Boolean) : [];
+  const hasImages = images.length > 0;
+
+  const price = (result as any).price ?? meta.price;
+  const currency = (result as any).currency || meta.currency || 'USD';
+  const availability = (result as any).availability || meta.availability;
+  const rating = (result as any).rating ?? meta.rating;
+  const reviews = (result as any).reviews ?? meta.reviews;
+  const sourceUrl = (result as any).sourceUrl || (result as any).source_url || meta.sourceUrl;
+  const entityType = result.entityType || 'Info';
+
   const hasPrice = price !== undefined && price !== null && price !== '';
   const hasRating = rating !== undefined && rating !== null && rating !== '';
-  const hasAttributes = attributes && Object.keys(attributes).length > 0;
+
+  // Collect generic detail attributes from metadata and attributes dict
+  const rawAttributes = {
+    ...(meta || {}),
+    ...((result as any).attributes || {}),
+  };
+
+  const detailEntries = Object.entries(rawAttributes).filter(([k, v]) => {
+    if (IGNORED_METADATA_KEYS.has(k)) return false;
+    if (v === null || v === undefined || v === '') return false;
+    if (typeof v === 'object') return false;
+    return true;
+  });
+
+  const hasDetails = detailEntries.length > 0;
 
   return (
     <div style={{
@@ -133,7 +233,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
       width: '100%',
       maxWidth: '100%',
     }}>
-      {/* Entity type label */}
+      {/* Entity type header */}
       {entityType && (
         <div style={{
           background: 'rgba(47,143,224,0.07)',
@@ -150,8 +250,8 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
       )}
 
       <div style={{ padding: '10px 12px' }}>
-        {/* Image gallery */}
-        {hasImages && <ImageGallery images={images!} title={title} />}
+        {/* Responsive Image gallery (gracefully omitted if no images) */}
+        {hasImages && <ImageGallery images={images} title={title} />}
 
         {/* Title */}
         {title && (
@@ -182,7 +282,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           </div>
         )}
 
-        {/* Price + availability row */}
+        {/* Price & availability */}
         {(hasPrice || availability) && (
           <div style={{
             display: 'flex', alignItems: 'center',
@@ -195,20 +295,20 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
                 color: primaryColor,
                 letterSpacing: '-0.01em',
               }}>
-                {formatPrice(price!, currency)}
+                {formatPrice(price, currency)}
               </span>
             )}
             {availability && <AvailabilityBadge value={String(availability)} />}
           </div>
         )}
 
-        {/* Rating row */}
+        {/* Rating & reviews */}
         {(hasRating || reviews) && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '6px',
             marginBottom: '8px', flexWrap: 'wrap',
           }}>
-            {hasRating && <StarRating rating={rating!} />}
+            {hasRating && <StarRating rating={rating} />}
             {reviews && (
               <span style={{ fontSize: '10px', color: '#94A3B8' }}>
                 ({typeof reviews === 'number' ? reviews.toLocaleString() : reviews} reviews)
@@ -217,8 +317,8 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           </div>
         )}
 
-        {/* Attributes table */}
-        {hasAttributes && (
+        {/* Generic Details List from metadata */}
+        {hasDetails && (
           <div style={{
             background: 'rgba(14,27,42,0.02)',
             borderRadius: '8px',
@@ -228,16 +328,16 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
             flexDirection: 'column',
             gap: '4px',
           }}>
-            {Object.entries(attributes!).map(([key, val]) => (
+            {detailEntries.map(([key, val]) => (
               <div key={key} style={{
                 display: 'flex', justifyContent: 'space-between',
                 alignItems: 'flex-start', gap: '8px',
               }}>
                 <span style={{
                   fontSize: '10px', fontWeight: 600, color: '#64748B',
-                  textTransform: 'capitalize', flexShrink: 0, lineHeight: '1.4',
+                  flexShrink: 0, lineHeight: '1.4',
                 }}>
-                  {key.replace(/_/g, ' ')}
+                  {formatKeyLabel(key)}
                 </span>
                 <span style={{
                   fontSize: '10px', color: 'var(--voice-widget-text, #0E1B2A)',
@@ -250,7 +350,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           </div>
         )}
 
-        {/* Source URL action */}
+        {/* View full details (Opens safely in new tab) */}
         {sourceUrl && (
           <a
             href={sourceUrl}
@@ -269,7 +369,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
             onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '0.88'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '1'; }}
           >
-            View Details
+            View full details
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
               <polyline points="15 3 21 3 21 9" />
