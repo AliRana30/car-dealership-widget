@@ -1,180 +1,202 @@
 import React from 'react';
-import { CallState, VoiceWidgetConfig } from '@/config/voiceWidget/types';
+import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
+
+export type CallState =
+  | 'idle'
+  | 'permission_required'
+  | 'connecting'
+  | 'connected'
+  | 'agent_speaking'
+  | 'user_listening'
+  | 'muted'
+  | 'ended'
+  | 'error';
 
 interface VoiceAgentStatusProps {
   config: VoiceWidgetConfig;
   callState: CallState;
-  activeTab: 'voice' | 'text';
-  onTabChange: (tab: 'voice' | 'text') => void;
-  isLoading: boolean;
-  isActive: boolean;
-  errorMessage: string | null;
-  duration: number;
-  isMuted: boolean;
   agentSpeaking: boolean;
   userSpeaking: boolean;
-  onStartCall: () => void;
+  callDuration: number;
+  formatDuration: (sec: number) => string;
+  errorMessage: string | null;
+  activeTab: 'voice' | 'text';
+  setActiveTab: (tab: 'voice' | 'text') => void;
+  tabCount?: number;
 }
-
-const PHONE_PATH = [
-  'M6.6 4.2h3.4l1.3 5-2.5 1.6a12.4 12.4 0 0 0 5.9 5.9l1.6-2.5 5 1.3v3.4a2 2 0 0 1-2.1 2C10.7 20.2 3.8 13.3 3.1 5.9c-.1-1 .7-1.7 1.6-1.7z'
-];
 
 export default function VoiceAgentStatus({
   config,
   callState,
-  activeTab,
-  onTabChange,
-  isLoading,
-  isActive,
-  errorMessage,
-  duration,
-  isMuted,
   agentSpeaking,
   userSpeaking,
-  onStartCall,
+  callDuration,
+  formatDuration,
+  errorMessage,
+  activeTab,
+  setActiveTab,
+  tabCount = 0,
 }: VoiceAgentStatusProps) {
-  const { branding, panel, behavior, theme, audioVisualizer } = config;
+  const { branding, behavior, panel, theme } = config;
+  const spacing = config.spacing || { padding: '16px', gap: '12px' };
 
-  const formatTime = (secCount: number) => {
-    const m = Math.floor(secCount / 60).toString().padStart(2, '0');
-    const s = (secCount % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
-  const getSubStatusText = () => {
-    if (isMuted) return branding.muteLabel || 'Microphone muted';
-    if (callState === 'ending') return branding.endLabel ? `${branding.endLabel}...` : 'Closing session';
+  // Status text based on state
+  const getStatusText = () => {
+    if (callState === 'permission_required') return 'Requesting microphone permission...';
+    if (callState === 'connecting') return 'Connecting securely...';
+    if (callState === 'ended') return 'Call ended';
+    if (callState === 'error') return errorMessage || 'Connection issue. Please try again.';
+    if (callState === 'muted') return 'Microphone muted';
     if (agentSpeaking) return 'Front Desk speaking';
     if (userSpeaking) return 'Listening to you...';
     return 'Front Desk listening';
   };
 
-  const getDensitySpacing = () => {
-    switch (theme.density) {
-      case 'compact':
-        return { gap: '8px', padding: '12px 0' };
-      case 'spacious':
-        return { gap: '20px', padding: '24px 0' };
-      case 'comfortable':
-      default:
-        return { gap: '14px', padding: '16px 0' };
-    }
+  // Status badge indicator
+  const getStatusDotColor = () => {
+    if (callState === 'permission_required' || callState === 'connecting') return '#F59E0B'; // Amber
+    if (callState === 'error') return '#EF4444'; // Red
+    if (callState === 'ended') return '#9CA3AF'; // Gray
+    if (agentSpeaking) return 'var(--voice-widget-primary)';
+    if (userSpeaking) return 'var(--voice-widget-wave-user, #10B981)';
+    return '#10B981'; // Green (Connected/Listening)
   };
 
-  const spacing = getDensitySpacing();
+  // Render Visualizer Type
+  const renderVisualizer = () => {
+    const visualizerType = behavior.visualizerType || 'wave';
+    const isSpeaking = agentSpeaking || userSpeaking;
+    const barColor = agentSpeaking ? 'var(--voice-widget-primary)' : 'var(--voice-widget-wave-user, #10B981)';
+    const speed = behavior.animationSpeedMultiplier || 1.0;
 
-  const renderSpeakingVisualizer = () => {
-    if (!audioVisualizer.enabled || audioVisualizer.type === 'none') {
-      return null;
-    }
-
-    const size = audioVisualizer.size || 76;
-    const color = audioVisualizer.color || 'var(--voice-widget-primary)';
-    const speed = audioVisualizer.animationSpeed || 1;
-    const intensity = audioVisualizer.intensity || 1;
-
-    const containerStyle: React.CSSProperties = {
-      width: `${size}px`,
-      height: `${size}px`,
-      borderRadius: '50%',
-      background: agentSpeaking
-        ? color
-        : userSpeaking
-        ? 'var(--voice-widget-wave-user, #22C55E)'
-        : 'rgba(14,27,42,0.15)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white',
-      position: 'relative',
-      transition: 'background-color 0.4s ease, transform 0.4s ease',
-    };
-
-    if (audioVisualizer.type === 'pulse') {
+    if (visualizerType === 'pulsing-circle') {
       return (
-        <div
-          style={{
-            ...containerStyle,
-            animation: agentSpeaking
-              ? `pulseAgentSpeaking ${1.2 / speed}s infinite`
-              : userSpeaking
-              ? `pulseUserSpeaking ${1.2 / speed}s infinite`
-              : 'none',
-          }}
-        >
-          {agentSpeaking ? (
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="M3 10v4M6 6v12M9 4v16M12 7v10M15 5v14M18 8v8M21 10v4" />
-            </svg>
-          ) : userSpeaking ? (
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-              <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-            </svg>
-          ) : (
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'white' }} />
+        <div style={{ position: 'relative', width: '64px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {isSpeaking && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: '50%',
+                background: barColor,
+                opacity: 0.25,
+                animationName: 'pulseCircle',
+                animationDuration: `${1.4 / speed}s`,
+                animationTimingFunction: 'ease-out',
+                animationIterationCount: 'infinite',
+              }}
+            />
           )}
-        </div>
-      );
-    }
-
-    if (audioVisualizer.type === 'orb') {
-      const isSpeaking = agentSpeaking || userSpeaking;
-      return (
-        <div
-          style={{
-            ...containerStyle,
-            background: isSpeaking
-              ? `radial-gradient(circle, ${color} 0%, rgba(14,27,42,0.1) 70%)`
-              : 'rgba(14,27,42,0.15)',
-            boxShadow: isSpeaking
-              ? `0 0 ${20 * intensity}px ${color}`
-              : 'none',
-            animation: isSpeaking ? `spin ${4 / speed}s linear infinite` : 'none',
-          }}
-        >
           <div
             style={{
-              width: `${size * 0.7}px`,
-              height: `${size * 0.7}px`,
+              width: '40px',
+              height: '40px',
               borderRadius: '50%',
-              background: isSpeaking ? color : 'rgba(255,255,255,0.2)',
+              background: isSpeaking ? barColor : 'var(--voice-widget-primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: isSpeaking ? 'inset 0 0 12px rgba(255,255,255,0.4)' : 'none',
+              color: 'white',
+              boxShadow: isSpeaking ? `0 0 16px ${barColor}` : 'none',
+              transition: 'all 0.2s ease',
             }}
           >
-            {agentSpeaking ? (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M3 10v4M6 6v12M9 4v16M12 7v10M15 5v14M18 8v8M21 10v4" />
-              </svg>
-            ) : userSpeaking ? (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-              </svg>
-            ) : (
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'white' }} />
-            )}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            </svg>
           </div>
         </div>
       );
     }
 
-    if (audioVisualizer.type === 'waveform' || audioVisualizer.type === 'bars') {
-      const isSpeaking = agentSpeaking || userSpeaking;
-      const barColor = agentSpeaking ? color : 'var(--voice-widget-wave-user, #22C55E)';
+    if (visualizerType === 'waveform-bars') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', height: '36px', padding: '0 8px' }}>
+          {[0.4, 0.8, 1.2, 0.6, 0.9, 1.4, 0.7, 1.1, 0.5].map((scale, i) => (
+            <div
+              key={i}
+              className="widget-wave-bar"
+              style={{
+                width: '3px',
+                height: '100%',
+                background: isSpeaking ? barColor : 'rgba(14,27,42,0.2)',
+                borderRadius: '2px',
+                animationName: isSpeaking ? 'waveScale' : 'none',
+                animationDuration: `${(0.6 + (i % 3) * 0.15) / speed}s`,
+                animationTimingFunction: 'ease-in-out',
+                animationIterationCount: 'infinite',
+                animationDelay: `${i * 0.08}s`,
+                transition: 'background 0.2s',
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    if (visualizerType === 'minimal-dot') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: isSpeaking ? barColor : 'rgba(14,27,42,0.2)',
+                animationName: isSpeaking ? 'bounceDot' : 'none',
+                animationDuration: `${0.8 / speed}s`,
+                animationTimingFunction: 'easeInOut',
+                animationIterationCount: 'infinite',
+                animationDelay: `${i * 0.15}s`,
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    if (visualizerType === 'orb') {
       return (
         <div
           style={{
-            ...containerStyle,
-            background: 'transparent',
-            border: `2px solid ${isSpeaking ? barColor : 'rgba(14,27,42,0.12)'}`,
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            background: isSpeaking
+              ? `radial-gradient(circle, ${barColor} 0%, rgba(47,143,224,0.2) 70%)`
+              : 'radial-gradient(circle, rgba(14,27,42,0.15) 0%, transparent 70%)',
+            animationName: isSpeaking ? 'orbGlow' : 'none',
+            animationDuration: `${1.2 / speed}s`,
+            animationTimingFunction: 'ease-in-out',
+            animationIterationCount: 'infinite',
             display: 'flex',
-            gap: '4px',
-            padding: '8px',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: isSpeaking ? barColor : '#94A3B8' }} />
+        </div>
+      );
+    }
+
+    // Default: 'wave' inside circular aura
+    if (visualizerType === 'wave') {
+      return (
+        <div
+          style={{
+            position: 'relative',
+            width: '56px',
+            height: '56px',
+            borderRadius: '50%',
+            background: isSpeaking ? 'rgba(47,143,224,0.08)' : 'rgba(14,27,42,0.04)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: isSpeaking ? '1.5px solid rgba(47,143,224,0.25)' : '1px solid rgba(14,27,42,0.08)',
+            transition: 'all 0.25s ease',
           }}
         >
           <div style={{ display: 'flex', gap: '4px', height: '60%', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
@@ -186,7 +208,10 @@ export default function VoiceAgentStatus({
                   width: '3px',
                   height: '100%',
                   background: isSpeaking ? barColor : 'rgba(14,27,42,0.4)',
-                  animation: isSpeaking ? `waveScale ${0.8 / speed}s ease-in-out infinite` : 'none',
+                  animationName: isSpeaking ? 'waveScale' : 'none',
+                  animationDuration: `${0.8 / speed}s`,
+                  animationTimingFunction: 'ease-in-out',
+                  animationIterationCount: 'infinite',
                   animationDelay: `${delay}s`,
                 }}
               />
@@ -206,266 +231,220 @@ export default function VoiceAgentStatus({
         <div
           style={{
             display: 'flex',
-            background: 'rgba(14,27,42,0.06)',
-            padding: '4px',
-            borderRadius: '12px',
             width: '100%',
-            maxWidth: config.mode === 'inline' ? '240px' : '100%',
-            marginBottom: '4px',
+            background: 'var(--voice-widget-bg-tab, rgba(14, 27, 42, 0.05))',
+            borderRadius: '12px',
+            padding: '3px',
+            boxSizing: 'border-box',
           }}
         >
           <button
-            onClick={() => onTabChange('voice')}
+            onClick={() => setActiveTab('voice')}
             style={{
               flex: 1,
-              padding: '8px 12px',
-              borderRadius: '8px',
-              background: activeTab === 'voice' ? '#FFFFFF' : 'transparent',
+              padding: '6px 12px',
+              borderRadius: '9px',
               border: 'none',
-              color: activeTab === 'voice' ? 'var(--voice-widget-text)' : 'var(--voice-widget-text-muted)',
-              fontWeight: 600,
-              fontSize: '13px',
+              background: activeTab === 'voice' ? 'var(--voice-widget-bg-panel, #FFFFFF)' : 'transparent',
+              color: activeTab === 'voice' ? 'var(--voice-widget-primary)' : 'var(--voice-widget-text-muted)',
+              fontWeight: activeTab === 'voice' ? 700 : 500,
+              fontSize: 'var(--voice-widget-font-xs)',
+              boxShadow: activeTab === 'voice' ? '0 1px 4px rgba(14,27,42,0.08)' : 'none',
               cursor: 'pointer',
-              boxShadow: activeTab === 'voice' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
-              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
             }}
           >
-            Voice Chat
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            </svg>
+            Voice Call
           </button>
           <button
-            onClick={() => onTabChange('text')}
+            onClick={() => setActiveTab('text')}
             style={{
               flex: 1,
-              padding: '8px 12px',
-              borderRadius: '8px',
-              background: activeTab === 'text' ? '#FFFFFF' : 'transparent',
+              padding: '6px 12px',
+              borderRadius: '9px',
               border: 'none',
-              color: activeTab === 'text' ? 'var(--voice-widget-text)' : 'var(--voice-widget-text-muted)',
-              fontWeight: 600,
-              fontSize: '13px',
+              background: activeTab === 'text' ? 'var(--voice-widget-bg-panel, #FFFFFF)' : 'transparent',
+              color: activeTab === 'text' ? 'var(--voice-widget-primary)' : 'var(--voice-widget-text-muted)',
+              fontWeight: activeTab === 'text' ? 700 : 500,
+              fontSize: 'var(--voice-widget-font-xs)',
+              boxShadow: activeTab === 'text' ? '0 1px 4px rgba(14,27,42,0.08)' : 'none',
               cursor: 'pointer',
-              boxShadow: activeTab === 'text' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
-              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
             }}
           >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
             Text Chat
           </button>
         </div>
       )}
 
-      {/* Connecting & Microphone permissions */}
-      {isLoading && activeTab === 'voice' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: spacing.padding, textAlign: 'center', width: '100%' }}>
+      {/* Hero Welcome / Calling State Area */}
+      {callState === 'idle' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', width: '100%', gap: '8px' }}>
+          {/* Avatar Icon */}
           <div
             style={{
-              width: '72px',
-              height: '72px',
+              width: '52px',
+              height: '52px',
               borderRadius: '50%',
-              background: 'var(--voice-widget-accent, #D9714B)',
+              background: 'var(--voice-widget-bg-avatar, rgba(47,143,224,0.1))',
+              border: '1.5px solid rgba(47,143,224,0.2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'white',
-              animation: 'pulseConnecting 1.5s infinite',
+              color: 'var(--voice-widget-primary)',
+              flexShrink: 0,
             }}
           >
-            <svg style={{ width: '28px', height: '28px', animation: 'spin 1.5s linear infinite' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <circle cx="12" cy="12" r="10" strokeDasharray="38 12" strokeDashoffset="0" />
-            </svg>
+            {branding.avatarUrl ? (
+              <img
+                src={branding.avatarUrl}
+                alt={branding.assistantName}
+                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+              />
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+              </svg>
+            )}
           </div>
-          <div>
-            <h3 style={{ fontSize: '17px', fontWeight: 600, margin: '0 0 6px', color: 'var(--voice-widget-text)' }}>
-              {branding.connectingLabel}
-            </h3>
-            <p style={{ fontSize: '13.5px', color: 'var(--voice-widget-text-muted)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>
-              {callState === 'permission_required' ? 'Please allow microphone access when prompted...' : 'Connecting securely...'}
-            </p>
-          </div>
-        </div>
-      )}
 
-      {/* Error state */}
-      {callState === 'error' && activeTab === 'voice' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: spacing.padding, textAlign: 'center', width: '100%' }}>
-          <div
-            style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              background: 'rgba(239, 68, 68, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#EF4444',
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-          </div>
-          <div>
-            <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 6px', color: '#EF4444' }}>
-              {branding.errorMessage || 'Connection Failed'}
-            </h3>
-            <p style={{ fontSize: '13.5px', color: 'var(--voice-widget-text-muted)', margin: 0, lineHeight: 1.5, maxWidth: '260px' }}>
-              {errorMessage || 'Unable to start the voice assistant. Please try again.'}
-            </p>
-          </div>
-          <button
-            onClick={onStartCall}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              background: 'var(--voice-widget-primary, #2F8FE0)',
-              border: 'none',
-              color: 'white',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: 'var(--voice-widget-shadow)',
-            }}
-          >
-            {branding.retryLabel}
-          </button>
-        </div>
-      )}
-
-      {/* Ended State */}
-      {callState === 'ended' && activeTab === 'voice' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: spacing.padding, textAlign: 'center', width: '100%' }}>
-          <div
-            style={{
-              width: '72px',
-              height: '72px',
-              borderRadius: '50%',
-              background: 'rgba(34,197,94,0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#22C55E',
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
-          </div>
-          <div>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 6px', color: 'var(--voice-widget-text)' }}>
-              {branding.callEndedMessage || 'Call Ended'}
-            </h3>
-            <p style={{ fontSize: '13.5px', color: 'var(--voice-widget-text-muted)', margin: 0, lineHeight: 1.5 }}>
-              Thank you for calling.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Idle State / Intro */}
-      {callState === 'idle' && activeTab === 'voice' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: spacing.padding, textAlign: 'center', width: '100%' }}>
-          {config.mode === 'inline' && (
-            <div
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span
               style={{
-                width: '72px',
-                height: '72px',
-                borderRadius: '50%',
-                background: 'var(--voice-widget-primary, #2F8FE0)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                boxShadow: 'var(--voice-widget-shadow)',
-                animation: 'pulseRing 2s infinite',
+                fontSize: 'var(--voice-widget-font-base)',
+                fontWeight: 'var(--voice-widget-font-weight-heading)',
+                color: 'var(--voice-widget-text)',
+                lineHeight: '1.3',
               }}
             >
-              <svg
-                width={28}
-                height={28}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth={1.9}
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              {branding.assistantName}
+            </span>
+            {branding.subtitle && (
+              <span
+                style={{
+                  fontSize: 'var(--voice-widget-font-xs)',
+                  color: 'var(--voice-widget-text-muted)',
+                  lineHeight: '1.4',
+                  maxWidth: '240px',
+                }}
               >
-                {PHONE_PATH.map((p, i) => (
-                  <path key={i} d={p} />
-                ))}
-              </svg>
-            </div>
-          )}
-          <div>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 6px', color: 'var(--voice-widget-text)' }}>
-              {branding.title}
-            </h3>
-            <p style={{ fontSize: '14px', color: 'var(--voice-widget-text-muted)', margin: 0, lineHeight: 1.5, maxWidth: '280px' }}>
-              {branding.subtitle}
-            </p>
+                {branding.subtitle}
+              </span>
+            )}
           </div>
-          <button
-            onClick={onStartCall}
-            style={{
-              padding: '12px 24px',
-              borderRadius: '10px',
-              background: 'var(--voice-widget-primary, #2F8FE0)',
-              color: 'white',
-              border: 'none',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: 'var(--voice-widget-shadow)',
-              transition: 'all 0.25s ease',
-            }}
-          >
-            {branding.startLabel}
-          </button>
         </div>
-      )}
+      ) : (
+        /* In-Call Active State */
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: '10px' }}>
+          {/* Animated Visualizer */}
+          {renderVisualizer()}
 
-      {/* Connected / Active call status */}
-      {isActive && activeTab === 'voice' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', width: '100%' }}>
-          {/* Speaking indicator and avatar */}
-          {behavior.showAgentStatus && renderSpeakingVisualizer()}
+          {/* Call Status Label & Duration Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span
+              style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: getStatusDotColor(),
+                display: 'inline-block',
+                boxShadow: `0 0 0 2px ${getStatusDotColor()}33`,
+                transition: 'background 0.3s ease',
+              }}
+            />
+            <span
+              style={{
+                fontSize: 'var(--voice-widget-font-xs)',
+                fontWeight: 600,
+                color: callState === 'error' ? 'var(--voice-widget-error, #EF4444)' : 'var(--voice-widget-text)',
+                letterSpacing: '0.01em',
+              }}
+            >
+              {getStatusText()}
+            </span>
+          </div>
 
-          {behavior.showAgentStatus && (
-            <div style={{ textAlign: 'center' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 600, margin: '0 0 4px', color: 'var(--voice-widget-text)' }}>
-                {callState === 'ending' ? (branding.endLabel ? `${branding.endLabel}...` : 'Ending...') : branding.connectedLabel}
-              </h3>
-              <p style={{ fontSize: '13px', color: 'var(--voice-widget-text-muted)', margin: 0 }}>
-                {getSubStatusText()}
-              </p>
+          {/* Duration Indicator */}
+          {['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState) && (
+            <span
+              style={{
+                fontSize: 'var(--voice-widget-font-xs)',
+                fontWeight: 500,
+                color: 'var(--voice-widget-text-muted)',
+                fontFamily: 'monospace',
+                background: 'rgba(14,27,42,0.04)',
+                padding: '2px 8px',
+                borderRadius: '6px',
+              }}
+            >
+              {formatDuration(callDuration)}
+            </span>
+          )}
+
+          {/* Error Message Box */}
+          {callState === 'error' && (
+            <div
+              style={{
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                fontSize: 'var(--voice-widget-font-xs)',
+                color: '#DC2626',
+                textAlign: 'center',
+                maxWidth: '90%',
+                lineHeight: '1.4',
+              }}
+            >
+              {errorMessage || 'Unable to establish call. Please try again.'}
             </div>
           )}
 
-          {/* Wave and Timer row if enabled */}
-          {(behavior.showWaveform || behavior.showDuration) && (
+          {/* Active Speaking Status Bar */}
+          {['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState) && (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                background: 'rgba(14, 27, 42, 0.03)',
-                padding: '12px 16px',
-                borderRadius: '12px',
-                border: '1px solid rgba(14, 27, 42, 0.05)',
                 width: '100%',
+                padding: '6px 12px',
+                background: 'var(--voice-widget-bg-status, rgba(14,27,42,0.03))',
+                borderRadius: '10px',
+                border: '1px solid var(--voice-widget-border)',
+                boxSizing: 'border-box',
               }}
             >
-              {/* Timer */}
-              {behavior.showDuration ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22C55E', animation: 'pulseConnecting 1.5s infinite' }} />
-                  <span style={{ fontSize: '13.5px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--voice-widget-text)' }}>
-                    {formatTime(duration)}
-                  </span>
-                </div>
-              ) : (
-                <div />
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: agentSpeaking ? 'var(--voice-widget-primary)' : userSpeaking ? 'var(--voice-widget-wave-user, #10B981)' : '#94A3B8',
+                  }}
+                />
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--voice-widget-text)' }}>
+                  {agentSpeaking ? 'Speaking' : userSpeaking ? 'Listening' : 'Ready'}
+                </span>
+              </div>
 
               {/* Wave visualizer bars */}
               {behavior.showWaveform && (
@@ -475,7 +454,10 @@ export default function VoiceAgentStatus({
                     style={{
                       height: '100%',
                       background: agentSpeaking ? 'var(--voice-widget-primary)' : userSpeaking ? 'var(--voice-widget-wave-user)' : 'rgba(14,27,42,0.2)',
-                      animation: agentSpeaking || userSpeaking ? 'waveScale 0.7s ease-in-out infinite' : 'none',
+                      animationName: agentSpeaking || userSpeaking ? 'waveScale' : 'none',
+                      animationDuration: '0.7s',
+                      animationTimingFunction: 'ease-in-out',
+                      animationIterationCount: 'infinite',
                       animationDelay: '0.1s',
                     }}
                   />
@@ -484,7 +466,10 @@ export default function VoiceAgentStatus({
                     style={{
                       height: '100%',
                       background: agentSpeaking ? 'var(--voice-widget-primary)' : userSpeaking ? 'var(--voice-widget-wave-user)' : 'rgba(14,27,42,0.2)',
-                      animation: agentSpeaking || userSpeaking ? 'waveScale 0.7s ease-in-out infinite' : 'none',
+                      animationName: agentSpeaking || userSpeaking ? 'waveScale' : 'none',
+                      animationDuration: '0.7s',
+                      animationTimingFunction: 'ease-in-out',
+                      animationIterationCount: 'infinite',
                       animationDelay: '0.3s',
                     }}
                   />
@@ -493,7 +478,10 @@ export default function VoiceAgentStatus({
                     style={{
                       height: '100%',
                       background: agentSpeaking ? 'var(--voice-widget-primary)' : userSpeaking ? 'var(--voice-widget-wave-user)' : 'rgba(14,27,42,0.2)',
-                      animation: agentSpeaking || userSpeaking ? 'waveScale 0.7s ease-in-out infinite' : 'none',
+                      animationName: agentSpeaking || userSpeaking ? 'waveScale' : 'none',
+                      animationDuration: '0.7s',
+                      animationTimingFunction: 'ease-in-out',
+                      animationIterationCount: 'infinite',
                       animationDelay: '0.2s',
                     }}
                   />
@@ -502,7 +490,10 @@ export default function VoiceAgentStatus({
                     style={{
                       height: '100%',
                       background: agentSpeaking ? 'var(--voice-widget-primary)' : userSpeaking ? 'var(--voice-widget-wave-user)' : 'rgba(14,27,42,0.2)',
-                      animation: agentSpeaking || userSpeaking ? 'waveScale 0.7s ease-in-out infinite' : 'none',
+                      animationName: agentSpeaking || userSpeaking ? 'waveScale' : 'none',
+                      animationDuration: '0.7s',
+                      animationTimingFunction: 'ease-in-out',
+                      animationIterationCount: 'infinite',
                       animationDelay: '0.4s',
                     }}
                   />

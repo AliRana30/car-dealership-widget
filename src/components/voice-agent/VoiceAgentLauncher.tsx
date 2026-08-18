@@ -236,9 +236,9 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
       >
         {isActive ? (
           <div style={{ display: 'flex', gap: '3px', height: `${buttonSize * 0.33}px`, alignItems: 'center' }}>
-            <div className="widget-wave-bar" style={{ width: '100%', background: 'white', animation: 'waveScale 0.6s ease-in-out infinite', animationDelay: '0.1s' }} />
-            <div className="widget-wave-bar" style={{ height: '100%', background: 'white', animation: 'waveScale 0.6s ease-in-out infinite', animationDelay: '0.3s' }} />
-            <div className="widget-wave-bar" style={{ height: '100%', background: 'white', animation: 'waveScale 0.6s ease-in-out infinite', animationDelay: '0.2s' }} />
+            <div className="widget-wave-bar" style={{ width: '100%', background: 'white', animationName: 'waveScale', animationDuration: '0.6s', animationTimingFunction: 'ease-in-out', animationIterationCount: 'infinite', animationDelay: '0.1s' }} />
+            <div className="widget-wave-bar" style={{ height: '100%', background: 'white', animationName: 'waveScale', animationDuration: '0.6s', animationTimingFunction: 'ease-in-out', animationIterationCount: 'infinite', animationDelay: '0.3s' }} />
+            <div className="widget-wave-bar" style={{ height: '100%', background: 'white', animationName: 'waveScale', animationDuration: '0.6s', animationTimingFunction: 'ease-in-out', animationIterationCount: 'infinite', animationDelay: '0.2s' }} />
           </div>
         ) : (
           <>

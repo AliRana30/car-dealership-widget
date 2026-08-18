@@ -103,12 +103,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const widget = await getWidget(widgetId);
+    let widget = await getWidget(widgetId);
     if (!widget) {
-      return NextResponse.json(
-        { error: 'not_found', message: `Widget with ID '${widgetId}' not found.` },
-        { status: 404, headers }
-      );
+      // Fallback for default demo widget or unsaved preview
+      if (widgetId === 'default' || widgetId === 'front-desk' || widgetId === 'myfrontdesk') {
+        widget = {
+          id: '00000000-0000-0000-0000-000000000000',
+          widgetId: 'default',
+          organizationId: '00000000-0000-0000-0000-000000000000',
+          name: 'Default Widget',
+          status: 'active',
+          provider: (process.env.DEFAULT_VOICE_PROVIDER as any) || 'retell',
+          agentId: process.env.RETELL_AGENT_ID,
+          retellApiKey: process.env.RETELL_API_KEY,
+          vapiApiKey: process.env.VAPI_API_KEY,
+          allowedDomains: ['*'],
+          config: {} as any,
+        };
+      } else {
+        return NextResponse.json(
+          { error: 'not_found', message: `Widget with ID '${widgetId}' not found.` },
+          { status: 404, headers }
+        );
+      }
     }
 
     // Resolve website intelligence context for the widget
@@ -116,9 +133,9 @@ export async function POST(req: NextRequest) {
     const websiteContext = await getWebsiteContextSummary(websiteId);
 
     // ─── Provider: Retell ──────────────────────────────────────────────────
-    if (widget.provider === 'retell') {
-      const apiKey = (widget.retellApiKey || '').trim();
-      const agentId = (widget.agentId || '').trim();
+    if (widget.provider === 'retell' || !widget.provider) {
+      const apiKey = (widget.retellApiKey || process.env.RETELL_API_KEY || '').trim();
+      const agentId = (widget.agentId || body.agentId || process.env.RETELL_AGENT_ID || '').trim();
 
       if (!apiKey || !agentId) {
         return NextResponse.json(
@@ -129,17 +146,29 @@ export async function POST(req: NextRequest) {
 
       const client = new Retell({ apiKey });
       const safeMetadata = metadata && typeof metadata === 'object' ? metadata : undefined;
-      const safeDynamicVars = {
-        ...(retell_llm_dynamic_variables && typeof retell_llm_dynamic_variables === 'object' ? retell_llm_dynamic_variables : {}),
-        ...(websiteContext ? { website_context: websiteContext } : {}),
+      
+      const safeDynamicVars: Record<string, string> = {};
+      if (retell_llm_dynamic_variables && typeof retell_llm_dynamic_variables === 'object') {
+        for (const [k, v] of Object.entries(retell_llm_dynamic_variables)) {
+          if (typeof v === 'string') safeDynamicVars[k] = v;
+          else if (v !== null && v !== undefined) safeDynamicVars[k] = JSON.stringify(v);
+        }
+      }
+      if (websiteContext) {
+        safeDynamicVars.website_context = websiteContext;
+      }
+
+      const retellPayload: any = {
+        agent_id: agentId,
+        ...(safeMetadata ? { metadata: safeMetadata } : {}),
       };
 
+      if (Object.keys(safeDynamicVars).length > 0) {
+        retellPayload.retell_llm_dynamic_variables = safeDynamicVars;
+      }
+
       try {
-        const retellResponse = await client.call.createWebCall({
-          agent_id: agentId,
-          ...(safeMetadata ? { metadata: safeMetadata } : {}),
-          retell_llm_dynamic_variables: safeDynamicVars,
-        });
+        const retellResponse = await client.call.createWebCall(retellPayload);
 
         const accessToken = retellResponse.access_token;
         const callId = retellResponse.call_id;
