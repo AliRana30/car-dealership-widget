@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const { data: websites, error } = await supabase
       .from('websites')
-      .select('id, name, allowed_domains, css_selector_schema, detected_platform, created_at')
+      .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
@@ -70,32 +70,33 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { name, domain, orgId = '00000000-0000-0000-0000-000000000000', triggerCrawl = true } = body;
-    const scanMode = body?.scanMode === 'quick' ? 'quick' : 'master';
-    const cssSelectorSchema = body?.cssSelectorSchema || body?.css_selector_schema || null;
+    const {
+      name,
+      domain,
+      triggerCrawl = true,
+      scanMode = 'master',
+      cssSelectorSchema = null,
+      syncFrequency = 'off',
+      sync_frequency,
+    } = body;
 
-    if (!name || !domain) {
-      return NextResponse.json(
-        { error: 'bad_request', message: 'name and domain are required' },
-        { status: 400 }
-      );
+    const finalSyncFreq = sync_frequency || syncFrequency || 'off';
+
+    if (!name || typeof name !== 'string') {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    }
+    if (!domain || typeof domain !== 'string') {
+      return NextResponse.json({ error: 'Domain is required' }, { status: 400 });
     }
 
-    // Normalize domain → start URL
-    const startUrl = domain.startsWith('http') ? domain : `https://${domain}`;
-    let validatedUrl: string;
-    try {
-      validatedUrl = new URL(startUrl).href;
-    } catch {
-      return NextResponse.json(
-        { error: 'bad_request', message: 'Invalid domain/URL provided' },
-        { status: 400 }
-      );
-    }
+    const validatedUrl = domain.startsWith('http://') || domain.startsWith('https://')
+      ? domain
+      : `https://${domain}`;
 
     const supabase = getSupabase();
+    const orgId = userId; // User-level org isolation
 
-    // Ensure organization exists
+    // Ensure default organization exists
     await supabase
       .from('organizations')
       .upsert({ id: orgId, name: 'Default Organization' }, { onConflict: 'id', ignoreDuplicates: true });
@@ -113,8 +114,9 @@ export async function POST(req: NextRequest) {
         allowed_domains: [new URL(validatedUrl).hostname],
         css_selector_schema: cssSelectorSchema,
         detected_platform: detectedPlatform,
+        sync_frequency: finalSyncFreq,
       })
-      .select('id, name, allowed_domains, css_selector_schema, detected_platform, created_at')
+      .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
       .single();
 
 

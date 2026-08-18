@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS websites (
     allowed_domains TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,
     css_selector_schema JSONB DEFAULT NULL,
     detected_platform TEXT DEFAULT 'unknown' NOT NULL,
+    sync_frequency TEXT DEFAULT 'off' NOT NULL CHECK (sync_frequency IN ('off', 'weekly', 'daily', 'twice_daily', 'three_times_daily')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 

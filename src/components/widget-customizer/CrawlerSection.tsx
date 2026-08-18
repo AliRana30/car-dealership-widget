@@ -772,6 +772,119 @@ function FeedAndManualImportSubBlock({
   );
 }
 
+// ── SyncScheduleSubBlock ──────────────────────────────────────────────────────
+
+type SyncFrequency = 'off' | 'weekly' | 'daily' | 'twice_daily' | 'three_times_daily';
+
+function SyncScheduleSubBlock({
+  websiteId,
+  currentFrequency = 'off',
+  disabled,
+}: {
+  websiteId: string;
+  currentFrequency?: SyncFrequency;
+  disabled?: boolean;
+}) {
+  const [frequency, setFrequency] = useState<SyncFrequency>(currentFrequency || 'off');
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentFrequency) setFrequency(currentFrequency);
+  }, [currentFrequency]);
+
+  const handleChange = async (newFreq: SyncFrequency) => {
+    setFrequency(newFreq);
+    setSaving(true);
+    setSaveStatus(null);
+    try {
+      const res = await fetch(`/api/websites/${websiteId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syncFrequency: newFreq }),
+      });
+      if (!res.ok) throw new Error('Failed to update sync frequency');
+      setSaveStatus('Saved!');
+      setTimeout(() => setSaveStatus(null), 2500);
+    } catch {
+      setSaveStatus('Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const options: Array<{ value: SyncFrequency; label: string; desc: string }> = [
+    { value: 'off', label: 'Off', desc: 'Manual sync' },
+    { value: 'weekly', label: 'Weekly', desc: '7 days' },
+    { value: 'daily', label: 'Daily', desc: '24h' },
+    { value: 'twice_daily', label: '2x Daily', desc: '12h' },
+    { value: 'three_times_daily', label: '3x Daily', desc: '8h' },
+  ];
+
+  return (
+    <div style={{
+      border: '1px solid #E2E8F0',
+      borderRadius: '8px',
+      background: '#F8FAFC',
+      padding: '8px 10px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 600, color: '#334155' }}>
+            ⏰ Automated Sync Schedule
+          </span>
+          {saveStatus && (
+            <span style={{ fontSize: '9px', color: saveStatus === 'Saved!' ? '#16A34A' : '#DC2626', fontWeight: 700 }}>
+              {saveStatus}
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: '9px', background: frequency === 'off' ? '#E2E8F0' : '#DCFCE7', color: frequency === 'off' ? '#475569' : '#15803D', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+          {frequency === 'off' ? 'MANUAL' : 'SCHEDULED'}
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px' }}>
+        {options.map((opt) => {
+          const isSelected = frequency === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => handleChange(opt.value)}
+              disabled={disabled || saving}
+              style={{
+                padding: '5px 2px',
+                borderRadius: '6px',
+                border: isSelected ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                color: isSelected ? '#1D4ED8' : '#475569',
+                cursor: disabled || saving ? 'not-allowed' : 'pointer',
+                textAlign: 'center',
+                transition: 'all 0.15s ease',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '1px',
+              }}
+            >
+              <span style={{ fontSize: '10px', fontWeight: isSelected ? 700 : 500 }}>
+                {opt.label}
+              </span>
+              <span style={{ fontSize: '7.5px', color: isSelected ? '#3B82F6' : '#94A3B8' }}>
+                {opt.desc}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── WebsiteConnectedPanel ─────────────────────────────────────────────────────
 
 interface WebsiteConnectedPanelProps {
@@ -826,9 +939,10 @@ function WebsiteConnectedPanel({
   });
   const [savingCss, setSavingCss]     = useState(false);
   const [detectedPlatform, setDetectedPlatform] = useState<string>('unknown');
+  const [syncFrequency, setSyncFrequency] = useState<SyncFrequency>('off');
   const isBusy = crawlStatus?.status === 'running' || crawlStatus?.status === 'pending';
 
-  // Load existing website configuration (including css_selector_schema & detected_platform)
+  // Load existing website configuration (including css_selector_schema & detected_platform & sync_frequency)
   useEffect(() => {
     if (!websiteId) return;
     const fetchWebsiteData = async () => {
@@ -842,6 +956,9 @@ function WebsiteConnectedPanel({
         }
         if (site?.detected_platform) {
           setDetectedPlatform(site.detected_platform);
+        }
+        if (site?.sync_frequency) {
+          setSyncFrequency(site.sync_frequency);
         }
       } catch {}
     };
@@ -1001,6 +1118,13 @@ function WebsiteConnectedPanel({
 
       {/* Re-crawl scan mode */}
       <ScanModeToggle value={reScanMode} onChange={setReScanMode} disabled={isBusy} />
+
+      {/* Automated Recurring Sync Schedule */}
+      <SyncScheduleSubBlock
+        websiteId={websiteId}
+        currentFrequency={syncFrequency}
+        disabled={isBusy}
+      />
 
       {/* WooCommerce API connector if detected or available */}
       <WooCommerceConnectorSubBlock

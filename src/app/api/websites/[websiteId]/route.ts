@@ -55,6 +55,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
       updateData.detected_platform = body.detectedPlatform !== undefined ? body.detectedPlatform : body.detected_platform;
     }
 
+    if (body.syncFrequency !== undefined || body.sync_frequency !== undefined) {
+      updateData.sync_frequency = body.syncFrequency !== undefined ? body.syncFrequency : body.sync_frequency;
+    }
+
     if (domain !== undefined) {
       const trimmedDomain = domain.trim();
       const startUrl = trimmedDomain.startsWith('http') ? trimmedDomain : `https://${trimmedDomain}`;
@@ -74,7 +78,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       .from('websites')
       .update(updateData)
       .eq('id', websiteId)
-      .select('id, name, allowed_domains, css_selector_schema, detected_platform')
+      .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
       .single();
 
     if (error) throw error;
