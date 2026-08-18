@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
 import dynamic from 'next/dynamic';
+import { Smartphone, Tablet, Monitor, Maximize2 } from 'lucide-react';
 
 const VoiceAgentWidget = dynamic(
   () => import('@/components/voice-agent/VoiceAgentWidget'),
@@ -84,9 +85,9 @@ export default function PreviewArea({ draft, widgetId }: Props) {
   const currentComputedWidth = activePreset === 'fluid' && customWidth >= 1000 ? '100%' : `${customWidth}px`;
 
   return (
-    <div style={styles.previewOuter}>
+    <div style={styles.previewOuter} className="customizer-preview-outer">
       {/* Top bar with preset selector and resolution indicator */}
-      <div style={styles.previewHeader}>
+      <div style={styles.previewHeader} className="customizer-preview-header">
         <div style={styles.previewLabel}>
           <span style={styles.dot} />
           Live Preview
@@ -101,7 +102,8 @@ export default function PreviewArea({ draft, widgetId }: Props) {
             }}
             title="Mobile (375px)"
           >
-            📱 375px
+            <Smartphone size={13} />
+            <span>375px</span>
           </button>
           <button
             onClick={() => handlePresetSelect('mobile-lg')}
@@ -111,7 +113,8 @@ export default function PreviewArea({ draft, widgetId }: Props) {
             }}
             title="Mobile Large (430px)"
           >
-            📱 430px
+            <Smartphone size={13} />
+            <span>430px</span>
           </button>
           <button
             onClick={() => handlePresetSelect('tablet')}
@@ -121,7 +124,8 @@ export default function PreviewArea({ draft, widgetId }: Props) {
             }}
             title="Tablet (768px)"
           >
-            💻 768px
+            <Tablet size={13} />
+            <span>768px</span>
           </button>
           <button
             onClick={() => handlePresetSelect('desktop')}
@@ -131,7 +135,8 @@ export default function PreviewArea({ draft, widgetId }: Props) {
             }}
             title="Desktop (1024px)"
           >
-            🖥️ 1024px
+            <Monitor size={13} />
+            <span>1024px</span>
           </button>
           <button
             onClick={() => handlePresetSelect('fluid')}
@@ -141,7 +146,8 @@ export default function PreviewArea({ draft, widgetId }: Props) {
             }}
             title="Fluid Drag"
           >
-            ↔️ Fluid
+            <Maximize2 size={12} />
+            <span>Fluid</span>
           </button>
         </div>
 
@@ -152,7 +158,7 @@ export default function PreviewArea({ draft, widgetId }: Props) {
         </div>
       </div>
 
-      <div style={styles.previewBody} ref={containerRef}>
+      <div style={styles.previewBody} className="customizer-preview-body" ref={containerRef}>
         {/* Simulated browser chrome wrapper with drag handles */}
         <div
           style={{
@@ -162,6 +168,7 @@ export default function PreviewArea({ draft, widgetId }: Props) {
             transition: isDragging ? 'none' : 'width 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
             position: 'relative',
           }}
+          className="customizer-browser-chrome"
         >
           {/* Left Width Drag Handle */}
           <div
@@ -207,7 +214,7 @@ export default function PreviewArea({ draft, widgetId }: Props) {
 
             {/* Real widget rendered inside preview */}
             <div style={styles.widgetWrapper}>
-              <VoiceAgentWidget config={previewConfig} widgetId={widgetId} isDemo={true} />
+              <VoiceAgentWidget config={previewConfig} widgetId={widgetId} isDemo={false} />
             </div>
           </div>
 
@@ -298,13 +305,16 @@ const styles: Record<string, React.CSSProperties> = {
   presetBtn: {
     border: 'none',
     background: 'transparent',
-    padding: '3px 8px',
+    padding: '4px 8px',
     borderRadius: '6px',
     fontSize: '11px',
     fontWeight: 600,
     color: '#64748b',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '5px',
   },
   presetBtnActive: {
     background: '#ffffff',

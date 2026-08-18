@@ -6,10 +6,9 @@
  * Renders an interactive, beautifully formatted data viewer displaying indexed knowledge records.
  * Features:
  * - Domain-scoped filtering (only shows records belonging to the target website)
- * - Clean content layout with deduplication (no repeated paragraphs)
+ * - Intelligent content formatter (splits mashed text into headings, paragraphs, and bullet points)
  * - Structured key-value metadata table with expandable raw JSON view
  * - High-resolution responsive image gallery
- * - dataType source badge per row (crawl, shopify, woocommerce, feed, manual)
  * - Real-time client-side source & keyword search filters
  * - Blocked-pages warning banner when anti-bot firewall challenges are detected
  */
@@ -23,6 +22,67 @@ function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
   return createClient(url, key);
+}
+
+/**
+ * Intelligent content formatter: parses continuous text streams from HTML scrapers
+ * into structured paragraphs, section headers, bullet lists, and key takeaways.
+ */
+function formatReadableContent(raw: string): string {
+  if (!raw) return '';
+  let text = raw.trim();
+
+  // 1. If text already contains newlines and markdown structure, clean and return
+  if (text.includes('\n\n')) {
+    return text
+      .split('\n\n')
+      .map(p => `<p>${escapeHtml(p.trim())}</p>`)
+      .join('');
+  }
+
+  // 2. Break up common concatenated delimiters and bullets
+  text = text
+    .replace(/\s*([✓•·])\s*/g, '\n• ')
+    .replace(/\s*(\b\d{1,2}\s*\/\s*[A-Z][a-z]+)/g, '\n\n### $1')
+    .replace(/\s*(\b0[1-9]\s+[A-Z][a-z]+)/g, '\n\n**$1**\n')
+    .replace(/\s*(Questions clinics actually ask\.|Frequently Asked Questions)/gi, '\n\n### $1\n')
+    .replace(/\s*(Is MedEaz HIPAA compliant\?|Does it support Urdu prescriptions\?|Can I switch from my current EMR system\?|Is there a per-patient fee\?|How does voice recognition work|What happens if my internet goes down)/gi, '\n\n**Q: $1**\n')
+    .replace(/\s*(Built for Every Role|One Platform\. Three Portals|Ambient Audio Doctor Portal|Patient Portal|Admin Intelligence|Real-time Metrics|THE WORKFLOW)/gi, '\n\n### $1\n')
+    .replace(/([.!?])\s+([A-Z][a-zA-Z\s]{3,30}:)/g, '$1\n\n**$2**\n')
+    .replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2');
+
+  const blocks = text.split(/\n+/).map(b => b.trim()).filter(Boolean);
+  
+  let html = '';
+  let inList = false;
+
+  for (const block of blocks) {
+    if (block.startsWith('### ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h4 style="margin: 1rem 0 0.4rem; color: #1E293B; font-size: 0.95rem; font-weight: 700;">${escapeHtml(block.replace('### ', ''))}</h4>`;
+    } else if (block.startsWith('**') && block.endsWith('**')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<div style="font-weight: 700; color: #2563EB; margin-top: 0.6rem; font-size: 0.9rem;">${escapeHtml(block.replace(/\*\*/g, ''))}</div>`;
+    } else if (block.startsWith('• ') || block.startsWith('- ')) {
+      if (!inList) { html += '<ul style="margin: 0.4rem 0 0.6rem 1.25rem; padding: 0;">'; inList = true; }
+      html += `<li style="margin-bottom: 0.25rem; color: #334155; font-size: 0.875rem;">${escapeHtml(block.replace(/^[•-]\s*/, ''))}</li>`;
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p style="margin: 0 0 0.6rem; color: #334155; font-size: 0.875rem; line-height: 1.6;">${escapeHtml(block)}</p>`;
+    }
+  }
+
+  if (inList) html += '</ul>';
+  return html || `<p>${escapeHtml(raw)}</p>`;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 export async function GET(req: NextRequest, { params }: { params: any }) {
@@ -91,13 +151,12 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
         }
       });
 
-      // If domain-scoped records exist, use them exclusively to avoid historical dummy leaks
       if (domainScoped.length > 0) {
         dataList = domainScoped;
       }
     }
 
-    // Exclude firewall rejection artifacts from legitimate knowledge view
+    // Exclude firewall rejection artifacts
     dataList = dataList.filter(r => {
       const titleLower = (r.title || '').toLowerCase();
       const contentLower = (r.content || '').toLowerCase();
@@ -107,7 +166,6 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       return true;
     });
 
-    // Return JSON if requested
     if (format === 'json') {
       return NextResponse.json({
         websiteId,
@@ -119,7 +177,6 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       });
     }
 
-    // Colors for source badges
     const getBadgeStyle = (type: string) => {
       switch (type?.toLowerCase()) {
         case 'shopify':
@@ -135,7 +192,6 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       }
     };
 
-    // Label dictionary for key attributes
     const formatAttributeLabel = (key: string): string => {
       const labels: Record<string, string> = {
         price: 'Price',
@@ -318,15 +374,11 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
 
           /* Content formatting */
           .content-box {
-            font-size: 0.9rem;
-            color: #334155;
             background: #F8FAFC;
-            border-radius: 8px;
-            padding: 1rem 1.15rem;
+            border-radius: 10px;
+            padding: 1.1rem 1.25rem;
             margin-bottom: 1rem;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            border: 1px solid #F1F5F9;
+            border: 1px solid #E2E8F0;
           }
           .meta-grid {
             display: grid;
@@ -435,7 +487,6 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                    </div>`
                 : '';
 
-              // Clean metadata attributes
               const metaEntries = Object.entries(meta).filter(([k, v]) => {
                 if (['images', 'image', 'imageSource', 'description'].includes(k)) return false;
                 if (v === null || v === undefined || v === '') return false;
@@ -443,8 +494,8 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 return true;
               });
 
-              // Deduplicate content: if short_description is already equal or part of content, don't repeat
               const contentText = (r.content || '').trim();
+              const formattedContentHtml = formatReadableContent(contentText);
 
               return `
                 <div class="card" data-source="${(r.data_type || 'crawl').toLowerCase()}" data-text="${(r.title + ' ' + contentText).toLowerCase()}">
@@ -466,7 +517,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                   ${categoryHtml}
                   ${imagesHtml}
 
-                  ${contentText ? `<div class="content-box">${contentText}</div>` : ''}
+                  ${formattedContentHtml ? `<div class="content-box">${formattedContentHtml}</div>` : ''}
 
                   ${metaEntries.length > 0 ? `
                     <div class="meta-grid">

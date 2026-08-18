@@ -1,12 +1,36 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
+import {
+  Sparkles,
+  Palette,
+  Type,
+  CircleDot,
+  LayoutTemplate,
+  Sliders,
+  Smartphone,
+  Globe2,
+  Rocket,
+  LayoutGrid,
+} from 'lucide-react';
 import { CustomizerSection, SECTION_NAV } from './customizerTypes';
 
 interface Props {
   active: CustomizerSection;
   onSelect: (s: CustomizerSection) => void;
 }
+
+const SECTION_ICONS: Record<CustomizerSection, React.ReactNode> = {
+  branding: <Sparkles size={16} />,
+  colors: <Palette size={16} />,
+  typography: <Type size={16} />,
+  launcher: <CircleDot size={16} />,
+  panel: <LayoutTemplate size={16} />,
+  behavior: <Sliders size={16} />,
+  responsive: <Smartphone size={16} />,
+  crawler: <Globe2 size={16} />,
+  deploy: <Rocket size={16} />,
+};
 
 export default function SettingsSidebar({ active, onSelect }: Props) {
   return (
@@ -28,7 +52,7 @@ export default function SettingsSidebar({ active, onSelect }: Props) {
               className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
             >
               <span style={{ ...styles.navIcon, ...(isActive ? styles.navIconActive : {}) }}>
-                {item.icon}
+                {SECTION_ICONS[item.id]}
               </span>
               <span style={styles.navLabel} className="sidebar-nav-label">{item.label}</span>
               {isActive && <span style={styles.activeBar} className="sidebar-active-bar" />}
@@ -40,12 +64,7 @@ export default function SettingsSidebar({ active, onSelect }: Props) {
       {/* Widget Fleet link */}
       <div style={styles.sidebarFooter} className="sidebar-footer">
         <Link href="/" style={styles.fleetLink}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-            <rect x="4" y="4" width="6" height="6" rx="1" />
-            <rect x="14" y="4" width="6" height="6" rx="1" />
-            <rect x="4" y="14" width="6" height="6" rx="1" />
-            <rect x="14" y="14" width="6" height="6" rx="1" />
-          </svg>
+          <LayoutGrid size={14} />
           Widget Fleet
         </Link>
       </div>
@@ -103,10 +122,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '13px',
     color: '#9ca3af',
     flexShrink: 0,
-    fontFamily: 'system-ui',
   },
   navIconActive: {
     color: '#2563eb',

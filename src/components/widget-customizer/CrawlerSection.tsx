@@ -1,6 +1,22 @@
-'use client';
-
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  Zap,
+  Globe2,
+  ShieldAlert,
+  Code2,
+  ShoppingBag,
+  Layers,
+  Clock,
+  Radio,
+  FileUp,
+  RefreshCw,
+  Eye,
+  Trash2,
+  Edit2,
+  Check,
+  X,
+  ChevronDown,
+} from 'lucide-react';
 import { QUICK_SCAN_PAGE_CAP, MASTER_SCAN_PAGE_CAP } from '@/lib/crawler';
 
 type ScanMode = 'quick' | 'master';
@@ -20,7 +36,7 @@ function CrawlStatusBadge({ status }: { status: string }) {
     running:       { bg: '#DBEAFE', color: '#2563EB', label: 'Crawling…' },
     completed:     { bg: '#DCFCE7', color: '#15803D', label: 'Complete' },
     failed:        { bg: '#FEE2E2', color: '#B91C1C', label: 'Failed' },
-    blocked:       { bg: '#FEE2E2', color: '#DC2626', label: '🛡 Blocked by WAF' },
+    blocked:       { bg: '#FEE2E2', color: '#DC2626', label: 'Blocked by WAF' },
     never_crawled: { bg: '#F1F5F9', color: '#64748B', label: 'Not Started' },
   };
   const s = map[status] || map.never_crawled;
@@ -61,7 +77,7 @@ function ScanModeToggle({
   onChange: (m: ScanMode) => void;
   disabled?: boolean;
 }) {
-  const btn = (mode: ScanMode, label: string, sub: string) => {
+  const btn = (mode: ScanMode, label: React.ReactNode, sub: string) => {
     const active = value === mode;
     return (
       <button
@@ -93,8 +109,18 @@ function ScanModeToggle({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <span style={labelStyle}>Scan Depth</span>
       <div style={{ display: 'flex', gap: '6px' }}>
-        {btn('quick',  '⚡ Quick Scan',  `Up to ${QUICK_SCAN_PAGE_CAP} pages`)}
-        {btn('master', '🗺 Master Scan', `Up to ${MASTER_SCAN_PAGE_CAP} pages`)}
+        {btn('quick', (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Zap size={13} color="#2563EB" />
+            <span>Quick Scan</span>
+          </div>
+        ), `Up to ${QUICK_SCAN_PAGE_CAP} pages`)}
+        {btn('master', (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <Globe2 size={13} color="#2563EB" />
+            <span>Master Scan</span>
+          </div>
+        ), `Up to ${MASTER_SCAN_PAGE_CAP} pages`)}
       </div>
     </div>
   );
@@ -199,8 +225,9 @@ function AdvancedCssSchemaSubBlock({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Code2 size={13} color="#2563EB" />
           <span style={{ fontSize: '11px', fontWeight: 600, color: '#334155' }}>
-            ⚡ Advanced: Fast-Path CSS Selectors
+            Advanced: Fast-Path CSS Selectors
           </span>
           {isCustomized ? (
             <span style={{
@@ -218,12 +245,11 @@ function AdvancedCssSchemaSubBlock({
             </span>
           )}
         </div>
-        <svg
-          width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5"
+        <ChevronDown
+          size={13}
+          color="#64748B"
           style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        />
       </button>
 
       {open && (
@@ -424,24 +450,19 @@ function WooCommerceConnectorSubBlock({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <ShoppingBag size={13} color="#7C3AED" />
           <span style={{ fontSize: '11px', fontWeight: 600, color: '#5B21B6' }}>
-            🛒 WooCommerce API Connector
+            WooCommerce API Connector
           </span>
           <span style={{ fontSize: '9px', background: '#EDE9FE', color: '#6D28D9', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
             Structured
           </span>
         </div>
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#6D28D9"
-          strokeWidth="2.5"
+        <ChevronDown
+          size={13}
+          color="#6D28D9"
           style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        />
       </button>
 
       {open && (
@@ -453,20 +474,12 @@ function WooCommerceConnectorSubBlock({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
             <label style={{ fontSize: '10px', fontWeight: 600, color: '#4C1D95' }}>Consumer Key</label>
             <input
-              type="text"
+              type="password"
               placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxx"
               value={consumerKey}
               onChange={e => setConsumerKey(e.target.value)}
               disabled={loading || disabled}
-              style={{
-                fontSize: '11px',
-                padding: '5px 8px',
-                borderRadius: '5px',
-                border: '1px solid #C4B5FD',
-                background: '#FFFFFF',
-                outline: 'none',
-                fontFamily: 'monospace',
-              }}
+              style={{ ...input, fontSize: '11px', padding: '5px 8px' }}
             />
           </div>
 
@@ -478,20 +491,12 @@ function WooCommerceConnectorSubBlock({
               value={consumerSecret}
               onChange={e => setConsumerSecret(e.target.value)}
               disabled={loading || disabled}
-              style={{
-                fontSize: '11px',
-                padding: '5px 8px',
-                borderRadius: '5px',
-                border: '1px solid #C4B5FD',
-                background: '#FFFFFF',
-                outline: 'none',
-                fontFamily: 'monospace',
-              }}
+              style={{ ...input, fontSize: '11px', padding: '5px 8px' }}
             />
           </div>
 
           {error && (
-            <div style={{ fontSize: '10px', color: '#B91C1C', background: '#FEE2E2', padding: '5px 8px', borderRadius: '5px' }}>
+            <div style={{ fontSize: '10px', color: '#DC2626', background: '#FEE2E2', padding: '5px 8px', borderRadius: '5px' }}>
               {error}
             </div>
           )}
@@ -643,24 +648,19 @@ function FeedAndManualImportSubBlock({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Layers size={13} color="#2563EB" />
           <span style={{ fontSize: '11px', fontWeight: 600, color: '#334155' }}>
-            📦 Feeds & Inventory Upload (CSV/JSON/XML)
+            Feeds & Inventory Upload (CSV / JSON / XML)
           </span>
           <span style={{ fontSize: '9px', background: '#E2E8F0', color: '#475569', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
             Feed/Upload
           </span>
         </div>
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#64748B"
-          strokeWidth="2.5"
+        <ChevronDown
+          size={13}
+          color="#64748B"
           style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        />
       </button>
 
       {open && (
@@ -746,11 +746,7 @@ function FeedAndManualImportSubBlock({
                   cursor: uploadingFile || disabled ? 'not-allowed' : 'pointer',
                 }}
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
+                <FileUp size={12} />
                 {uploadingFile ? 'Parsing & Ingesting…' : 'Upload Inventory (.csv / .json)'}
               </label>
             </div>
@@ -833,8 +829,9 @@ function SyncScheduleSubBlock({
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Clock size={13} color="#2563EB" />
           <span style={{ fontSize: '11px', fontWeight: 600, color: '#334155' }}>
-            ⏰ Automated Sync Schedule
+            Automated Sync Schedule
           </span>
           {saveStatus && (
             <span style={{ fontSize: '9px', color: saveStatus === 'Saved!' ? '#16A34A' : '#DC2626', fontWeight: 700 }}>
@@ -1024,26 +1021,23 @@ function WebsiteConnectedPanel({
             {detectedPlatform === 'shopify' ? (
               <span style={{
                 fontSize: '9px', fontWeight: 700, background: '#DCFCE7', color: '#15803D',
-                padding: '2px 6px', borderRadius: '5px',
+                padding: '2px 6px', borderRadius: '5px', display: 'inline-flex', alignItems: 'center', gap: '3px'
               }}>
-                🛍 Shopify
+                <ShoppingBag size={10} /> Shopify
               </span>
             ) : detectedPlatform === 'woocommerce' ? (
               <span style={{
                 fontSize: '9px', fontWeight: 700, background: '#EDE9FE', color: '#6D28D9',
-                padding: '2px 6px', borderRadius: '5px',
+                padding: '2px 6px', borderRadius: '5px', display: 'inline-flex', alignItems: 'center', gap: '3px'
               }}>
-                🛒 WooCommerce
+                <ShoppingBag size={10} /> WooCommerce
               </span>
             ) : null}
             <span style={{ color: '#0F172A', fontWeight: 700, maxWidth: '120px', textAlign: 'right', wordBreak: 'break-all' }}>{websiteName}</span>
             <button onClick={() => { setEditName(websiteName || ''); setEditingName(true); }} title="Edit website name"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '2px' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '2px', display: 'flex', alignItems: 'center' }}
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
+              <Edit2 size={11} />
             </button>
           </div>
         )}
@@ -1075,10 +1069,7 @@ function WebsiteConnectedPanel({
               gap: '6px',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" style={{ flexShrink: 0 }}>
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  <path d="M12 8v4M12 16h.01" />
-                </svg>
+                <ShieldAlert size={14} color="#DC2626" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: '11px', fontWeight: 700, color: '#991B1B' }}>
                   Scan Blocked by Website Firewall (Anti-Bot / WAF)
                 </span>
@@ -1148,6 +1139,7 @@ function WebsiteConnectedPanel({
         }}
       />
 
+
       {/* Advanced CSS Selector extraction settings */}
       <AdvancedCssSchemaSubBlock
         value={cssForm}
@@ -1171,9 +1163,7 @@ function WebsiteConnectedPanel({
             display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px',
           }}
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" />
-          </svg>
+          <RefreshCw size={11} />
           Re-crawl
         </button>
 
@@ -1186,10 +1176,7 @@ function WebsiteConnectedPanel({
           }}
           title="View crawled JSON data"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
+          <Eye size={12} />
           View Data
         </button>
 
@@ -1206,9 +1193,7 @@ function WebsiteConnectedPanel({
           }}
           title="Disconnect website"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
+          <X size={12} />
         </button>
       </div>
     </div>
@@ -1358,11 +1343,7 @@ export default function CrawlerSection({
         padding: '12px 14px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" style={{ flexShrink: 0 }}>
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-            <path d="M2 12h20" />
-          </svg>
+          <Globe2 size={15} color="#16A34A" style={{ flexShrink: 0 }} />
           <h4 style={{ ...sectionTitle, margin: 0 }}>Website Intelligence</h4>
         </div>
 
@@ -1430,10 +1411,7 @@ export default function CrawlerSection({
                 <><SpinnerIcon />Connecting…</>
               ) : (
                 <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                  </svg>
+                  <Globe2 size={13} />
                   Connect &amp; Analyze Website
                 </>
               )}

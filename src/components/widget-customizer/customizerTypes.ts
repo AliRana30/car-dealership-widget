@@ -20,17 +20,16 @@ export interface CustomizerState {
 export interface SectionNavItem {
   id: CustomizerSection;
   label: string;
-  icon: string;
 }
 
 export const SECTION_NAV: SectionNavItem[] = [
-  { id: 'branding',    label: 'Branding',    icon: '✦' },
-  { id: 'colors',      label: 'Colors',      icon: '◐' },
-  { id: 'typography',  label: 'Typography',  icon: 'T' },
-  { id: 'launcher',    label: 'Launcher',    icon: '◎' },
-  { id: 'panel',       label: 'Panel',       icon: '▭' },
-  { id: 'behavior',    label: 'Behavior',    icon: '⚙' },
-  { id: 'responsive',  label: 'Responsive',  icon: '⊡' },
-  { id: 'crawler',     label: 'Crawler',     icon: '☍' },
-  { id: 'deploy',      label: 'Deploy',      icon: '⚡' },
+  { id: 'branding',    label: 'Branding' },
+  { id: 'colors',      label: 'Colors' },
+  { id: 'typography',  label: 'Typography' },
+  { id: 'launcher',    label: 'Launcher' },
+  { id: 'panel',       label: 'Panel' },
+  { id: 'behavior',    label: 'Behavior' },
+  { id: 'responsive',  label: 'Responsive' },
+  { id: 'crawler',     label: 'Crawler' },
+  { id: 'deploy',      label: 'Deploy' },
 ];

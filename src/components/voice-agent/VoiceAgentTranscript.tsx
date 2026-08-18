@@ -133,7 +133,7 @@ export default function VoiceAgentTranscript({
                     background: isUser
                       ? 'var(--voice-widget-bg-user-bubble, var(--voice-widget-primary))'
                       : 'var(--voice-widget-bg-agent-bubble, #FFFFFF)',
-                    color: isUser ? '#FFFFFF' : 'var(--voice-widget-text, #0E1B2A)',
+                    color: isUser ? 'var(--voice-widget-text-user-bubble, #0E1B2A)' : 'var(--voice-widget-text, #0E1B2A)',
                     border: isUser ? 'none' : '1px solid var(--voice-widget-border)',
                     borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
                     padding: '8px 12px',

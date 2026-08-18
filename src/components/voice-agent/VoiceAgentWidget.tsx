@@ -886,20 +886,26 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
       const fontSizes = getFontSizes(typography.fontSizeScale);
 
-      const hexToRgb = (hex: string) => {
-        const cleaned = hex.replace(/^#/, '');
-        if (cleaned.length === 3) {
-          const r = parseInt(cleaned[0] + cleaned[0], 16);
-          const g = parseInt(cleaned[1] + cleaned[1], 16);
-          const b = parseInt(cleaned[2] + cleaned[2], 16);
-          return `${r}, ${g}, ${b}`;
-        } else if (cleaned.length === 6) {
-          const r = parseInt(cleaned.substring(0, 2), 16);
-          const g = parseInt(cleaned.substring(2, 4), 16);
-          const b = parseInt(cleaned.substring(4, 6), 16);
+      const hexToRgb = (hex: string): string => {
+        const clean = hex.replace('#', '');
+        if (clean.length === 6) {
+          const r = parseInt(clean.substring(0, 2), 16);
+          const g = parseInt(clean.substring(2, 4), 16);
+          const b = parseInt(clean.substring(4, 6), 16);
           return `${r}, ${g}, ${b}`;
         }
         return '47, 143, 224'; // fallback blue
+      };
+
+      const getContrastColor = (hex: string): string => {
+        if (!hex || !hex.startsWith('#')) return '#FFFFFF';
+        const clean = hex.replace('#', '');
+        if (clean.length !== 6) return '#FFFFFF';
+        const r = parseInt(clean.substring(0, 2), 16) || 0;
+        const g = parseInt(clean.substring(2, 4), 16) || 0;
+        const b = parseInt(clean.substring(4, 6), 16) || 0;
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.6 ? '#0E1B2A' : '#FFFFFF';
       };
 
       const primaryRgb = hexToRgb(theme.primaryColor);
@@ -915,6 +921,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         '--voice-widget-bg-header': theme.headerBackground,
         '--voice-widget-bg-transcript': theme.transcriptBackground,
         '--voice-widget-bg-user-bubble': theme.userMessageBackground,
+        '--voice-widget-text-user-bubble': getContrastColor(theme.userMessageBackground),
         '--voice-widget-bg-agent-bubble': theme.agentMessageBackground,
         '--voice-widget-text': theme.primaryTextColor,
         '--voice-widget-text-secondary': theme.secondaryTextColor,

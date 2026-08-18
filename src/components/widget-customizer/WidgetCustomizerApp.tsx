@@ -129,6 +129,17 @@ const TOGGLE_CSS = `
       flex: 1 !important;
       width: 100% !important;
       height: 100% !important;
+      padding: 16px 12px 24px !important;
+      box-sizing: border-box !important;
+    }
+    .customizer-splitter {
+      display: none !important;
+    }
+    .customizer-preview-body {
+      padding: 16px 12px !important;
+    }
+    .customizer-browser-chrome {
+      min-height: 480px !important;
     }
     .customizer-header-actions button {
       padding: 0 10px !important;
@@ -512,13 +523,15 @@ export default function WidgetCustomizerApp() {
           <PreviewArea draft={draft} widgetId={widgetId} />
         </div>
 
-        {/* RIGHT: Color editor (conditional) */}
-        <ColorEditorPanel
-          draft={draft}
-          openTokenId={openColorTokenId}
-          onClose={() => setOpenColorTokenId(null)}
-          onColorChange={handleColorChange}
-        />
+        {/* RIGHT: Color editor (ONLY visible on colors section) */}
+        {activeSection === 'colors' && (
+          <ColorEditorPanel
+            draft={draft}
+            openTokenId={openColorTokenId}
+            onClose={() => setOpenColorTokenId(null)}
+            onColorChange={handleColorChange}
+          />
+        )}
       </div>
     </div>
   );

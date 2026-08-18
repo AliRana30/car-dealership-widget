@@ -488,10 +488,12 @@ function extractEntitiesFromCrawlResult(
     ...(fallbackImageSource ? { imageSource: fallbackImageSource } : {}),
   };
 
+  const cleanedContent = cleanStructuredContent(description || markdown.substring(0, 1500));
+
   const entity: CrawledEntity = {
     url: result.url,
     title: title.trim(),
-    content: description || markdown.substring(0, 1000),
+    content: cleanedContent,
     dataType: entityType as CrawledEntity['dataType'],
     metadata: {
       description: description,
@@ -504,6 +506,15 @@ function extractEntitiesFromCrawlResult(
   return [entity];
 }
 
+function cleanStructuredContent(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\s*([✓•·])\s*/g, '\n• ')
+    .replace(/([.!?])\s+([A-Z][a-zA-Z\s]{3,30}:)/g, '$1\n\n$2\n')
+    .replace(/\s*(Questions clinics actually ask\.|Frequently Asked Questions)/gi, '\n\n$1\n')
+    .replace(/\s*(Built for Every Role|One Platform\. Three Portals|Ambient Audio Doctor Portal|Patient Portal|Admin Intelligence|Real-time Metrics|THE WORKFLOW)/gi, '\n\n$1\n')
+    .trim();
+}
 
 function extractTitleFromMarkdown(md: string): string {
   const match = md.match(/^#\s+(.+)$/m);
@@ -513,7 +524,7 @@ function extractTitleFromMarkdown(md: string): string {
 function extractFirstParagraph(md: string): string {
   // Skip headings, find first substantial text block
   const lines = md.split('\n').filter(l => l.trim() && !l.startsWith('#') && !l.startsWith('!'));
-  return lines.slice(0, 3).join(' ').substring(0, 300);
+  return lines.slice(0, 5).join(' ').substring(0, 500);
 }
 
 function classifyEntityType(

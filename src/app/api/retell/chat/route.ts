@@ -142,23 +142,38 @@ export async function POST(req: NextRequest) {
 
   // ── Retrieve Widget Credentials ───────────────────────────────────────────
   const targetId = widgetId || 'default';
-  const widget = await getWidget(targetId);
+  let widget = await getWidget(targetId);
   if (!widget) {
-    return NextResponse.json(
-      { error: 'not_found', message: `Widget with ID '${targetId}' not found.` },
-      { status: 404, headers }
-    );
+    if (targetId === 'default' || targetId === 'front-desk' || targetId === 'myfrontdesk') {
+      widget = {
+        id: '00000000-0000-0000-0000-000000000000',
+        widgetId: 'default',
+        organizationId: '00000000-0000-0000-0000-000000000000',
+        name: 'Default Widget',
+        status: 'active',
+        provider: 'retell',
+        agentId: process.env.RETELL_AGENT_ID,
+        retellApiKey: process.env.RETELL_API_KEY,
+        allowedDomains: ['*'],
+        config: {} as any,
+      };
+    } else {
+      return NextResponse.json(
+        { error: 'not_found', message: `Widget with ID '${targetId}' not found.` },
+        { status: 404, headers }
+      );
+    }
   }
 
-  if (widget.provider !== 'retell') {
+  if (widget.provider !== 'retell' && widget.provider !== undefined) {
     return NextResponse.json(
       { error: 'misconfigured', message: 'Text chat is only supported on Retell provider widgets.' },
       { status: 400, headers }
     );
   }
 
-  const apiKey = (widget.retellApiKey || '').trim();
-  const agentId = (widget.agentId || '').trim();
+  const apiKey = (widget.retellApiKey || process.env.RETELL_API_KEY || '').trim();
+  const agentId = (widget.agentId || process.env.RETELL_AGENT_ID || '').trim();
   // Check if a specific chat agent has been configured in the config overrides, or fallback to main agentId
   const chatAgentId = (widget.config?.behavior as any)?.chatAgentId || undefined;
 
