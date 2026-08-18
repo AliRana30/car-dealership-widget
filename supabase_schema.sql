@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS website_data (
     data_type TEXT NOT NULL DEFAULT 'crawl',
     category_path TEXT[] DEFAULT '{}'::text[],
     content_hash TEXT,
+    last_checked_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     embedding vector(1536),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL

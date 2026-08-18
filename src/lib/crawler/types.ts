@@ -13,6 +13,7 @@ export interface Entity {
   categoryPath?: string[];
   embedding?: number[];
   contentHash?: string;
+  lastCheckedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,6 +23,8 @@ export interface CrawledEntity {
   title?: string;
   content: string;
   dataType: 'product' | 'service' | 'text' | 'faq' | 'contact' | 'pricing' | 'event';
+  contentHash?: string;
+  lastCheckedAt?: string;
   metadata: {
     description?: string;
     images?: string[];
@@ -47,6 +50,8 @@ export interface CrawlResult {
   websiteId: string;
   startUrl: string;
   pagesVisited: number;
+  pagesProcessed?: number;
+  pagesSkipped?: number;
   entitiesFound: number;
   blockedPages: number;
   isBlocked: boolean;
@@ -61,10 +66,13 @@ export interface CrawlJobStatus {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
   startUrl: string;
   pagesVisited: number;
+  pagesProcessed?: number;
+  pagesSkipped?: number;
   entitiesFound: number;
   blockedPages: number;
   error?: string;
   startedAt: string;
   completedAt?: string;
 }
+
 

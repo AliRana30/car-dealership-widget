@@ -25,6 +25,15 @@ import { ingestWooCommerceProducts } from '@/lib/connectors/woocommerce';
 import { CrawledEntity, CrawlResult } from './types';
 import { createClient } from '@supabase/supabase-js';
 import { saveWebsiteDataBatch, WebsiteDataRow } from '@/config/widgetsDb';
+import crypto from 'crypto';
+
+export function computeContentHash(raw: string): string {
+  const normalized = (raw || '')
+    .trim()
+    .replace(/>\s+</g, '><')
+    .replace(/\s+/g, ' ');
+  return crypto.createHash('sha256').update(normalized).digest('hex');
+}
 
 
 
@@ -41,8 +50,8 @@ export const BLOCKED_THRESHOLD_RATIO = 0.5;  // >50% blocked pages sets job stat
 // ── Supabase (server-side) ────────────────────────────────────────────────────
 
 function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
   return createClient(url, key);
 }
 
@@ -164,9 +173,27 @@ export async function crawlWebsite(
   // Enforce page cap on non-product pages
   const urlsToFetch = nonProductCandidateUrls.slice(0, pageCap);
 
+  // Find associated widgets to retrieve existing hashes for incremental change detection
+  const { data: widgets } = await supabase
+    .from('widgets')
+    .select('id')
+    .eq('website_id', websiteId);
+
+  const widgetIds = widgets?.map(w => w.id) || [];
+  if (widgetIds.length === 0) {
+    widgetIds.push('00000000-0000-0000-0000-000000000000');
+  }
+
+  const { data: existingRows } = await supabase
+    .from('website_data')
+    .select('id, widget_id, source_url, content_hash, title, short_description, content, entity_type, metadata, image_urls, category_path, data_type')
+    .in('widget_id', widgetIds);
+
   // ── Step 3: Crawl discovered non-product pages via Crawl4AI ─────────────────
   const allEntities: CrawledEntity[] = [];
   let pagesVisited = 0;
+  let pagesProcessed = 0;
+  let pagesSkipped = 0;
   let blockedPages = 0;
 
   // Process in batches of 5 to avoid overwhelming the service
@@ -213,8 +240,49 @@ export async function crawlWebsite(
           continue;
         }
         pagesVisited++;
+
+        // Compute content hash on fetched content
+        const rawContent = (result.markdown || result.html || result.cleaned_html || '').trim();
+        const contentHash = computeContentHash(rawContent);
+
+        // Check if matching existing entity has unchanged content hash
+        const normResultUrl = result.url.replace(/\/+$/, '').toLowerCase();
+        const matchingExisting = (existingRows || []).find(r => {
+          if (!r.source_url) return false;
+          return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
+        });
+
+        if (matchingExisting && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
+          pagesSkipped++;
+          console.log(`[crawler] Page unchanged (hash ${contentHash.slice(0, 8)}) — skipped re-extraction: ${result.url}`);
+
+          // Update last_checked_at timestamp on existing entity
+          try {
+            await supabase
+              .from('website_data')
+              .update({ last_checked_at: new Date().toISOString() })
+              .eq('id', matchingExisting.id);
+          } catch {}
+
+          // Preserve existing entity in active crawl list
+          allEntities.push({
+            url: matchingExisting.source_url || result.url,
+            title: matchingExisting.title,
+            content: matchingExisting.content,
+            dataType: (matchingExisting.entity_type as any) || 'text',
+            contentHash: matchingExisting.content_hash,
+            lastCheckedAt: new Date().toISOString(),
+            metadata: matchingExisting.metadata || {},
+          });
+          continue;
+        }
+
+        // New or modified page: proceed with extraction and attach contentHash
+        pagesProcessed++;
         const entities = extractEntitiesFromCrawlResult(result);
         for (const entity of entities) {
+          entity.contentHash = contentHash;
+          entity.lastCheckedAt = new Date().toISOString();
           if (!isDuplicate(entity, allEntities)) {
             allEntities.push(entity);
           }
@@ -224,6 +292,8 @@ export async function crawlWebsite(
       errors.push(`Batch crawl error (${batch.join(', ')}): ${err.message}`);
     }
   }
+
+  console.log(`[crawler] Crawl completed for ${base.href}: ${pagesProcessed} processed, ${pagesSkipped} skipped (content hash match), ${blockedPages} blocked.`);
 
   // Calculate if overall job is blocked by anti-bot firewall
   const totalAttempted = pagesVisited + blockedPages;
@@ -240,6 +310,8 @@ export async function crawlWebsite(
     websiteId,
     startUrl: base.href,
     pagesVisited,
+    pagesProcessed,
+    pagesSkipped,
     entitiesFound: allEntities.length + structuredProductCount,
     blockedPages,
     isBlocked,
@@ -526,6 +598,8 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
         image_urls:        imageUrls,
         data_type:         'crawl',
         category_path:     categoryPath,
+        content_hash:      e.contentHash,
+        last_checked_at:   e.lastCheckedAt || new Date().toISOString(),
       };
 
       // Match against existing records (Shopify, WooCommerce, Feed, Manual, or previous Crawl)

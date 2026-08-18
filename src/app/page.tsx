@@ -302,11 +302,11 @@ export default function WidgetsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [origin, setOrigin] = useState(() => {
+    if (process.env.BASE_URL) {
+      return process.env.BASE_URL;
+    }
     if (process.env.NEXT_PUBLIC_BASE_URL) {
       return process.env.NEXT_PUBLIC_BASE_URL;
-    }
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
     }
     return 'https://your-domain.vercel.app';
   });
@@ -314,7 +314,9 @@ export default function WidgetsPage() {
   const [user, setUser] = useState<{ fullName: string; email: string } | null>(null);
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_BASE_URL) {
+    if (process.env.BASE_URL) {
+      setOrigin(process.env.BASE_URL);
+    } else if (process.env.NEXT_PUBLIC_BASE_URL) {
       setOrigin(process.env.NEXT_PUBLIC_BASE_URL);
     } else if (typeof window !== 'undefined') {
       setOrigin(window.location.origin);

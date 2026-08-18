@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const { token } = await createResetToken(email);
 
     // Always return success to prevent email enumeration
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const baseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const resetLink = token ? `${baseUrl}/reset-password?token=${token}` : null;
 
     if (resetLink) {

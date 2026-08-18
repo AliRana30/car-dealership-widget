@@ -1,0 +1,9 @@
+services:
+  - type: pserv
+    name: crawl4ai
+    runtime: image
+    image:
+      url: docker.io/unclecode/crawl4ai:latest
+    # Note: On Render, private services (pserv) are accessible inside the private network
+    # at http://crawl4ai:<port> (default port for crawl4ai is 11235).
+    # Since it is a pserv, it has no public URL and cannot be accessed from outside Render.

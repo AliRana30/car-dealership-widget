@@ -780,6 +780,7 @@ export interface WebsiteDataRow {
   data_type?: string;
   category_path?: string[];
   content_hash?: string;
+  last_checked_at?: string;
   embedding?: number[];
 }
 

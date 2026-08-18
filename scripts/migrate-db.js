@@ -60,11 +60,33 @@ async function run() {
 
   try {
     // 1. Run supabase_auth_migration.sql
-    console.log('Executing migration SQL...');
+    console.log('Executing auth migration SQL...');
     const migrationSqlPath = path.join(__dirname, '../supabase_auth_migration.sql');
     const sql = fs.readFileSync(migrationSqlPath, 'utf8');
     await client.query(sql);
-    console.log('Migration SQL completed successfully.');
+    console.log('Auth migration SQL completed successfully.');
+
+    // 1.5. Run supabase_generic_entities_migration.sql
+    console.log('Executing generic entities migration SQL...');
+    const genericMigrationSqlPath = path.join(__dirname, '../supabase_generic_entities_migration.sql');
+    if (fs.existsSync(genericMigrationSqlPath)) {
+      const genericSql = fs.readFileSync(genericMigrationSqlPath, 'utf8');
+      await client.query(genericSql);
+      console.log('Generic entities migration SQL completed successfully.');
+    } else {
+      console.log('Generic entities migration SQL file not found, skipping.');
+    }
+
+    // 1.6. Run supabase_pgvector_migration.sql
+    console.log('Executing pgvector migration SQL...');
+    const pgvectorMigrationSqlPath = path.join(__dirname, '../supabase_pgvector_migration.sql');
+    if (fs.existsSync(pgvectorMigrationSqlPath)) {
+      const pgvectorSql = fs.readFileSync(pgvectorMigrationSqlPath, 'utf8');
+      await client.query(pgvectorSql);
+      console.log('pgvector migration SQL completed successfully.');
+    } else {
+      console.log('pgvector migration SQL file not found, skipping.');
+    }
 
     // 2. Encrypt existing widget secrets
     console.log('Scanning for unencrypted widget secrets...');

@@ -16,7 +16,7 @@ const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_EXPIRY_HOURS = 1;
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   return createClient(url, key);
 }

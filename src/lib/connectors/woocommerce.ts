@@ -302,3 +302,48 @@ export async function ingestWooCommerceProducts(
 
   return { count: rowsToSave.length };
 }
+
+/**
+ * Automatically registers product webhooks with WooCommerce REST API (POST /wp-json/wc/v3/webhooks).
+ */
+export async function registerWooCommerceWebhooks(
+  domain: string,
+  consumerKey: string,
+  consumerSecret: string,
+  deliveryUrl: string
+): Promise<{ success: boolean; registered: string[] }> {
+  const baseUrl = domain.startsWith('http') ? domain.replace(/\/+$/, '') : `https://${domain.replace(/\/+$/, '')}`;
+  const authHeader = `Basic ${Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64')}`;
+  const registered: string[] = [];
+
+  const topics = ['product.created', 'product.updated', 'product.deleted'];
+
+  for (const topic of topics) {
+    try {
+      const res = await fetch(`${baseUrl}/wp-json/wc/v3/webhooks`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: `FrontDesk AI - ${topic}`,
+          topic,
+          delivery_url: deliveryUrl,
+          secret: consumerSecret,
+          status: 'active',
+        }),
+      });
+
+      if (res.ok) {
+        registered.push(topic);
+      } else {
+        console.warn(`[woocommerce] Webhook registration for ${topic} returned status ${res.status}`);
+      }
+    } catch (err: any) {
+      console.warn(`[woocommerce] Failed to auto-register webhook for ${topic}: ${err.message}`);
+    }
+  }
+
+  return { success: registered.length > 0, registered };
+}

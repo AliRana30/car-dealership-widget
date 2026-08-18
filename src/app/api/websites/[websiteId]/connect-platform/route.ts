@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { testWooCommerceConnection, ingestWooCommerceProducts } from '@/lib/connectors/woocommerce';
+import { testWooCommerceConnection, ingestWooCommerceProducts, registerWooCommerceWebhooks } from '@/lib/connectors/woocommerce';
 import { encrypt } from '@/lib/encryption';
 
 function getSupabase() {
@@ -134,10 +134,19 @@ export async function POST(
       console.error('[connect-platform] WooCommerce ingestion warning:', ingestErr.message || ingestErr);
     }
 
+    // 5. Automatically provision real-time product webhooks
+    const appHost = process.env.NEXT_PUBLIC_APP_URL || (req.headers.get('host') ? `https://${req.headers.get('host')}` : 'https://example.com');
+    const webhookDeliveryUrl = `${appHost}/api/webhooks/woocommerce`;
+    try {
+      await registerWooCommerceWebhooks(baseUrl, consumerKey.trim(), consumerSecret.trim(), webhookDeliveryUrl);
+    } catch (whErr: any) {
+      console.warn('[connect-platform] Webhook auto-registration warning:', whErr.message || whErr);
+    }
+
     return NextResponse.json({
       success: true,
       platform: 'woocommerce',
-      message: 'WooCommerce store connected successfully and products ingested',
+      message: 'WooCommerce store connected successfully, products ingested, and webhooks configured',
       ingestedCount,
     });
   } catch (err: any) {
