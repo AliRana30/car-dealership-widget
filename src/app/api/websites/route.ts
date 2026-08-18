@@ -8,10 +8,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createCrawlJob, updateCrawlJob, crawlWebsite } from '@/lib/crawler';
+import {
+  createCrawlJob,
+  updateCrawlJob,
+  crawlWebsite,
+  type ScanMode,
+} from '@/lib/crawler';
+import { detectPlatform } from '@/lib/crawler/platform-detect';
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   return createClient(url, key);
 }
@@ -29,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const { data: websites, error } = await supabase
       .from('websites')
-      .select('id, name, allowed_domains, created_at')
+      .select('id, name, allowed_domains, css_selector_schema, detected_platform, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
@@ -65,6 +71,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { name, domain, orgId = '00000000-0000-0000-0000-000000000000', triggerCrawl = true } = body;
+    const scanMode = body?.scanMode === 'quick' ? 'quick' : 'master';
+    const cssSelectorSchema = body?.cssSelectorSchema || body?.css_selector_schema || null;
 
     if (!name || !domain) {
       return NextResponse.json(
@@ -92,6 +100,9 @@ export async function POST(req: NextRequest) {
       .from('organizations')
       .upsert({ id: orgId, name: 'Default Organization' }, { onConflict: 'id', ignoreDuplicates: true });
 
+    // Platform auto-detection (Shopify, WooCommerce, unknown)
+    const detectedPlatform = await detectPlatform(validatedUrl).catch(() => 'unknown');
+
     // Create the website record
     const { data: website, error: wsError } = await supabase
       .from('websites')
@@ -100,9 +111,12 @@ export async function POST(req: NextRequest) {
         user_id: userId,
         name: name.trim(),
         allowed_domains: [new URL(validatedUrl).hostname],
+        css_selector_schema: cssSelectorSchema,
+        detected_platform: detectedPlatform,
       })
-      .select('id, name, allowed_domains, created_at')
+      .select('id, name, allowed_domains, css_selector_schema, detected_platform, created_at')
       .single();
+
 
     if (wsError || !website) {
       throw new Error(wsError?.message || 'Failed to create website');
@@ -112,11 +126,11 @@ export async function POST(req: NextRequest) {
 
     if (triggerCrawl) {
       // Create job record
-      jobId = await createCrawlJob(website.id, validatedUrl);
+      jobId = await createCrawlJob(website.id, validatedUrl, scanMode);
 
       // Fire-and-forget background crawl (Next.js Route Handlers support async work)
       // We do NOT await this — the response returns immediately with job ID.
-      runCrawlInBackground(website.id, validatedUrl, jobId);
+      runCrawlInBackground(website.id, validatedUrl, jobId, scanMode);
     }
 
     return NextResponse.json(
@@ -137,10 +151,15 @@ export async function POST(req: NextRequest) {
 
 // ── Background crawl runner ───────────────────────────────────────────────────
 
-async function runCrawlInBackground(websiteId: string, startUrl: string, jobId: string) {
+async function runCrawlInBackground(
+  websiteId: string,
+  startUrl: string,
+  jobId: string,
+  scanMode: 'quick' | 'master' = 'master'
+) {
   try {
     await updateCrawlJob(jobId, { status: 'running' });
-    const result = await crawlWebsite(websiteId, startUrl);
+    const result = await crawlWebsite(websiteId, startUrl, scanMode);
     await updateCrawlJob(jobId, {
       status: 'completed',
       pages_visited: result.pagesVisited,
@@ -148,7 +167,7 @@ async function runCrawlInBackground(websiteId: string, startUrl: string, jobId: 
       completed_at: new Date().toISOString(),
       ...(result.errors.length ? { error_message: result.errors.slice(0, 3).join('; ') } : {}),
     });
-    console.log(`[crawler] Job ${jobId} completed: ${result.pagesVisited} pages, ${result.entitiesFound} entities`);
+    console.log(`[crawler] Job ${jobId} (${scanMode}) completed: ${result.pagesVisited} pages, ${result.entitiesFound} entities`);
   } catch (err: any) {
     console.error(`[crawler] Job ${jobId} failed:`, err.message);
     await updateCrawlJob(jobId, {
@@ -158,3 +177,4 @@ async function runCrawlInBackground(websiteId: string, startUrl: string, jobId: 
     });
   }
 }
+

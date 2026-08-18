@@ -6,6 +6,7 @@ import {
   fromConfigurationRecord,
 } from './voiceWidget/default';
 import { encrypt, decrypt } from '@/lib/encryption';
+import { embedTexts, embedText } from '@/lib/embeddings';
 
 export interface WidgetRecord {
   id: string; // UUID primary key in DB
@@ -29,12 +30,12 @@ export interface WidgetRecord {
   vapiApiKey?: string;
 }
 
-let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
+let supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+if (!process.env.SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL) {
   console.warn(
-    '[Supabase] Warning: NEXT_PUBLIC_SUPABASE_URL is not defined in env. ' +
+    '[Supabase] Warning: SUPABASE_URL is not defined in env. ' +
     'Please set this environment variable to connect to PostgreSQL.'
   );
 }
@@ -503,10 +504,42 @@ export async function saveWidgetConfiguration(
 
 export async function getRelevantWebsiteData(websiteId: string, query: string): Promise<string> {
   try {
+    const { data: widgets } = await supabase
+      .from('widgets')
+      .select('id')
+      .eq('website_id', websiteId);
+
+    const widgetIds = widgets?.map(w => w.id) || [];
+    if (widgetIds.length === 0) {
+      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
+
+    // Try pgvector similarity search first
+    try {
+      const queryEmbedding = await embedText(query);
+      const { data: matchedRecords, error: matchError } = await supabase
+        .rpc('match_website_data', {
+          query_embedding: queryEmbedding,
+          match_threshold: 0.1, // low threshold to capture slightly related elements
+          match_count: 3,
+          filter_widget_ids: widgetIds
+        });
+
+      if (!matchError && matchedRecords && matchedRecords.length > 0) {
+        return matchedRecords.map((r: any) => `Title: ${r.title}\nContent: ${r.content}`).join('\n\n');
+      }
+      if (matchError) {
+        console.warn('[widgetsDb] rpc match_website_data failed, falling back to keyword search:', matchError.message);
+      }
+    } catch (err) {
+      console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
+    }
+
+    // Keyword search fallback
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .eq('website_id', websiteId);
+      .in('widget_id', widgetIds);
 
     if (error || !records || records.length === 0) {
       return '';
@@ -522,7 +555,7 @@ export async function getRelevantWebsiteData(websiteId: string, query: string): 
     const scored = records.map(record => {
       let score = 0;
       const titleLower = (record.title || '').toLowerCase();
-      const contentLower = record.content.toLowerCase();
+      const contentLower = (record.content || '').toLowerCase();
 
       for (const word of queryWords) {
         if (titleLower.includes(word)) score += 10;
@@ -572,10 +605,70 @@ export async function getRelevantWebsiteRecords(
   limit = 3
 ): Promise<WebsiteDataRecord[]> {
   try {
+    const { data: widgets } = await supabase
+      .from('widgets')
+      .select('id')
+      .eq('website_id', websiteId);
+
+    const widgetIds = widgets?.map(w => w.id) || [];
+    if (widgetIds.length === 0) {
+      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
+
+    // Try pgvector similarity search first
+    try {
+      const queryEmbedding = await embedText(query);
+      const { data: matchedRecords, error: matchError } = await supabase
+        .rpc('match_website_data', {
+          query_embedding: queryEmbedding,
+          match_threshold: 0.1,
+          match_count: limit,
+          filter_widget_ids: widgetIds
+        });
+
+      if (!matchError && matchedRecords && matchedRecords.length > 0) {
+        return matchedRecords.map((r: any) => {
+          const meta = (r.metadata || {}) as Record<string, any>;
+          const result: WebsiteDataRecord = { entityType: r.entity_type };
+          if (r.title) result.title = r.title;
+          
+          if (r.short_description) {
+            result.description = r.short_description;
+          } else if (r.content) {
+            result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
+          }
+          
+          // images: prefer image_urls column, fallback to metadata
+          if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
+            result.images = r.image_urls;
+          } else if (meta.images && Array.isArray(meta.images)) {
+            result.images = meta.images.filter(Boolean);
+          } else if (meta.image) {
+            result.images = [String(meta.image)];
+          }
+
+          if (meta.price !== undefined) result.price = meta.price;
+          if (meta.currency) result.currency = String(meta.currency);
+          if (meta.availability) result.availability = String(meta.availability);
+          if (meta.rating !== undefined) result.rating = meta.rating;
+          if (meta.reviews !== undefined) result.reviews = meta.reviews;
+          if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
+          if (r.source_url) result.sourceUrl = r.source_url;
+          return result;
+        });
+      }
+      if (matchError) {
+        console.warn('[widgetsDb] rpc match_website_data failed, falling back to keyword search:', matchError.message);
+      }
+    } catch (err) {
+      console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
+    }
+
+    // Keyword search fallback
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .eq('website_id', websiteId);
+      .in('widget_id', widgetIds);
 
     if (error || !records || records.length === 0) return [];
 
@@ -600,25 +693,36 @@ export async function getRelevantWebsiteRecords(
 
     return finalRecords.slice(0, limit).map(r => {
       const meta = (r.metadata || {}) as Record<string, any>;
-      const result: WebsiteDataRecord = { entityType: r.data_type };
+      const result: WebsiteDataRecord = { entityType: r.entity_type };
       if (r.title) result.title = r.title;
-      // description: for general text nodes, use content preview. Otherwise, prefer metadata.description
-      if (r.data_type === 'text' && r.content) {
+      
+      // description: prefer short_description column, fallback to content/meta description
+      if (r.short_description) {
+        result.description = r.short_description;
+      } else if (r.entity_type === 'text' && r.content) {
         result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
       } else if (meta.description) {
         result.description = String(meta.description);
       } else if (r.content) {
         result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
       }
-      if (meta.images && Array.isArray(meta.images)) result.images = meta.images.filter(Boolean);
-      else if (meta.image) result.images = [String(meta.image)];
+
+      // images: prefer image_urls column, fallback to metadata
+      if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
+        result.images = r.image_urls;
+      } else if (meta.images && Array.isArray(meta.images)) {
+        result.images = meta.images.filter(Boolean);
+      } else if (meta.image) {
+        result.images = [String(meta.image)];
+      }
+
       if (meta.price !== undefined) result.price = meta.price;
       if (meta.currency) result.currency = String(meta.currency);
       if (meta.availability) result.availability = String(meta.availability);
       if (meta.rating !== undefined) result.rating = meta.rating;
       if (meta.reviews !== undefined) result.reviews = meta.reviews;
       if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
-      if (r.url) result.sourceUrl = r.url;
+      if (r.source_url) result.sourceUrl = r.source_url;
       return result;
     });
   } catch (err) {
@@ -629,10 +733,20 @@ export async function getRelevantWebsiteRecords(
 
 export async function getWebsiteContextSummary(websiteId: string): Promise<string> {
   try {
+    const { data: widgets } = await supabase
+      .from('widgets')
+      .select('id')
+      .eq('website_id', websiteId);
+
+    const widgetIds = widgets?.map(w => w.id) || [];
+    if (widgetIds.length === 0) {
+      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
+
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .eq('website_id', websiteId);
+      .in('widget_id', widgetIds);
 
     if (error || !records || records.length === 0) {
       return '';
@@ -645,11 +759,113 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
       if (meta.rating !== undefined) details.push(`Rating: ${meta.rating}/5 stars (${meta.reviews || 0} reviews)`);
       if (meta.availability) details.push(`Availability: ${meta.availability}`);
       const detailsStr = details.length > 0 ? ` [${details.join(' | ')}]` : '';
-      return `[Category: ${r.data_type || 'General'}] ${r.title}${detailsStr}:\n${r.content}`;
+      return `[Category: ${r.entity_type || 'General'}] ${r.title}${detailsStr}:\n${r.content}`;
     }).join('\n\n');
   } catch (err) {
     console.error(`[widgetsDb] Error in getWebsiteContextSummary:`, err);
     return '';
   }
 }
+
+export interface WebsiteDataRow {
+  id?: string;
+  widget_id: string;
+  source_url?: string;
+  title: string;
+  content: string;
+  entity_type: string;
+  metadata?: Record<string, any>;
+  short_description?: string;
+  image_urls?: string[];
+  data_type?: string;
+  category_path?: string[];
+  content_hash?: string;
+  embedding?: number[];
+}
+
+/**
+ * Batch inserts or updates website data records, automatically computing
+ * vector embeddings from (title + short_description) to leverage semantic search.
+ * Naturally batches embedding API calls and database operations.
+ */
+export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void> {
+  if (rows.length === 0) return;
+
+  // 1. Determine which rows need embeddings computed
+  const needsEmbeddingIndices: number[] = [];
+  const textsToEmbed: string[] = [];
+
+  rows.forEach((row, idx) => {
+    if (!row.embedding || !Array.isArray(row.embedding) || row.embedding.length === 0) {
+      needsEmbeddingIndices.push(idx);
+      const title = row.title || '';
+      const desc = row.short_description || row.content?.substring(0, 300) || '';
+      textsToEmbed.push(`${title} ${desc}`.trim() || 'Untitled');
+    }
+  });
+
+  // 2. Generate embeddings for rows that need them (in a batched call)
+  let computedEmbeddings: number[][] = [];
+  if (textsToEmbed.length > 0) {
+    try {
+      computedEmbeddings = await embedTexts(textsToEmbed);
+    } catch (err) {
+      console.error('[widgetsDb] Error generating embeddings for batch:', err);
+      throw err;
+    }
+  }
+
+  const embeddingMap = new Map<number, number[]>();
+  needsEmbeddingIndices.forEach((rowIndex, i) => {
+    if (computedEmbeddings[i]) {
+      embeddingMap.set(rowIndex, computedEmbeddings[i]);
+    }
+  });
+
+  // 3. Enrich rows with embeddings
+  const enrichedRows = rows.map((row, idx) => ({
+    widget_id: row.widget_id,
+    source_url: row.source_url || null,
+    title: row.title || 'Untitled',
+    content: row.content || '',
+    entity_type: row.entity_type || 'text',
+    metadata: row.metadata || {},
+    short_description: row.short_description || row.content?.substring(0, 300) || '',
+    image_urls: Array.isArray(row.image_urls) ? row.image_urls : [],
+    data_type: row.data_type || 'crawl',
+    category_path: Array.isArray(row.category_path) ? row.category_path : [],
+    content_hash: row.content_hash || null,
+    embedding: row.embedding && row.embedding.length > 0 ? row.embedding : (embeddingMap.get(idx) || null),
+    ...(row.id ? { id: row.id } : {})
+  }));
+
+  // 4. Perform batch insert or upsert in chunks of 50
+  if (supabaseUrl.includes('placeholder-project-url')) {
+    console.warn('[widgetsDb] Placeholder Supabase URL detected; skipping actual PostgreSQL write in test/mock environment.');
+    return;
+  }
+
+  const DB_CHUNK_SIZE = 50;
+  for (let i = 0; i < enrichedRows.length; i += DB_CHUNK_SIZE) {
+    const chunk = enrichedRows.slice(i, i + DB_CHUNK_SIZE);
+    const hasIds = chunk.some(row => row.id);
+    const { error } = hasIds
+      ? await supabase.from('website_data').upsert(chunk)
+      : await supabase.from('website_data').insert(chunk);
+
+    if (error) {
+      console.error('[widgetsDb] Error inserting/upserting website data batch chunk:', error);
+      throw new Error(`[widgetsDb] Save failed: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Inserts or updates a single website data record.
+ */
+export async function saveWebsiteData(row: WebsiteDataRow): Promise<void> {
+  await saveWebsiteDataBatch([row]);
+}
+
+
 

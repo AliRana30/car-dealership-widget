@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   return createClient(url, key);
 }
@@ -31,10 +31,20 @@ export async function GET(req: NextRequest, { params }: Params) {
       return new NextResponse('Website not found or access denied', { status: 404 });
     }
 
+    const { data: widgets } = await supabase
+      .from('widgets')
+      .select('id')
+      .eq('website_id', websiteId);
+
+    const widgetIds = widgets?.map(w => w.id) || [];
+    if (widgetIds.length === 0) {
+      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
+
     const { data: records, error } = await supabase
       .from('website_data')
-      .select('url, title, data_type, content, metadata')
-      .eq('website_id', websiteId)
+      .select('source_url, title, entity_type, content, metadata, short_description, image_urls')
+      .in('widget_id', widgetIds)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -66,18 +76,29 @@ export async function GET(req: NextRequest, { params }: Params) {
           <h1>Website Intelligence</h1>
           <p>${records?.length || 0} records indexed and ready for AI Agent context injection.</p>
           
-          ${(records || []).map(r => `
-            <div class="card">
-              <div class="card-header">
-                <a href="${r.url}" target="_blank" class="card-title">${r.title || 'Untitled'}</a>
-                <span class="badge">${r.data_type}</span>
+          ${(records || []).map(r => {
+            const shortDesc = r.short_description ? `<div style="font-style: italic; color: #475569; margin-bottom: 0.5rem;">${r.short_description}</div>` : '';
+            const imagesHtml = Array.isArray(r.image_urls) && r.image_urls.length > 0
+              ? `<div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; overflow-x: auto;">
+                  ${r.image_urls.map((img: string) => `<img src="${img}" style="height: 60px; border-radius: 4px; object-fit: cover;" />`).join('')}
+                 </div>`
+              : '';
+
+            return `
+              <div class="card">
+                <div class="card-header">
+                  <a href="${r.source_url || '#'}" target="_blank" class="card-title">${r.title || 'Untitled'}</a>
+                  <span class="badge">${r.entity_type}</span>
+                </div>
+                ${shortDesc}
+                ${imagesHtml}
+                <div class="card-content">${r.content}</div>
+                ${Object.keys(r.metadata || {}).length > 0 ? `
+                  <pre><code>${JSON.stringify(r.metadata, null, 2)}</code></pre>
+                ` : ''}
               </div>
-              <div class="card-content">${r.content}</div>
-              ${Object.keys(r.metadata || {}).length > 0 ? `
-                <pre><code>${JSON.stringify(r.metadata, null, 2)}</code></pre>
-              ` : ''}
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
 
           ${records?.length === 0 ? `
             <div class="card" style="text-align: center; color: #64748b; padding: 3rem;">

@@ -1,240 +1,476 @@
 /**
- * Website Intelligence Crawler
+ * Website Intelligence Crawler — Crawl4AI-powered
  *
- * Orchestrates multi-page crawling, sitemap discovery, and entity extraction.
- * Respects robots.txt disallow rules.
- * Normalizes all findings and persists them to the website_data table.
+ * Replaces the hand-rolled link-follower with Crawl4AI's AsyncUrlSeeder
+ * (source="sitemap+cc") for URL discovery and its headless-browser engine
+ * for JS-rendered content extraction.
+ *
+ * Scan modes
+ * ──────────
+ *  QUICK_SCAN  – low page cap, homepage + immediate neighbours only
+ *  MASTER_SCAN – full sitemap-driven discovery, higher cap
  */
 
 import {
-  safeFetch,
-  extractPageEntities,
-  parseSitemap,
-  parseSitemapFromRobots,
-  parseDisallowedPaths,
-  extractInternalLinks,
-} from './extractor';
+  Crawl4AIClient,
+  getGenericLLMExtractionConfig,
+  getJsonCssExtractionConfig,
+  isCrawlResultBlocked,
+  type JsonCssExtractionSchema,
+} from '@/lib/crawl4ai/client';
+import { processEntityImages } from './images';
+import { findMatchingExistingEntity, mergeEntity } from './merge';
+import { ingestShopifyProducts } from '@/lib/connectors/shopify';
+import { ingestWooCommerceProducts } from '@/lib/connectors/woocommerce';
 import { CrawledEntity, CrawlResult } from './types';
 import { createClient } from '@supabase/supabase-js';
+import { saveWebsiteDataBatch, WebsiteDataRow } from '@/config/widgetsDb';
+
+
+
+
+
+// ── Scan-mode and Anti-bot constants ──────────────────────────────────────────
+
+export type ScanMode = 'quick' | 'master';
+
+export const QUICK_SCAN_PAGE_CAP    = 15;   // max pages for a Quick Scan
+export const MASTER_SCAN_PAGE_CAP   = 150;  // max pages for a Master Scan
+export const BLOCKED_THRESHOLD_RATIO = 0.5;  // >50% blocked pages sets job status to 'blocked'
 
 // ── Supabase (server-side) ────────────────────────────────────────────────────
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   return createClient(url, key);
 }
 
-// ── Crawler configuration ─────────────────────────────────────────────────────
+// ── Crawl4AI singleton ────────────────────────────────────────────────────────
 
-const MAX_PAGES = 30;           // max pages to crawl per website
-const MAX_ENTITIES = 200;       // max entities to store
-const CONCURRENCY = 3;          // parallel fetch slots
-const CRAWL_DELAY_MS = 250;     // polite delay between batches
+let _crawl4aiClient: Crawl4AIClient | null = null;
+function getCrawl4AIClient(): Crawl4AIClient {
+  if (!_crawl4aiClient) {
+    _crawl4aiClient = new Crawl4AIClient({
+      defaultTimeoutMs: 120_000, // 2 min per page batch
+      maxRetries: 2,
+    });
+  }
+  return _crawl4aiClient;
+}
 
-// ── Main crawler ──────────────────────────────────────────────────────────────
+// ── Main entry point ──────────────────────────────────────────────────────────
 
-export async function crawlWebsite(websiteId: string, startUrl: string): Promise<CrawlResult> {
+export async function crawlWebsite(
+  websiteId: string,
+  startUrl: string,
+  scanMode: ScanMode = 'master'
+): Promise<CrawlResult> {
   const t0 = Date.now();
   const errors: string[] = [];
-  const allEntities: CrawledEntity[] = [];
-  const visited = new Set<string>();
-  let pagesVisited = 0;
 
-  // Normalize start URL
+  // Normalise start URL
   let base: URL;
   try {
     base = new URL(startUrl.startsWith('http') ? startUrl : `https://${startUrl}`);
   } catch {
-    return { websiteId, startUrl, pagesVisited: 0, entitiesFound: 0, entities: [], errors: ['Invalid start URL'], durationMs: Date.now() - t0 };
+    return {
+      websiteId,
+      startUrl,
+      pagesVisited: 0,
+      entitiesFound: 0,
+      blockedPages: 0,
+      isBlocked: false,
+      entities: [],
+      errors: ['Invalid start URL'],
+      durationMs: Date.now() - t0,
+    };
   }
 
-  const normalizedStart = base.origin + base.pathname.replace(/\/$/, '') || base.origin;
-  const toVisit: string[] = [normalizedStart];
-  let disallowed: string[] = [];
-  let sitemapUrls: string[] = [];
+  const pageCap = scanMode === 'quick' ? QUICK_SCAN_PAGE_CAP : MASTER_SCAN_PAGE_CAP;
 
-  // ── Step 1: Fetch robots.txt ──────────────────────────────────────────────
+  // ── Step 1: Discover URLs via Crawl4AI seeder ──────────────────────────────
+  let candidateUrls: string[] = [];
   try {
-    const robotsResult = await safeFetch(`${base.origin}/robots.txt`);
-    if (robotsResult && robotsResult.contentType.includes('text')) {
-      disallowed = parseDisallowedPaths(robotsResult.html);
-      const sitemapRefs = parseSitemapFromRobots(robotsResult.html, base.origin);
-      sitemapUrls.push(...sitemapRefs);
+    candidateUrls = await discoverUrlsViaSeeder(base.href, pageCap, scanMode, errors);
+  } catch (err: any) {
+    errors.push(`Seeder error: ${err.message}`);
+    // Fall back to at least the homepage
+    candidateUrls = [base.href];
+  }
+
+  if (candidateUrls.length === 0) {
+    candidateUrls = [base.href];
+  }
+
+  // ── Step 2: Determine Platform & Extraction Strategy ───────────────────────
+  const supabase = getSupabase();
+  let extractionStrategy: any = getGenericLLMExtractionConfig();
+  let detectedPlatform = 'unknown';
+
+  try {
+    const { data: websiteRow } = await supabase
+      .from('websites')
+      .select('css_selector_schema, detected_platform')
+      .eq('id', websiteId)
+      .maybeSingle();
+
+    if (websiteRow?.detected_platform) {
+      detectedPlatform = websiteRow.detected_platform;
+    }
+
+    const customCssSchema = websiteRow?.css_selector_schema as JsonCssExtractionSchema | null;
+    if (
+      customCssSchema &&
+      typeof customCssSchema === 'object' &&
+      customCssSchema.baseSelector &&
+      Array.isArray(customCssSchema.fields) &&
+      customCssSchema.fields.length > 0
+    ) {
+      extractionStrategy = getJsonCssExtractionConfig(customCssSchema);
+      console.log(`[crawler] Using fast-path JsonCssExtractionStrategy for website ${websiteId}`);
     }
   } catch (e) {
-    errors.push(`robots.txt: ${e instanceof Error ? e.message : String(e)}`);
+    // Fall back to default LLM extraction on lookup error
   }
 
-  // ── Step 2: Fetch sitemap ─────────────────────────────────────────────────
-  const sitemapCandidates = sitemapUrls.length
-    ? sitemapUrls
-    : [`${base.origin}/sitemap.xml`, `${base.origin}/sitemap_index.xml`];
+  // ── Step 2b: Structured Platform Connector Ingestion (Shopify/WooCommerce) ──
+  let structuredProductCount = 0;
+  let nonProductCandidateUrls = candidateUrls;
 
-  for (const sitemapUrl of sitemapCandidates.slice(0, 3)) {
+  if (detectedPlatform === 'shopify') {
     try {
-      const result = await safeFetch(sitemapUrl);
-      if (result && (result.contentType.includes('xml') || result.html.includes('<urlset'))) {
-        const urls = parseSitemap(result.html, base.origin);
-        // Prioritize content pages — filter out pagination, tag clouds, etc.
-        const priority = prioritizeUrls(urls, base.hostname);
-        toVisit.push(...priority.slice(0, 20));
-      }
-    } catch (e) {
-      errors.push(`Sitemap ${sitemapUrl}: ${e instanceof Error ? e.message : String(e)}`);
+      console.log(`[crawler] Detected Shopify platform — running structured product ingestion for ${base.href}`);
+      const res = await ingestShopifyProducts({ id: websiteId, domain: base.href });
+      structuredProductCount = res.count;
+      // Filter out product pages from HTML crawl list to focus on non-product pages (About, FAQ, policies, etc.)
+      nonProductCandidateUrls = candidateUrls.filter(u => !/\/products\/[a-z0-9-_]+/i.test(u));
+      if (nonProductCandidateUrls.length === 0) nonProductCandidateUrls = [base.href];
+    } catch (shopifyErr: any) {
+      console.warn(`[crawler] Shopify connector failed (${shopifyErr.message}), falling back to full crawl`);
+    }
+  } else if (detectedPlatform === 'woocommerce') {
+    try {
+      console.log(`[crawler] Detected WooCommerce platform — running structured product ingestion for ${base.href}`);
+      const res = await ingestWooCommerceProducts({ id: websiteId, domain: base.href });
+      structuredProductCount = res.count;
+      nonProductCandidateUrls = candidateUrls.filter(u => !/\/product\/[a-z0-9-_]+/i.test(u));
+      if (nonProductCandidateUrls.length === 0) nonProductCandidateUrls = [base.href];
+    } catch (wooErr: any) {
+      // Credentials might not be configured yet; fall back gracefully to normal crawl
     }
   }
 
-  // Deduplicate and limit queue
-  const dedupedQueue = [...new Set(toVisit)].slice(0, MAX_PAGES + 5);
+  // Enforce page cap on non-product pages
+  const urlsToFetch = nonProductCandidateUrls.slice(0, pageCap);
 
-  // ── Step 3: Crawl pages in batches ────────────────────────────────────────
-  let queueIdx = 0;
+  // ── Step 3: Crawl discovered non-product pages via Crawl4AI ─────────────────
+  const allEntities: CrawledEntity[] = [];
+  let pagesVisited = 0;
+  let blockedPages = 0;
 
-  while (queueIdx < dedupedQueue.length && pagesVisited < MAX_PAGES && allEntities.length < MAX_ENTITIES) {
-    // Pick next batch
-    const batch: string[] = [];
-    while (batch.length < CONCURRENCY && queueIdx < dedupedQueue.length) {
-      const url = dedupedQueue[queueIdx++];
-      if (!visited.has(url)) {
-        visited.add(url);
-        batch.push(url);
-      }
-    }
-    if (!batch.length) break;
+  // Process in batches of 5 to avoid overwhelming the service
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < urlsToFetch.length; i += BATCH_SIZE) {
+    const batch = urlsToFetch.slice(i, i + BATCH_SIZE);
+    try {
+      const response = await getCrawl4AIClient().crawl({
+        urls: batch,
+        browser_config: {
+          headless: true,
+          verbose: false,
+          // Crawl4AI anti-bot handling and user emulation
+          magic: true,
+          simulate_user: true,
+          override_navigator: true,
+        },
+        crawler_config: {
+          // Extract clean markdown content from each page
+          output_formats: ['markdown', 'metadata'],
+          // Skip media-heavy boilerplate for speed
+          excluded_tags: ['nav', 'footer', 'header', 'script', 'style'],
+          word_count_threshold: 20,
+          // Follow only same-domain links
+          same_domain: true,
+          // Built-in anti-bot detection
+          anti_bot_detection: true,
+          magic: true,
+          // CSS fast-path if configured, otherwise generic LLM strategy
+          extraction_strategy: extractionStrategy,
+        },
+      });
 
-    // Fetch batch in parallel
-    const results = await Promise.allSettled(batch.map(url => fetchAndExtract(url, base.origin, disallowed)));
+      for (const result of response.results) {
+        // Anti-bot detection: Check if page was blocked by WAF challenge / firewall
+        if (isCrawlResultBlocked(result)) {
+          blockedPages++;
+          errors.push(`Page blocked by anti-bot/WAF (${result.url}): status ${result.status_code || 'blocked'}`);
+          continue; // DO NOT insert an Entity row for a blocked page
+        }
 
-    for (const result of results) {
-      if (result.status === 'rejected') {
-        errors.push(String(result.reason));
-        continue;
-      }
-      const { entities, internalLinks, pageUrl } = result.value;
-      pagesVisited++;
-
-      // Add new internal links to queue
-      for (const link of internalLinks) {
-        if (!visited.has(link) && !dedupedQueue.includes(link) && dedupedQueue.length < MAX_PAGES + 10) {
-          dedupedQueue.push(link);
+        if (!result.success) {
+          errors.push(`Failed to crawl ${result.url}: ${result.error_message || 'unknown error'}`);
+          continue;
+        }
+        pagesVisited++;
+        const entities = extractEntitiesFromCrawlResult(result);
+        for (const entity of entities) {
+          if (!isDuplicate(entity, allEntities)) {
+            allEntities.push(entity);
+          }
         }
       }
-
-      // Deduplicate entities by title
-      for (const entity of entities) {
-        if (!isDuplicate(entity, allEntities)) {
-          allEntities.push(entity);
-          if (allEntities.length >= MAX_ENTITIES) break;
-        }
-      }
-    }
-
-    if (CRAWL_DELAY_MS > 0) {
-      await new Promise(r => setTimeout(r, CRAWL_DELAY_MS));
+    } catch (err: any) {
+      errors.push(`Batch crawl error (${batch.join(', ')}): ${err.message}`);
     }
   }
+
+  // Calculate if overall job is blocked by anti-bot firewall
+  const totalAttempted = pagesVisited + blockedPages;
+  const isBlocked =
+    blockedPages > 0 &&
+    (pagesVisited === 0 || (blockedPages / (totalAttempted || 1)) >= BLOCKED_THRESHOLD_RATIO);
 
   // ── Step 4: Persist to Supabase ───────────────────────────────────────────
-  await persistEntities(websiteId, allEntities);
+  if (allEntities.length > 0) {
+    await persistEntities(websiteId, allEntities);
+  }
 
   return {
     websiteId,
-    startUrl: normalizedStart,
+    startUrl: base.href,
     pagesVisited,
-    entitiesFound: allEntities.length,
+    entitiesFound: allEntities.length + structuredProductCount,
+    blockedPages,
+    isBlocked,
     entities: allEntities,
     errors,
     durationMs: Date.now() - t0,
   };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Seeder: discover URLs via Crawl4AI AsyncUrlSeeder ────────────────────────
 
-async function fetchAndExtract(
-  url: string,
-  origin: string,
-  disallowed: string[]
-): Promise<{ pageUrl: string; entities: CrawledEntity[]; internalLinks: string[] }> {
-  const result = await safeFetch(url);
-  if (!result) return { pageUrl: url, entities: [], internalLinks: [] };
+/**
+ * Calls the Crawl4AI seeder endpoint (POST /seed) to get candidate URLs from
+ * sitemap discovery + Common Crawl index fallback.
+ *
+ * Quick Scan: limits results to the homepage and its immediately-linked pages.
+ * Master Scan: returns the full sitemap-driven URL list up to pageCap.
+ */
+async function discoverUrlsViaSeeder(
+  startUrl: string,
+  pageCap: number,
+  scanMode: ScanMode,
+  errors: string[]
+): Promise<string[]> {
+  const client = getCrawl4AIClient();
 
-  const { html, contentType } = result;
+  try {
+    const seedResult = await client.seed({
+      url: startUrl,
+      source: 'sitemap+cc',
+      max_urls: pageCap,
+      ...(scanMode === 'quick' ? { max_depth: 1 } : {}),
+    });
 
-  // Handle JSON API responses
-  if (contentType.includes('application/json')) {
+    const validUrls = (seedResult.urls || []).filter(
+      (u): u is string => typeof u === 'string' && u.startsWith('http')
+    );
+
+    if (validUrls.length > 0) {
+      return validUrls;
+    }
+
+    errors.push('Seeder returned no URLs; falling back to homepage');
+    return [startUrl];
+  } catch (err: any) {
+    errors.push(`Seeder error (${err.message}), falling back to homepage`);
+    return [startUrl];
+  }
+}
+
+
+// ── Entity extraction from Crawl4AI result ────────────────────────────────────
+
+function extractEntitiesFromCrawlResult(
+  result: import('@/lib/crawl4ai/client').CrawlResult
+): CrawledEntity[] {
+  // 1. Check for structured output from Crawl4AI (LLM or CSS extraction strategy)
+  if (result.extracted_content) {
     try {
-      const parsed = JSON.parse(html);
-      const entities = extractJsonApiEntities(parsed, url);
-      return { pageUrl: url, entities, internalLinks: [] };
-    } catch {
-      return { pageUrl: url, entities: [], internalLinks: [] };
+      let parsed = result.extracted_content;
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+
+      const rawEntities: any[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.entities)
+        ? parsed.entities
+        : parsed?.title
+        ? [parsed]
+        : [];
+
+      if (rawEntities.length > 0) {
+        const entities: CrawledEntity[] = [];
+        const knownKeys = new Set([
+          'title', 'shortDescription', 'short_description', 'description', 'content',
+          'imageUrls', 'image_urls', 'imageUrl', 'image_url', 'image',
+          'sourceUrl', 'source_url', 'url',
+          'entityType', 'entity_type', 'metadata',
+        ]);
+
+        for (const item of rawEntities) {
+          if (!item || typeof item !== 'object') continue;
+          const title = (item.title || '').trim();
+          if (!title) continue;
+
+          const desc =
+            (typeof item.shortDescription === 'string' ? item.shortDescription : '') ||
+            (typeof item.short_description === 'string' ? item.short_description : '') ||
+            (typeof item.description === 'string' ? item.description : '') ||
+            (typeof item.content === 'string' ? item.content : '') ||
+            '';
+
+          const rawImages: any[] = [
+            ...(Array.isArray(item.imageUrls) ? item.imageUrls : []),
+            ...(Array.isArray(item.image_urls) ? item.image_urls : []),
+            ...(item.imageUrl ? [item.imageUrl] : []),
+            ...(item.image_url ? [item.image_url] : []),
+            ...(item.image ? [item.image] : []),
+            ...(item.srcset ? [item.srcset] : []),
+          ];
+
+          const { imageUrls, imageSource } = processEntityImages(rawImages, result.url);
+          const entityType = (item.entityType || item.entity_type || 'text') as CrawledEntity['dataType'];
+
+          // Extract additional CSS / custom properties into metadata
+          const extraProps: Record<string, any> = {};
+          for (const [k, v] of Object.entries(item)) {
+            if (!knownKeys.has(k) && v !== undefined && v !== null && v !== '') {
+              extraProps[k] = v;
+            }
+          }
+
+          const meta = {
+            ...extraProps,
+            ...(imageSource ? { imageSource } : {}),
+            ...(typeof item.metadata === 'object' && item.metadata !== null ? item.metadata : {}),
+          };
+
+          entities.push({
+            url: item.sourceUrl || item.source_url || result.url,
+            title,
+            content: desc || title,
+            dataType: entityType,
+            metadata: {
+              description: desc,
+              images: imageUrls.slice(0, 5),
+              statusCode: result.status_code,
+              ...flattenMeta(meta),
+            },
+          });
+        }
+
+        if (entities.length > 0) {
+          return entities;
+        }
+      }
+    } catch (parseErr) {
+      console.warn(`[crawler] Failed to parse structured extracted_content for ${result.url}:`, parseErr);
     }
   }
 
-  // HTML pages
-  const entities = extractPageEntities(html, url);
-  const internalLinks = extractInternalLinks(html, origin, disallowed);
-  return { pageUrl: url, entities, internalLinks };
+  // 2. Generic fallback extraction (no vertical-specific branching)
+  const markdown = result.markdown || result.cleaned_html || result.html || '';
+  const meta     = result.metadata || {};
+
+  if (!markdown && !meta.title) return [];
+
+  const title =
+    (typeof meta.title === 'string' ? meta.title : '') ||
+    extractTitleFromMarkdown(markdown) ||
+    new URL(result.url).pathname.replace(/[-_/]/g, ' ').trim() ||
+    result.url;
+
+  const description =
+    (typeof meta.description === 'string' ? meta.description : '') ||
+    extractFirstParagraph(markdown);
+
+  const rawFallbackImages: any[] = [];
+  if (typeof meta.og_image === 'string' && meta.og_image) rawFallbackImages.push(meta.og_image);
+  if (Array.isArray(meta.images)) {
+    for (const img of meta.images) {
+      if (img) rawFallbackImages.push(img);
+    }
+  }
+
+  const { imageUrls: fallbackImageUrls, imageSource: fallbackImageSource } = processEntityImages(rawFallbackImages, result.url);
+
+  // Classify entity type generically
+  const entityType = classifyEntityType(result.url, markdown);
+
+  const fallbackMeta = {
+    ...flattenMeta(meta),
+    ...(fallbackImageSource ? { imageSource: fallbackImageSource } : {}),
+  };
+
+  const entity: CrawledEntity = {
+    url: result.url,
+    title: title.trim(),
+    content: description || markdown.substring(0, 1000),
+    dataType: entityType as CrawledEntity['dataType'],
+    metadata: {
+      description: description,
+      images: fallbackImageUrls.slice(0, 5),
+      statusCode: result.status_code,
+      ...fallbackMeta,
+    },
+  };
+
+  return [entity];
 }
 
-function extractJsonApiEntities(data: any, url: string): CrawledEntity[] {
-  const entities: CrawledEntity[] = [];
-  const arr = Array.isArray(data) ? data : (data.data || data.results || data.items || data.products || data.vehicles || []);
-  if (!Array.isArray(arr)) return entities;
 
-  for (const item of arr.slice(0, 20)) {
-    if (typeof item !== 'object' || !item) continue;
-    const title = item.name || item.title || item.make && `${item.year || ''} ${item.make} ${item.model || ''}`.trim() || '';
-    const content = item.description || item.summary || title;
-    if (!title && !content) continue;
+function extractTitleFromMarkdown(md: string): string {
+  const match = md.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : '';
+}
 
-    const entity: CrawledEntity = {
-      url: item.url || item.link || url,
-      title,
-      content: content || title,
-      dataType: 'product',
-      metadata: {},
-    };
-    if (item.description) entity.metadata.description = item.description;
-    const imgs = item.images || item.photos || (item.image ? [item.image] : item.imageUrl ? [item.imageUrl] : []);
-    if (imgs.length) entity.metadata.images = imgs.slice(0, 3).map((i: any) => typeof i === 'string' ? i : i?.url || '').filter(Boolean);
-    if (item.price !== undefined) entity.metadata.price = item.price;
-    if (item.currency || item.priceCurrency) entity.metadata.currency = item.currency || item.priceCurrency;
-    entities.push(entity);
+function extractFirstParagraph(md: string): string {
+  // Skip headings, find first substantial text block
+  const lines = md.split('\n').filter(l => l.trim() && !l.startsWith('#') && !l.startsWith('!'));
+  return lines.slice(0, 3).join(' ').substring(0, 300);
+}
+
+function classifyEntityType(
+  url: string,
+  content: string
+): CrawledEntity['dataType'] {
+  const lower = url.toLowerCase() + ' ' + content.toLowerCase().substring(0, 200);
+  if (/product|item|sku|shop|store|buy|cart|price|\$|£|€/.test(lower)) return 'product';
+  if (/service|solution|offer|package|plan/.test(lower))                return 'service';
+  if (/faq|question|answer|help|support/.test(lower))                   return 'faq';
+  if (/contact|phone|email|address|location|map/.test(lower))           return 'contact';
+  if (/pricing|cost|fee|subscription/.test(lower))                      return 'pricing';
+  if (/event|webinar|conference|workshop/.test(lower))                   return 'event';
+  return 'text';
+}
+
+function flattenMeta(meta: Record<string, any>): Record<string, unknown> {
+  const safe: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(meta)) {
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      safe[k] = v;
+    }
   }
-  return entities;
+  return safe;
 }
 
 function isDuplicate(entity: CrawledEntity, existing: CrawledEntity[]): boolean {
   if (!entity.title) return false;
   return existing.some(e => e.title?.toLowerCase() === entity.title?.toLowerCase());
-}
-
-function prioritizeUrls(urls: string[], hostname: string): string[] {
-  const high: string[] = [];
-  const normal: string[] = [];
-
-  const highPriorityPatterns = [
-    /\/(products?|services?|pricing|plans?|vehicle|inventory|fleet|menu|catalog|shop|store)/i,
-    /\/(about|faq|contact|locations?|hours|team)/i,
-    /\/(cars?|trucks?|suvs?|sedans?|vehicles?)\//i,
-  ];
-  const lowPriorityPatterns = [
-    /\/(tag|category|author|page|archive|feed|sitemap|rss)/i,
-    /\/\d{4}\/\d{2}\//,  // date-based blog archives
-  ];
-
-  for (const url of urls) {
-    try {
-      const u = new URL(url);
-      if (u.hostname !== hostname) continue;
-      if (lowPriorityPatterns.some(p => p.test(u.pathname))) continue;
-      if (highPriorityPatterns.some(p => p.test(u.pathname))) high.push(url);
-      else normal.push(url);
-    } catch {}
-  }
-  return [...high, ...normal];
 }
 
 // ── Supabase persistence ──────────────────────────────────────────────────────
@@ -243,42 +479,93 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
   if (!entities.length) return;
   const supabase = getSupabase();
 
-  // Delete old crawled entries (preserve any manually added ones by skipping if you prefer)
-  await supabase
+  // Find widget(s) associated with websiteId
+  const { data: widgets, error: widgetError } = await supabase
+    .from('widgets')
+    .select('id')
+    .eq('website_id', websiteId);
+
+  if (widgetError) {
+    console.error('[crawler] Widget lookup error:', widgetError.message);
+  }
+
+  const widgetIds = widgets?.map(w => w.id) || [];
+  if (widgetIds.length === 0) {
+    widgetIds.push('00000000-0000-0000-0000-000000000000');
+  }
+
+  // Fetch existing records for these widgets to check for connector-sourced rows
+  const { data: existingRecords } = await supabase
     .from('website_data')
-    .delete()
-    .eq('website_id', websiteId)
-    .not('url', 'is', null); // only delete URL-tagged crawled rows
+    .select('*')
+    .in('widget_id', widgetIds);
 
-  const rows = entities.map(e => ({
-    website_id: websiteId,
-    url: e.url,
-    title: e.title || 'Untitled',
-    content: e.content || e.title || '',
-    data_type: e.dataType,
-    metadata: e.metadata || {},
-  }));
+  const rowsToSave: WebsiteDataRow[] = [];
 
-  // Batch insert in chunks of 50
-  for (let i = 0; i < rows.length; i += 50) {
-    const chunk = rows.slice(i, i + 50);
-    const { error } = await supabase.from('website_data').insert(chunk);
-    if (error) {
-      console.error('[crawler] Insert error:', error.message);
+  for (const widgetId of widgetIds) {
+    for (const e of entities) {
+      const imageUrls: string[] = Array.isArray(e.metadata?.images)
+        ? (e.metadata.images as any[]).filter((img): img is string => typeof img === 'string')
+        : typeof e.metadata?.image === 'string' && e.metadata.image
+        ? [e.metadata.image as string]
+        : [];
+
+      const categoryPath: string[] = [];
+      if (typeof e.metadata?.category === 'string' && e.metadata.category) {
+        categoryPath.push(e.metadata.category as string);
+      }
+
+      const incomingRow: WebsiteDataRow = {
+        widget_id:         widgetId,
+        source_url:        e.url,
+        title:             e.title || 'Untitled',
+        content:           e.content || e.title || '',
+        entity_type:       e.dataType || 'text',
+        metadata:          e.metadata || {},
+        short_description: (e.metadata?.description as string) || e.content?.substring(0, 300) || '',
+        image_urls:        imageUrls,
+        data_type:         'crawl',
+        category_path:     categoryPath,
+      };
+
+      // Match against existing records (Shopify, WooCommerce, Feed, Manual, or previous Crawl)
+      const matchingExisting = findMatchingExistingEntity(incomingRow, (existingRecords || []) as WebsiteDataRow[]);
+      if (matchingExisting) {
+        // Precedence merge: preserve connector fields, fill in missing JSON-LD/crawled fields
+        const mergedRow = mergeEntity(matchingExisting, incomingRow);
+        rowsToSave.push(mergedRow);
+      } else {
+        rowsToSave.push(incomingRow);
+      }
+    }
+  }
+
+  // Batch insert/upsert in chunks of 50 via centralized embedding path
+  for (let i = 0; i < rowsToSave.length; i += 50) {
+    const chunk = rowsToSave.slice(i, i + 50);
+    try {
+      await saveWebsiteDataBatch(chunk);
+    } catch (err: any) {
+      console.error('[crawler] Insert/merge error:', err.message || err);
     }
   }
 }
 
-// ── Crawl job management ──────────────────────────────────────────────────────
+// ── Crawl job management (unchanged public API) ───────────────────────────────
 
-export async function createCrawlJob(websiteId: string, startUrl: string): Promise<string> {
+export async function createCrawlJob(
+  websiteId: string,
+  startUrl: string,
+  scanMode: ScanMode = 'master'
+): Promise<string> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('crawl_jobs')
     .insert({
       website_id: websiteId,
-      start_url: startUrl,
-      status: 'pending',
+      start_url:  startUrl,
+      status:     'pending',
+      scan_mode:  scanMode,
     })
     .select('id')
     .single();
@@ -290,11 +577,12 @@ export async function createCrawlJob(websiteId: string, startUrl: string): Promi
 export async function updateCrawlJob(
   jobId: string,
   updates: {
-    status?: string;
-    pages_visited?: number;
-    entities_found?: number;
-    error_message?: string;
-    completed_at?: string;
+    status?:          'pending' | 'running' | 'completed' | 'failed' | 'blocked' | string;
+    pages_visited?:   number;
+    entities_found?:  number;
+    blocked_pages?:   number;
+    error_message?:   string;
+    completed_at?:    string;
   }
 ): Promise<void> {
   const supabase = getSupabase();

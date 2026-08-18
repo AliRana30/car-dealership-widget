@@ -1,9 +1,13 @@
+-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- Create the organizations table
 CREATE TABLE IF NOT EXISTS organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
 
 -- Insert default organization
 INSERT INTO organizations (id, name)
@@ -16,22 +20,31 @@ CREATE TABLE IF NOT EXISTS websites (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     allowed_domains TEXT[] DEFAULT '{}'::TEXT[] NOT NULL,
+    css_selector_schema JSONB DEFAULT NULL,
+    detected_platform TEXT DEFAULT 'unknown' NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+
 
 -- Insert default website
 INSERT INTO websites (id, organization_id, name, allowed_domains)
 VALUES ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000000', 'Default Website', '{}'::TEXT[])
 ON CONFLICT (id) DO NOTHING;
 
--- Create the widget secrets table to isolate API keys
+-- Create the widget secrets table to isolate API keys and platform credentials
 CREATE TABLE IF NOT EXISTS widget_secrets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    website_id UUID REFERENCES websites(id) ON DELETE CASCADE,
+    secret_type TEXT DEFAULT 'voice_provider',
     retell_api_key TEXT,
     vapi_api_key TEXT,
+    consumer_key TEXT,
+    consumer_secret TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
 
 -- Create the agents table
 CREATE TABLE IF NOT EXISTS agents (
@@ -139,18 +152,25 @@ CREATE POLICY "Allow all access to server-side operations" ON widget_configurati
 -- Create the website data table to store indexed/crawled site intelligence
 CREATE TABLE IF NOT EXISTS website_data (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
-    url TEXT,
+    widget_id UUID NOT NULL REFERENCES widgets(id) ON DELETE CASCADE,
+    source_url TEXT,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
-    data_type TEXT NOT NULL DEFAULT 'text',
+    entity_type TEXT NOT NULL DEFAULT 'text',
     metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    short_description TEXT,
+    image_urls JSONB NOT NULL DEFAULT '[]'::jsonb,
+    data_type TEXT NOT NULL DEFAULT 'crawl',
+    category_path TEXT[] DEFAULT '{}'::text[],
+    content_hash TEXT,
+    embedding vector(1536),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
 -- Index for fast relational lookup
-CREATE INDEX IF NOT EXISTS idx_website_data_website_id ON website_data(website_id);
+CREATE INDEX IF NOT EXISTS idx_website_data_widget_id ON website_data(widget_id);
+
 
 -- Automatic updated_at trigger
 DROP TRIGGER IF EXISTS update_website_data_updated_at ON website_data;
@@ -160,11 +180,28 @@ CREATE TRIGGER update_website_data_updated_at BEFORE UPDATE ON website_data
 -- Enable RLS
 ALTER TABLE website_data ENABLE ROW LEVEL SECURITY;
 
--- Policy to allow all operations from Next.js server-side route handlers
-DROP POLICY IF EXISTS "Allow all access to server-side operations" ON website_data;
-CREATE POLICY "Allow all access to server-side operations" ON website_data FOR ALL USING (true) WITH CHECK (true);
+-- Create the crawl jobs table
+CREATE TABLE IF NOT EXISTS crawl_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    website_id UUID NOT NULL REFERENCES websites(id) ON DELETE CASCADE,
+    start_url TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'blocked')),
+    scan_mode TEXT DEFAULT 'master',
+    pages_visited INTEGER DEFAULT 0,
+    entities_found INTEGER DEFAULT 0,
+    blocked_pages INTEGER DEFAULT 0 NOT NULL,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_crawl_jobs_website_id ON crawl_jobs(website_id);
+ALTER TABLE crawl_jobs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to server-side operations" ON crawl_jobs;
+CREATE POLICY "Allow all access to server-side operations" ON crawl_jobs FOR ALL USING (true) WITH CHECK (true);
 
 -- Insert seed website intelligence data for the Default Website
+
 INSERT INTO website_data (website_id, url, title, content, data_type)
 VALUES 
 ('00000000-0000-0000-0000-000000000000', 'https://example.com/services', 'CarePoint Clinic Services', 'We provide general consultations ($50), pediatric care ($60), vaccinations ($30), and specialized cardiovascular exams ($150). Appointments can be booked online. We are open Mon-Fri 8am-6pm.', 'service'),

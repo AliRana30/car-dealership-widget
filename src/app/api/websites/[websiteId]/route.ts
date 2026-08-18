@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   return createClient(url, key);
 }
@@ -47,6 +47,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
       updateData.name = name.trim();
     }
 
+    if (body.cssSelectorSchema !== undefined || body.css_selector_schema !== undefined) {
+      updateData.css_selector_schema = body.cssSelectorSchema !== undefined ? body.cssSelectorSchema : body.css_selector_schema;
+    }
+
+    if (body.detectedPlatform !== undefined || body.detected_platform !== undefined) {
+      updateData.detected_platform = body.detectedPlatform !== undefined ? body.detectedPlatform : body.detected_platform;
+    }
+
     if (domain !== undefined) {
       const trimmedDomain = domain.trim();
       const startUrl = trimmedDomain.startsWith('http') ? trimmedDomain : `https://${trimmedDomain}`;
@@ -66,12 +74,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
       .from('websites')
       .update(updateData)
       .eq('id', websiteId)
-      .select('id, name, allowed_domains')
+      .select('id, name, allowed_domains, css_selector_schema, detected_platform')
       .single();
 
     if (error) throw error;
 
     return NextResponse.json({ website });
+
+
   } catch (err: any) {
     console.error(`[api/websites/${websiteId}] PUT failed:`, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
