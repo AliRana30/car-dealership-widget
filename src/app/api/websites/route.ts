@@ -33,11 +33,29 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    const { data: websites, error } = await supabase
+    let websites: any[] | null = null;
+    let error: any = null;
+
+    const fullSelect = await supabase
       .from('websites')
       .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
+
+    websites = fullSelect.data;
+    error = fullSelect.error;
+
+    // Fallback if remote schema cache is missing newer columns
+    if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache') || error.message?.includes('column'))) {
+      console.warn('[api/websites] Fallback GET select without newer columns:', error.message);
+      const fallback = await supabase
+        .from('websites')
+        .select('id, name, allowed_domains, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      websites = fallback.data;
+      error = fallback.error;
+    }
 
     if (error) throw error;
 
@@ -49,7 +67,7 @@ export async function GET(req: NextRequest) {
         .eq('website_id', site.id)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
       return { ...site, crawlJob: job || null };
     }));
 
@@ -104,21 +122,46 @@ export async function POST(req: NextRequest) {
     // Platform auto-detection (Shopify, WooCommerce, unknown)
     const detectedPlatform = await detectPlatform(validatedUrl).catch(() => 'unknown');
 
-    // Create the website record
-    const { data: website, error: wsError } = await supabase
+    // Create the website record with resilient fallback for un-migrated columns
+    let website: any = null;
+    let wsError: any = null;
+
+    const fullPayload: Record<string, any> = {
+      organization_id: orgId,
+      user_id: userId,
+      name: name.trim(),
+      allowed_domains: [new URL(validatedUrl).hostname],
+      css_selector_schema: cssSelectorSchema,
+      detected_platform: detectedPlatform,
+      sync_frequency: finalSyncFreq,
+    };
+
+    const fullResult = await supabase
       .from('websites')
-      .insert({
-        organization_id: orgId,
-        user_id: userId,
-        name: name.trim(),
-        allowed_domains: [new URL(validatedUrl).hostname],
-        css_selector_schema: cssSelectorSchema,
-        detected_platform: detectedPlatform,
-        sync_frequency: finalSyncFreq,
-      })
+      .insert(fullPayload)
       .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
       .single();
 
+    website = fullResult.data;
+    wsError = fullResult.error;
+
+    // Fallback if remote schema cache is missing newer columns
+    if (wsError && (wsError.code === 'PGRST204' || wsError.message?.includes('schema cache') || wsError.message?.includes('column'))) {
+      console.warn('[api/websites] Retrying website creation with base columns due to missing DB columns:', wsError.message);
+      const fallbackResult = await supabase
+        .from('websites')
+        .insert({
+          organization_id: orgId,
+          user_id: userId,
+          name: name.trim(),
+          allowed_domains: [new URL(validatedUrl).hostname],
+        })
+        .select('id, name, allowed_domains, created_at')
+        .single();
+
+      website = fallbackResult.data;
+      wsError = fallbackResult.error;
+    }
 
     if (wsError || !website) {
       throw new Error(wsError?.message || 'Failed to create website');
@@ -157,26 +200,28 @@ async function runCrawlInBackground(
   websiteId: string,
   startUrl: string,
   jobId: string,
-  scanMode: 'quick' | 'master' = 'master'
+  scanMode: ScanMode = 'master'
 ) {
   try {
     await updateCrawlJob(jobId, { status: 'running' });
+
     const result = await crawlWebsite(websiteId, startUrl, scanMode);
+
+    const finalStatus = result.isBlocked ? 'blocked' : 'completed';
     await updateCrawlJob(jobId, {
-      status: 'completed',
+      status: finalStatus,
       pages_visited: result.pagesVisited,
       entities_found: result.entitiesFound,
+      blocked_pages: result.blockedPages || 0,
       completed_at: new Date().toISOString(),
-      ...(result.errors.length ? { error_message: result.errors.slice(0, 3).join('; ') } : {}),
+      ...(result.isBlocked ? { error_message: 'Crawl blocked by anti-bot firewall (WAF challenge detected).' } : {}),
     });
-    console.log(`[crawler] Job ${jobId} (${scanMode}) completed: ${result.pagesVisited} pages, ${result.entitiesFound} entities`);
   } catch (err: any) {
-    console.error(`[crawler] Job ${jobId} failed:`, err.message);
+    console.error(`[runCrawlInBackground] Job ${jobId} failed:`, err);
     await updateCrawlJob(jobId, {
       status: 'failed',
-      error_message: err.message,
+      error_message: err.message || 'Crawl failed unexpectedly',
       completed_at: new Date().toISOString(),
     });
   }
 }
-

@@ -74,12 +74,35 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    const { data: website, error } = await supabase
+    let website: any = null;
+    let error: any = null;
+
+    const fullResult = await supabase
       .from('websites')
       .update(updateData)
       .eq('id', websiteId)
       .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
       .single();
+
+    website = fullResult.data;
+    error = fullResult.error;
+
+    if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache') || error.message?.includes('column'))) {
+      console.warn('[api/websites/PUT] Retrying update with basic fields:', error.message);
+      const safeUpdate: Record<string, any> = {};
+      if (updateData.name) safeUpdate.name = updateData.name;
+      if (updateData.allowed_domains) safeUpdate.allowed_domains = updateData.allowed_domains;
+
+      const fallbackResult = await supabase
+        .from('websites')
+        .update(safeUpdate)
+        .eq('id', websiteId)
+        .select('id, name, allowed_domains, created_at')
+        .single();
+
+      website = fallbackResult.data;
+      error = fallbackResult.error;
+    }
 
     if (error) throw error;
 
