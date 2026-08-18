@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: crawl4ai
+    # Crucial security control: bind port 11235 only to 127.0.0.1 (local loopback).
+    # This ensures the REST API is accessible to the Next.js server running locally on the host,
+    # but completely closed off from external networks and the public internet.
+    ports:
+      - "127.0.0.1:11235:11235"
+    shm_size: "1g" # Critical: Chromium requires sufficient shared memory to run headless and render pages without crashing
+    restart: unless-stopped

@@ -582,9 +582,12 @@ NEXT_PUBLIC_BASE_URL=https://your-domain.vercel.app
 
 # Optional: default Retell credentials (can also be per-widget in DB)
 RETELL_API_KEY=key_...
+
+# Crawl4AI Service (Private REST API backend)
+CRAWL4AI_BASE_URL=http://127.0.0.1:11235
 ```
 
-> **Security note:** `SUPABASE_SERVICE_ROLE_KEY` and `RETELL_API_KEY` are **never** exposed to the browser. The `create-call` endpoint resolves the API key server-side and returns only the short-lived `accessToken`.
+> **Security note:** `SUPABASE_SERVICE_ROLE_KEY`, `RETELL_API_KEY`, and `CRAWL4AI_BASE_URL` are **never** exposed to the browser. The `create-call` endpoint resolves the API key server-side and returns only the short-lived `accessToken`.
 
 ---
 
