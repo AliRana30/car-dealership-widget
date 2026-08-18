@@ -159,6 +159,44 @@ export default function WidgetCustomizerApp() {
   const [mobileTab, setMobileTab] = useState<'editor' | 'preview'>('editor');
   const originalRef = useRef<VoiceWidgetConfig>(draft);
 
+  // Width dragger state for editor settings panel
+  const [editorWidth, setEditorWidth] = useState<number>(280);
+  const [isResizingEditor, setIsResizingEditor] = useState<boolean>(false);
+  const editorDragStartRef = useRef<{ startX: number; startWidth: number }>({ startX: 0, startWidth: 280 });
+
+  const handleEditorResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingEditor(true);
+    editorDragStartRef.current = {
+      startX: e.clientX,
+      startWidth: editorWidth,
+    };
+  };
+
+  const handleEditorMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizingEditor) return;
+    const delta = e.clientX - editorDragStartRef.current.startX;
+    const newWidth = Math.min(Math.max(editorDragStartRef.current.startWidth + delta, 220), 560);
+    setEditorWidth(newWidth);
+  }, [isResizingEditor]);
+
+  const handleEditorMouseUp = useCallback(() => {
+    if (isResizingEditor) {
+      setIsResizingEditor(false);
+    }
+  }, [isResizingEditor]);
+
+  useEffect(() => {
+    if (isResizingEditor) {
+      window.addEventListener('mousemove', handleEditorMouseMove);
+      window.addEventListener('mouseup', handleEditorMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleEditorMouseMove);
+        window.removeEventListener('mouseup', handleEditorMouseUp);
+      };
+    }
+  }, [isResizingEditor, handleEditorMouseMove, handleEditorMouseUp]);
+
   // Deploy-specific metadata (not part of visual config)
   const [widgetId, setWidgetId] = useState('default');
   const [widgetName, setWidgetName] = useState('Default Widget');
@@ -374,7 +412,14 @@ export default function WidgetCustomizerApp() {
         <SettingsSidebar active={activeSection} onSelect={handleSectionChange} />
 
         {/* CENTER-LEFT: Section editor */}
-        <div style={styles.editorCol} className="customizer-editor-col">
+        <div
+          style={{
+            ...styles.editorCol,
+            width: `${editorWidth}px`,
+            minWidth: `${editorWidth}px`,
+          }}
+          className="customizer-editor-col"
+        >
           <div style={styles.editorHeader}>
             <span style={styles.editorTitle}>{SECTION_TITLES[activeSection]}</span>
           </div>
@@ -429,6 +474,37 @@ export default function WidgetCustomizerApp() {
               />
             )}
           </div>
+        </div>
+
+        {/* DRAGGABLE SPLITTER between Editor panel and Preview area */}
+        <div
+          onMouseDown={handleEditorResizeStart}
+          onDoubleClick={() => setEditorWidth(280)}
+          style={{
+            width: '6px',
+            cursor: 'col-resize',
+            background: isResizingEditor ? '#2563EB' : '#F1F5F9',
+            borderLeft: '1px solid #E5E7EB',
+            borderRight: '1px solid #E5E7EB',
+            zIndex: 15,
+            flexShrink: 0,
+            transition: 'background 0.15s ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            userSelect: 'none',
+          }}
+          className="customizer-splitter"
+          title="Drag horizontally to resize editor width (Double-click to reset)"
+        >
+          <div
+            style={{
+              width: '2px',
+              height: '24px',
+              borderRadius: '999px',
+              background: isResizingEditor ? '#FFFFFF' : '#94A3B8',
+            }}
+          />
         </div>
 
         {/* CENTER: Live preview */}

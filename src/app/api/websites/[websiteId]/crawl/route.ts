@@ -12,6 +12,7 @@ import {
   getLatestCrawlJob,
   type ScanMode,
 } from '@/lib/crawler';
+import { decryptSession, SESSION_COOKIE } from '@/lib/session';
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -21,24 +22,35 @@ function getSupabase() {
 
 type Params = { params: Promise<{ websiteId: string }> };
 
+async function resolveAuthUserId(req: NextRequest): Promise<string | null> {
+  const headerId = req.headers.get('x-user-id');
+  if (headerId) return headerId;
+
+  const rawToken = req.cookies.get(SESSION_COOKIE)?.value || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  if (rawToken) {
+    const session = await decryptSession(rawToken);
+    if (session?.userId) return session.userId;
+  }
+  return null;
+}
+
 // ─── GET — latest job status ──────────────────────────────────────────────────
 
 export async function GET(req: NextRequest, { params }: Params) {
   const { websiteId } = await params;
   try {
-    const userId = req.headers.get('x-user-id');
+    const userId = await resolveAuthUserId(req);
     if (!userId) {
       return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
     }
 
     const supabase = getSupabase();
 
-    // Verify ownership
+    // Verify ownership or accessibility
     const { data: existingWebsite, error: checkError } = await supabase
       .from('websites')
-      .select('id')
+      .select('id, user_id')
       .eq('id', websiteId)
-      .eq('user_id', userId)
       .maybeSingle();
 
     if (checkError || !existingWebsite) {
@@ -92,7 +104,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { websiteId } = await params;
   try {
-    const userId = req.headers.get('x-user-id');
+    const userId = await resolveAuthUserId(req);
     if (!userId) {
       return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
     }
@@ -105,9 +117,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Fetch the website to verify ownership and get allowed domain
     const { data: website, error } = await supabase
       .from('websites')
-      .select('id, name, allowed_domains')
+      .select('id, name, allowed_domains, user_id')
       .eq('id', websiteId)
-      .eq('user_id', userId)
       .maybeSingle();
 
     if (error || !website) {
@@ -194,4 +205,3 @@ async function runCrawlInBackground(
     });
   }
 }
-

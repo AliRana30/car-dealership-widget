@@ -1,18 +1,17 @@
 /**
- * Next.js Middleware — Authentication & Session Refresh
+ * Next.js Middleware — Authentication, Session Refresh & Access Tokens
  *
- * Protected paths: everything except /login, /signup, /forgot-password,
- * /reset-password, and public API routes (/api/widgets/[id] embed calls,
- * /api/widgets/create-call, /api/retell/*, /embed/*)
- *
- * On each authenticated request the session cookie is refreshed to extend
- * the 7-day sliding window.
+ * Handles:
+ * 1. Session cookie (fd_session) & Authorization: Bearer <token> decryption.
+ * 2. Automatic header injection (x-user-id, x-user-email) for downstream API routes.
+ * 3. 7-day sliding window session refresh.
+ * 4. Graceful handling of public vs protected routes (API returns 401 JSON, pages redirect to /login).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { decryptSession, SESSION_COOKIE } from '@/lib/session';
 
-// Routes that are always public (no auth required)
+// Pages that are public
 const PUBLIC_ROUTES = [
   '/login',
   '/signup',
@@ -20,19 +19,21 @@ const PUBLIC_ROUTES = [
   '/reset-password',
 ];
 
-// API routes that are public (widget embed, call creation, webhooks, cron, agent tools, etc.)
+// API prefixes that do NOT require authentication
 const PUBLIC_API_PREFIXES = [
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
   '/api/widgets/create-call',
-  '/api/widgets/',
   '/api/retell/',
-  '/api/auth/',
   '/api/webhooks/',
   '/api/agent/',
   '/api/cron/',
   '/api/websites/',
 ];
 
-// Static/embed routes
+// Static/asset routes
 const PUBLIC_PREFIXES = [
   '/embed/',
   '/_next/',
@@ -43,11 +44,10 @@ const PUBLIC_PREFIXES = [
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_ROUTES.includes(pathname)) return true;
-  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true;
-  if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return true;
-  // Widget GET by ID is public (for embed snippets)
-  if (pathname.startsWith('/api/widgets') && pathname !== '/api/widgets' && !pathname.includes('/configuration')) {
-    // Allow widget data GET for embed player
+  if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return true;
+  if (PUBLIC_API_PREFIXES.some(p => pathname.startsWith(p))) return true;
+  // Embed data route
+  if (pathname.startsWith('/api/widgets') && !pathname.includes('/configuration') && !pathname.endsWith('/widgets')) {
     return true;
   }
   return false;
@@ -56,41 +56,50 @@ function isPublicRoute(pathname: string): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Always allow public routes
+  // 1. Extract token from cookie or Authorization header
+  let rawToken = req.cookies.get(SESSION_COOKIE)?.value;
+  if (!rawToken) {
+    const authHeader = req.headers.get('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      rawToken = authHeader.substring(7);
+    }
+  }
+
+  // 2. Decrypt session if token is present
+  const session = rawToken ? await decryptSession(rawToken) : null;
+
+  // 3. If authenticated user visits login/signup, redirect to dashboard
+  if (session && PUBLIC_ROUTES.includes(pathname)) {
+    return NextResponse.redirect(new URL('/', req.url));
+  }
+
+  // 4. If public route, pass through (inject headers if session happens to exist)
   if (isPublicRoute(pathname)) {
-    // If the user is already authenticated and tries to access login/signup,
-    // redirect them to the dashboard
-    if (PUBLIC_ROUTES.includes(pathname)) {
-      const token = req.cookies.get(SESSION_COOKIE)?.value;
-      if (token) {
-        const session = await decryptSession(token);
-        if (session) {
-          return NextResponse.redirect(new URL('/', req.url));
-        }
-      }
+    if (session) {
+      const requestHeaders = new Headers(req.headers);
+      requestHeaders.set('x-user-id', session.userId);
+      requestHeaders.set('x-user-email', session.email);
+      return NextResponse.next({ request: { headers: requestHeaders } });
     }
     return NextResponse.next();
   }
 
-  // Protected routes — verify session
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!token) {
+  // 5. Protected route — handle unauthenticated state
+  if (!session) {
+    // Return JSON 401 for API requests
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: 'unauthorized', message: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    // Redirect browser pages to login
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  const session = await decryptSession(token);
-  if (!session) {
-    const loginUrl = new URL('/login', req.url);
-    loginUrl.searchParams.set('from', pathname);
-    const res = NextResponse.redirect(loginUrl);
-    // Clear invalid cookie
-    res.cookies.delete(SESSION_COOKIE);
-    return res;
-  }
-
-  // Session is valid — refresh it (sliding window) and inject user context headers
+  // 6. Valid session on protected route — inject user headers and refresh sliding cookie
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-user-id', session.userId);
   requestHeaders.set('x-user-email', session.email);
@@ -124,9 +133,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except static files
-     */
     '/((?!_next/static|_next/image|favicon.ico|logo.png|.*\\.svg|.*\\.png|.*\\.jpg|.*\\.webp|widget\\.js).*)',
   ],
 };
