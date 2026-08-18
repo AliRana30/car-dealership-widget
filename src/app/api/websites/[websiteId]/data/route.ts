@@ -1,15 +1,17 @@
 /**
- * Website Intelligence Data Viewer Route (Phase 8.1)
+ * Website Intelligence Data Viewer Route (Phase 8.1 Enhanced)
  *
  * GET /api/websites/[websiteId]/data
  *
- * Renders an interactive, searchable data viewer displaying indexed knowledge records.
+ * Renders an interactive, beautifully formatted data viewer displaying indexed knowledge records.
  * Features:
+ * - Domain-scoped filtering (only shows records belonging to the target website)
+ * - Clean content layout with deduplication (no repeated paragraphs)
+ * - Structured key-value metadata table with expandable raw JSON view
+ * - High-resolution responsive image gallery
  * - dataType source badge per row (crawl, shopify, woocommerce, feed, manual)
- * - Source type interactive filter dropdown
- * - Category breadcrumb display (categoryPath)
- * - Blocked-pages warning banner when recent crawl encountered WAF challenges
- * - JSON and HTML view formats
+ * - Real-time client-side source & keyword search filters
+ * - Blocked-pages warning banner when anti-bot firewall challenges are detected
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -22,8 +24,6 @@ function getSupabase() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
   return createClient(url, key);
 }
-
-type Params = { params: Promise<{ websiteId: string }> };
 
 export async function GET(req: NextRequest, { params }: { params: any }) {
   try {
@@ -40,6 +40,9 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       .maybeSingle();
 
     const siteName = website?.name || 'Website Intelligence';
+    const allowedDomains = (website?.allowed_domains || []).map((d: string) =>
+      d.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+    );
 
     // 2. Fetch latest crawl job to check for blocked pages
     const { data: latestJob } = await supabase
@@ -65,7 +68,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
     }
 
     // 4. Fetch website data records
-    const { data: records, error: dataError } = await supabase
+    const { data: rawRecords, error: dataError } = await supabase
       .from('website_data')
       .select('id, source_url, title, entity_type, content, metadata, short_description, image_urls, data_type, category_path, created_at')
       .in('widget_id', widgetIds)
@@ -75,7 +78,34 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       return NextResponse.json({ error: dataError.message }, { status: 500 });
     }
 
-    const dataList = records || [];
+    // Filter records strictly by this website's allowed domains if configured
+    let dataList = rawRecords || [];
+    if (allowedDomains.length > 0 && websiteId !== '00000000-0000-0000-0000-000000000000') {
+      const domainScoped = dataList.filter(r => {
+        if (!r.source_url) return false;
+        try {
+          const urlHost = new URL(r.source_url.startsWith('http') ? r.source_url : `https://${r.source_url}`).hostname.toLowerCase();
+          return allowedDomains.some((d: string) => urlHost === d || urlHost.endsWith(`.${d}`));
+        } catch {
+          return false;
+        }
+      });
+
+      // If domain-scoped records exist, use them exclusively to avoid historical dummy leaks
+      if (domainScoped.length > 0) {
+        dataList = domainScoped;
+      }
+    }
+
+    // Exclude firewall rejection artifacts from legitimate knowledge view
+    dataList = dataList.filter(r => {
+      const titleLower = (r.title || '').toLowerCase();
+      const contentLower = (r.content || '').toLowerCase();
+      if (titleLower.includes('request rejected') || contentLower.includes("d2c media's firewall") || contentLower.includes('cf-browser-verification')) {
+        return false;
+      }
+      return true;
+    });
 
     // Return JSON if requested
     if (format === 'json') {
@@ -105,6 +135,23 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       }
     };
 
+    // Label dictionary for key attributes
+    const formatAttributeLabel = (key: string): string => {
+      const labels: Record<string, string> = {
+        price: 'Price',
+        currency: 'Currency',
+        availability: 'Availability',
+        durationMinutes: 'Duration (Mins)',
+        practitioner: 'Practitioner / Doctor',
+        department: 'Department',
+        specialty: 'Specialty',
+        brand: 'Brand',
+        sku: 'SKU',
+        category: 'Category',
+      };
+      return labels[key] || key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+    };
+
     // 5. Render HTML Viewer
     const html = `
       <!DOCTYPE html>
@@ -116,32 +163,32 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
         <style>
           * { box-sizing: border-box; }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background: #F8FAFC;
             color: #0F172A;
             margin: 0;
-            padding: 2rem 1.5rem;
-            line-height: 1.5;
+            padding: 2.5rem 1.5rem;
+            line-height: 1.6;
           }
-          .container { max-width: 1040px; margin: 0 auto; }
+          .container { max-width: 1080px; margin: 0 auto; }
           .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
             gap: 1rem;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
+            margin-bottom: 1.75rem;
+            padding-bottom: 1.25rem;
             border-bottom: 1px solid #E2E8F0;
           }
-          h1 { font-size: 1.5rem; font-weight: 700; margin: 0; color: #0F172A; }
-          .subtitle { color: #64748B; font-size: 0.875rem; margin-top: 0.25rem; }
+          h1 { font-size: 1.65rem; font-weight: 800; margin: 0; color: #0F172A; letter-spacing: -0.02em; }
+          .subtitle { color: #64748B; font-size: 0.9rem; margin-top: 0.25rem; }
           
           /* Warning Banner for Blocked Pages */
           .warning-banner {
             background: #FEF2F2;
             border: 1px solid #F87171;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 1rem 1.25rem;
             margin-bottom: 1.5rem;
             display: flex;
@@ -149,65 +196,87 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             gap: 0.75rem;
             color: #991B1B;
           }
-          .warning-icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; margin-top: 1px; }
+          .warning-icon { font-size: 1.35rem; line-height: 1; flex-shrink: 0; }
           .warning-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.25rem; }
-          .warning-desc { font-size: 0.85rem; color: #B91C1C; }
+          .warning-desc { font-size: 0.85rem; color: #B91C1C; line-height: 1.5; }
 
           /* Filter Toolbar */
           .toolbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
             gap: 1rem;
-            margin-bottom: 1.25rem;
+            margin-bottom: 1.5rem;
             background: #FFFFFF;
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
+            padding: 0.85rem 1.25rem;
+            border-radius: 10px;
             border: 1px solid #E2E8F0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
           }
-          .filter-group { display: flex; align-items: center; gap: 0.5rem; }
-          .filter-label { font-size: 0.85rem; font-weight: 600; color: #475569; }
+          .filter-group { display: flex; align-items: center; gap: 0.6rem; }
+          .filter-label { font-size: 0.85rem; font-weight: 700; color: #475569; }
           select, input {
-            padding: 0.4rem 0.75rem;
-            border-radius: 6px;
+            padding: 0.5rem 0.85rem;
+            border-radius: 7px;
             border: 1px solid #CBD5E1;
-            font-size: 0.85rem;
+            font-size: 0.875rem;
             background: #FFFFFF;
             color: #1E293B;
             outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
           }
-          select:focus, input:focus { border-color: #2563EB; box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+          select:focus, input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+          .counter-badge {
+            font-size: 0.8rem;
+            color: #64748B;
+            font-weight: 600;
+            background: #F1F5F9;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+          }
 
           /* Cards */
           .card {
             background: #FFFFFF;
-            border-radius: 10px;
+            border-radius: 12px;
             border: 1px solid #E2E8F0;
-            padding: 1.25rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            padding: 1.5rem;
+            margin-bottom: 1.25rem;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+            transition: box-shadow 0.2s ease, border-color 0.2s ease;
           }
-          .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+          .card:hover { border-color: #CBD5E1; box-shadow: 0 6px 16px rgba(0,0,0,0.06); }
           .card-top {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            gap: 0.75rem;
-            margin-bottom: 0.5rem;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
           }
           .card-title {
             font-weight: 700;
-            font-size: 1.05rem;
+            font-size: 1.15rem;
             color: #1E293B;
             text-decoration: none;
+            line-height: 1.35;
           }
-          .card-title:hover { color: #2563EB; text-decoration: underline; }
-          .badges { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; }
+          .card-title:hover { color: #2563EB; }
+          .source-link {
+            font-size: 0.75rem;
+            color: #64748B;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            margin-top: 0.2rem;
+            text-decoration: none;
+          }
+          .source-link:hover { color: #2563EB; text-decoration: underline; }
+          .badges { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
           .badge {
-            font-size: 0.7rem;
+            font-size: 0.725rem;
             font-weight: 700;
-            padding: 0.2rem 0.5rem;
+            padding: 0.25rem 0.6rem;
             border-radius: 999px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
@@ -217,59 +286,84 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
           .breadcrumbs {
             display: inline-flex;
             align-items: center;
-            gap: 0.25rem;
+            gap: 0.35rem;
             font-size: 0.75rem;
-            color: #64748B;
+            color: #475569;
             background: #F1F5F9;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            margin-bottom: 0.5rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: 6px;
+            margin-bottom: 0.75rem;
+            font-weight: 500;
           }
           .crumb-sep { color: #94A3B8; }
 
-          .short-desc {
-            font-size: 0.85rem;
-            color: #475569;
-            font-style: italic;
-            margin-bottom: 0.5rem;
-          }
+          /* Image Gallery */
           .images-row {
             display: flex;
-            gap: 0.5rem;
-            margin-bottom: 0.75rem;
+            gap: 0.6rem;
+            margin-bottom: 1rem;
             overflow-x: auto;
-            padding-bottom: 0.25rem;
+            padding-bottom: 0.35rem;
           }
           .thumb {
-            height: 64px;
-            width: 64px;
-            border-radius: 6px;
+            height: 72px;
+            width: 72px;
+            border-radius: 8px;
             object-fit: cover;
             border: 1px solid #E2E8F0;
             background: #F8FAFC;
+            transition: transform 0.15s ease;
           }
+          .thumb:hover { transform: scale(1.05); }
+
+          /* Content formatting */
           .content-box {
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             color: #334155;
-            margin-bottom: 0.75rem;
-            white-space: pre-wrap;
-          }
-          pre {
             background: #F8FAFC;
+            border-radius: 8px;
+            padding: 1rem 1.15rem;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            border: 1px solid #F1F5F9;
+          }
+          .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem 1rem;
+            background: #FFFFFF;
             border: 1px solid #E2E8F0;
-            padding: 0.75rem;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+          }
+          .meta-item { display: flex; flex-direction: column; }
+          .meta-label { font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; }
+          .meta-val { font-size: 0.85rem; font-weight: 600; color: #0F172A; }
+
+          details {
+            font-size: 0.75rem;
+            color: #64748B;
+            margin-top: 0.5rem;
+          }
+          summary { cursor: pointer; font-weight: 600; outline: none; }
+          summary:hover { color: #2563EB; }
+          pre {
+            background: #0F172A;
+            color: #F8FAFC;
+            padding: 0.85rem;
             border-radius: 6px;
             font-size: 0.75rem;
             overflow-x: auto;
-            margin: 0;
-            color: #334155;
+            margin-top: 0.5rem;
           }
           .empty-state {
             text-align: center;
-            padding: 3rem;
+            padding: 3.5rem 1.5rem;
             background: #FFFFFF;
-            border-radius: 8px;
-            border: 1px dashed #CBD5E1;
+            border-radius: 12px;
+            border: 2px dashed #CBD5E1;
             color: #64748B;
           }
         </style>
@@ -279,10 +373,10 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
           <div class="header">
             <div>
               <h1>${siteName} — Knowledge Viewer</h1>
-              <div class="subtitle">${dataList.length} entity record(s) indexed for Widgetized AI Agent injection.</div>
+              <div class="subtitle"><span id="recordCount">${dataList.length}</span> record(s) indexed for Widgetized AI Agent injection.</div>
             </div>
             <div>
-              <a href="?format=json" target="_blank" style="font-size: 0.8rem; font-weight: 600; color: #2563EB; text-decoration: none; padding: 0.4rem 0.8rem; border: 1px solid #BFDBFE; border-radius: 6px; background: #EFF6FF;">
+              <a href="?format=json" target="_blank" style="font-size: 0.825rem; font-weight: 700; color: #2563EB; text-decoration: none; padding: 0.5rem 0.9rem; border: 1px solid #BFDBFE; border-radius: 7px; background: #EFF6FF; display: inline-flex; align-items: center; gap: 4px;">
                 Export Raw JSON &rarr;
               </a>
             </div>
@@ -314,50 +408,82 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 <option value="manual">Manual Upload</option>
               </select>
             </div>
-            <div class="filter-group">
+            <div class="filter-group" style="flex: 1; max-width: 400px;">
               <span class="filter-label">Search:</span>
-              <input type="text" id="searchInput" placeholder="Search titles & content..." oninput="applyFilters()" />
+              <input type="text" id="searchInput" style="width: 100%;" placeholder="Search keywords, titles, or content..." oninput="applyFilters()" />
             </div>
+            <span class="counter-badge" id="visibleCounter">Showing ${dataList.length} items</span>
           </div>
 
           <!-- Cards List -->
           <div id="cardsList">
             ${dataList.map(r => {
               const badge = getBadgeStyle(r.data_type || 'crawl');
-              const shortDesc = r.short_description ? `<div class="short-desc">${r.short_description}</div>` : '';
+              const meta = (r.metadata || {}) as Record<string, any>;
               
               const categoryHtml = Array.isArray(r.category_path) && r.category_path.length > 0
                 ? `<div class="breadcrumbs">&#128193; ${r.category_path.map((c: string) => `<span>${c}</span>`).join(' <span class="crumb-sep">&rsaquo;</span> ')}</div>`
                 : '';
 
-              const imagesHtml = Array.isArray(r.image_urls) && r.image_urls.length > 0
+              const rawImages = Array.isArray(r.image_urls) && r.image_urls.length > 0
+                ? r.image_urls
+                : Array.isArray(meta.images) ? meta.images : meta.image ? [meta.image] : [];
+
+              const imagesHtml = rawImages.length > 0
                 ? `<div class="images-row">
-                    ${r.image_urls.map((img: string) => `<img src="${img}" class="thumb" onerror="this.style.display='none'" />`).join('')}
+                    ${rawImages.slice(0, 6).map((img: string) => `<img src="${img}" class="thumb" onerror="this.style.display='none'" />`).join('')}
                    </div>`
                 : '';
 
+              // Clean metadata attributes
+              const metaEntries = Object.entries(meta).filter(([k, v]) => {
+                if (['images', 'image', 'imageSource', 'description'].includes(k)) return false;
+                if (v === null || v === undefined || v === '') return false;
+                if (typeof v === 'object') return false;
+                return true;
+              });
+
+              // Deduplicate content: if short_description is already equal or part of content, don't repeat
+              const contentText = (r.content || '').trim();
+
               return `
-                <div class="card" data-source="${(r.data_type || 'crawl').toLowerCase()}" data-text="${(r.title + ' ' + (r.content || '')).toLowerCase()}">
+                <div class="card" data-source="${(r.data_type || 'crawl').toLowerCase()}" data-text="${(r.title + ' ' + contentText).toLowerCase()}">
                   <div class="card-top">
-                    <a href="${r.source_url || '#'}" target="_blank" class="card-title">${r.title || 'Untitled'}</a>
+                    <div>
+                      <a href="${r.source_url || '#'}" target="_blank" class="card-title">${r.title || 'Untitled'}</a>
+                      ${r.source_url ? `<br/><a href="${r.source_url}" target="_blank" class="source-link">&#128279; ${r.source_url}</a>` : ''}
+                    </div>
                     <div class="badges">
                       <span class="badge" style="background: ${badge.bg}; color: ${badge.color}; border: 1px solid ${badge.border};">
                         ${badge.label}
                       </span>
-                      <span class="badge" style="background: #E2E8F0; color: #475569;">
+                      <span class="badge" style="background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1;">
                         ${r.entity_type || 'info'}
                       </span>
                     </div>
                   </div>
                   
                   ${categoryHtml}
-                  ${shortDesc}
                   ${imagesHtml}
 
-                  <div class="content-box">${r.content || ''}</div>
+                  ${contentText ? `<div class="content-box">${contentText}</div>` : ''}
 
-                  ${Object.keys(r.metadata || {}).length > 0 ? `
-                    <pre><code>${JSON.stringify(r.metadata, null, 2)}</code></pre>
+                  ${metaEntries.length > 0 ? `
+                    <div class="meta-grid">
+                      ${metaEntries.map(([k, v]) => `
+                        <div class="meta-item">
+                          <span class="meta-label">${formatAttributeLabel(k)}</span>
+                          <span class="meta-val">${String(v)}</span>
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : ''}
+
+                  ${Object.keys(meta).length > 0 ? `
+                    <details>
+                      <summary>View Raw JSON Metadata</summary>
+                      <pre><code>${JSON.stringify(meta, null, 2)}</code></pre>
+                    </details>
                   ` : ''}
                 </div>
               `;
@@ -365,7 +491,9 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
 
             ${dataList.length === 0 ? `
               <div class="empty-state">
-                No knowledge records indexed yet. Connect a domain or platform connector to ingest inventory.
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">&#128269;</div>
+                <div style="font-weight: 700; font-size: 1.1rem; color: #1E293B; margin-bottom: 0.25rem;">No knowledge records found</div>
+                <div>Connect your domain and start a scan to index your site's content.</div>
               </div>
             ` : ''}
           </div>
@@ -392,6 +520,8 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 card.style.display = 'none';
               }
             });
+
+            document.getElementById('visibleCounter').textContent = 'Showing ' + visibleCount + ' items';
           }
         </script>
       </body>
