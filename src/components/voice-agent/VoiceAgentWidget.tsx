@@ -11,6 +11,7 @@ interface VoiceAgentWidgetProps {
   config?: Partial<VoiceWidgetConfig>;
   overrides?: Partial<VoiceWidgetConfig>;
   widgetId?: string;
+  isDemo?: boolean;
 }
 
 export interface VoiceAgentWidgetRef {
@@ -50,7 +51,7 @@ function parseStatusMessage(content: string): { isStatus: boolean; text: string;
 }
 
 const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
-  ({ onCallStateChange, config: clientConfig, overrides, widgetId }, ref) => {
+  ({ onCallStateChange, config: clientConfig, overrides, widgetId, isDemo = false }, ref) => {
     // 1. Deep merge configurations
     const mergedConfig = React.useMemo(() => {
       const step1 = deepMerge(defaultVoiceWidgetConfig, clientConfig);
@@ -144,6 +145,29 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isStartingRef = useRef(false);
     const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+    // Demo/mock simulation refs and cleanup helper
+    const demoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+    const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const clearDemoSimulation = useCallback(() => {
+      demoTimersRef.current.forEach(clearTimeout);
+      demoTimersRef.current = [];
+      if (demoIntervalRef.current) {
+        clearInterval(demoIntervalRef.current);
+        demoIntervalRef.current = null;
+      }
+    }, []);
+
+    // Clean up call on unmount (including demo timers)
+    useEffect(() => {
+      return () => {
+        demoTimersRef.current.forEach(clearTimeout);
+        if (demoIntervalRef.current) {
+          clearInterval(demoIntervalRef.current);
+        }
+      };
+    }, []);
 
     // Iframe postMessage communications
     useEffect(() => {
@@ -248,6 +272,29 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         setChatMessages((prev) => [...prev, userMsg]);
         setChatTyping(true);
 
+        if (isDemo) {
+          const t = setTimeout(() => {
+            let response = "I received your message! Since we are in the customization preview, this is a simulated response. Once deployed, the agent will reply using your website intelligence.";
+            
+            const lowerText = text.toLowerCase();
+            if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('hey')) {
+              response = `Hello! How can I help you with ${mergedConfig.branding.companyName || 'our services'} today?`;
+            } else if (lowerText.includes('price') || lowerText.includes('cost') || lowerText.includes('pricing')) {
+              response = `Our pricing packages are customizable! You can configure them in the settings. In a live environment, I would retrieve current pricing data directly from your crawled website pages.`;
+            } else if (lowerText.includes('test') || lowerText.includes('working')) {
+              response = "Yes, the test chat is fully working! The widget preview responds in real-time to your configuration changes.";
+            }
+
+            setChatMessages((prev) => [
+              ...prev,
+              { role: 'agent', content: response }
+            ]);
+            setChatTyping(false);
+          }, 1000);
+          demoTimersRef.current.push(t);
+          return;
+        }
+
         try {
           const res = await fetch('/api/retell/chat', {
             method: 'POST',
@@ -287,7 +334,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           setChatTyping(false);
         }
       },
-      [chatInput, chatId]
+      [chatInput, chatId, isDemo, mergedConfig.branding.companyName, widgetId]
     );
 
     const startCall = useCallback(async () => {
@@ -304,6 +351,54 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       setIsMuted(false);
       setAgentSpeaking(false);
       setUserSpeaking(false);
+
+      if (isDemo) {
+        clearDemoSimulation();
+        // --- Demo/Mock Call Flow ---
+        const t1 = setTimeout(() => {
+          updateState('connected');
+          setTranscript([{ role: 'agent', content: mergedConfig.branding.welcomeMessage || "Hi! How can I help you today?" }]);
+          setAgentSpeaking(true);
+          setCallState('agent_speaking');
+          
+          const t2 = setTimeout(() => {
+            setAgentSpeaking(false);
+            setCallState('user_listening');
+            isStartingRef.current = false;
+            
+            // Set up recurring simulation conversation
+            let step = 0;
+            const interval = setInterval(() => {
+              if (step === 0) {
+                // User talks
+                setUserSpeaking(true);
+                setCallState('user_listening');
+                const tInner = setTimeout(() => {
+                  setTranscript(prev => [...prev, { role: 'user', content: 'I would like to test the front desk agent.' }]);
+                  setUserSpeaking(false);
+                }, 2000);
+                demoTimersRef.current.push(tInner);
+                step = 1;
+              } else {
+                // Agent talks
+                setAgentSpeaking(true);
+                setCallState('agent_speaking');
+                const tInner = setTimeout(() => {
+                  setTranscript(prev => [...prev, { role: 'agent', content: 'I am responding to your test! The visual layout is updating in real time.' }]);
+                  setAgentSpeaking(false);
+                  setCallState('user_listening');
+                }, 2000);
+                demoTimersRef.current.push(tInner);
+                step = 0;
+              }
+            }, 6000);
+            demoIntervalRef.current = interval;
+          }, 3000);
+          demoTimersRef.current.push(t2);
+        }, 1500);
+        demoTimersRef.current.push(t1);
+        return;
+      }
 
       let activeClient: any = null;
 
@@ -631,10 +726,20 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         updateState('error');
         isStartingRef.current = false;
       }
-    }, [callState, updateState, sendTelemetry, mergedConfig.behavior.connectionTimeout, mergedConfig.provider, widgetId]);
+    }, [callState, updateState, sendTelemetry, mergedConfig, widgetId, isDemo, clearDemoSimulation]);
 
     const stopCall = useCallback(() => {
       if (callState === 'idle' || callState === 'ending' || callState === 'ended') {
+        return;
+      }
+      if (isDemo) {
+        clearDemoSimulation();
+        updateState('ending');
+        const t = setTimeout(() => {
+          updateState('ended');
+          isStartingRef.current = false;
+        }, 800);
+        demoTimersRef.current.push(t);
         return;
       }
       if (connectionTimeoutRef.current) {
@@ -643,7 +748,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       }
       updateState('ending');
       safeStopCurrentCall();
-    }, [callState, updateState, safeStopCurrentCall]);
+    }, [callState, updateState, safeStopCurrentCall, isDemo, clearDemoSimulation]);
 
     const toggleMute = useCallback(() => {
       if (!['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState)) {

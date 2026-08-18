@@ -10,6 +10,7 @@ import PreviewArea from './PreviewArea';
 import ColorEditorPanel from './ColorEditorPanel';
 import ColorsSection from './ColorsSection';
 import DeploySection from './DeploySection';
+import CrawlerSection from './CrawlerSection';
 import {
   BrandingSection,
   TypographySection,
@@ -144,6 +145,7 @@ const SECTION_TITLES: Record<CustomizerSection, string> = {
   panel: 'Panel & Layout',
   behavior: 'Behavior',
   responsive: 'Responsive',
+  crawler: 'Crawler',
   deploy: 'Deploy & Connect',
 };
 
@@ -402,6 +404,14 @@ export default function WidgetCustomizerApp() {
             {activeSection === 'responsive' && (
               <ResponsiveSection draft={draft} onChange={patchDraft} />
             )}
+            {activeSection === 'crawler' && (
+              <CrawlerSection
+                websiteId={websiteId}
+                setWebsiteId={setWebsiteId}
+                websiteName={websiteName}
+                setWebsiteName={setWebsiteName}
+              />
+            )}
             {activeSection === 'deploy' && (
               <DeploySection
                 draft={draft}
@@ -414,10 +424,7 @@ export default function WidgetCustomizerApp() {
                 setApiKey={draft.provider?.provider === 'vapi' ? setVapiApiKey : setRetellApiKey}
                 isSavedOnServer={isSavedOnServer}
                 allowedDomains={allowedDomains}
-                websiteId={websiteId}
-                setWebsiteId={setWebsiteId}
                 websiteName={websiteName}
-                setWebsiteName={setWebsiteName}
                 widgetStatus={widgetStatus}
               />
             )}
@@ -515,7 +522,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'inherit',
   },
   mobileTabs: {
-    display: 'flex',
     width: '100%',
     height: '44px',
     borderBottom: '1px solid #e5e7eb',
@@ -529,7 +535,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: '#64748B',
     outline: 'none',
-    borderBottom: '2px solid transparent',
+    borderBottomWidth: '2px',
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'transparent',
     transition: 'all 0.15s ease',
   },
   mobileTabBtnActive: {
@@ -554,7 +562,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: 'hidden',
   },
   editorHeader: {
-    padding: '14px 16px 10px',
+    padding: '24px 16px 14px',
     borderBottom: '1px solid #f0f0f0',
     background: '#fafafa',
     flexShrink: 0,
@@ -569,7 +577,7 @@ const styles: Record<string, React.CSSProperties> = {
   editorBody: {
     flex: 1,
     overflowY: 'auto',
-    padding: '16px',
+    padding: '20px 16px',
   },
   previewCol: {
     flex: 1,

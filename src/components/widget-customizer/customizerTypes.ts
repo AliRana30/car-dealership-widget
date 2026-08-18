@@ -8,6 +8,7 @@ export type CustomizerSection =
   | 'panel'
   | 'behavior'
   | 'responsive'
+  | 'crawler'
   | 'deploy';
 
 export interface CustomizerState {
@@ -30,5 +31,6 @@ export const SECTION_NAV: SectionNavItem[] = [
   { id: 'panel',       label: 'Panel',       icon: '▭' },
   { id: 'behavior',    label: 'Behavior',    icon: '⚙' },
   { id: 'responsive',  label: 'Responsive',  icon: '⊡' },
+  { id: 'crawler',     label: 'Crawler',     icon: '☍' },
   { id: 'deploy',      label: 'Deploy',      icon: '⚡' },
 ];

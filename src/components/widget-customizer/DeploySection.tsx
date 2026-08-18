@@ -15,10 +15,7 @@ interface DeploySectionProps {
   setApiKey: (val: string) => void;
   isSavedOnServer: boolean;
   allowedDomains?: string[];
-  websiteId?: string;
-  setWebsiteId?: (val: string) => void;
   websiteName?: string;
-  setWebsiteName?: (val: string) => void;
   widgetStatus?: 'active' | 'inactive' | 'paused';
 }
 
@@ -222,201 +219,6 @@ function UniversalEmbedSection({ origin, widgetId, copied, setCopied }: Universa
 }
 
 
-// ── WebsiteConnectedPanel ──────────────────────────────────────────────────────
-interface WebsiteConnectedPanelProps {
-  websiteId: string;
-  websiteName?: string;
-  setWebsiteId?: (val: string) => void;
-  setWebsiteName?: (val: string) => void;
-  crawlStatus: {
-    status: string;
-    pagesVisited: number;
-    entitiesFound: number;
-    indexedRecords: number;
-    jobId?: string;
-    completedAt?: string;
-  } | null;
-  setCrawlStatus: React.Dispatch<React.SetStateAction<{
-    status: string;
-    pagesVisited: number;
-    entitiesFound: number;
-    indexedRecords: number;
-    jobId?: string;
-    completedAt?: string;
-  } | null>>;
-  handleReCrawl: () => void;
-  crawlPollRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>;
-}
-
-function WebsiteConnectedPanel({
-  websiteId,
-  websiteName,
-  setWebsiteId,
-  setWebsiteName,
-  crawlStatus,
-  setCrawlStatus,
-  handleReCrawl,
-}: WebsiteConnectedPanelProps) {
-  const [editingName, setEditingName] = React.useState(false);
-  const [editName, setEditName] = React.useState(websiteName || '');
-  const [savingName, setSavingName] = React.useState(false);
-
-  const handleSaveName = async () => {
-    if (!editName.trim() || editName.trim() === websiteName) {
-      setEditingName(false);
-      return;
-    }
-    setSavingName(true);
-    try {
-      const res = await fetch(`/api/websites/${websiteId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim() }),
-      });
-      if (res.ok) {
-        if (setWebsiteName) setWebsiteName(editName.trim());
-      }
-    } catch {}
-    setSavingName(false);
-    setEditingName(false);
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Site name row with inline edit */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', fontSize: '11px' }}>
-        <span style={{ color: '#64748B', fontWeight: 500, flexShrink: 0 }}>Connected Site</span>
-        {editingName ? (
-          <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }}>
-            <input
-              autoFocus
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setEditingName(false); }}
-              style={{
-                fontSize: '11px', padding: '3px 7px', borderRadius: '5px',
-                border: '1px solid #93C5FD', outline: 'none',
-                width: '120px', color: '#0F172A',
-              }}
-            />
-            <button
-              onClick={handleSaveName}
-              disabled={savingName}
-              style={{ padding: '3px 7px', borderRadius: '5px', border: 'none', background: '#2563EB', color: '#fff', fontSize: '10px', fontWeight: 700, cursor: 'pointer' }}
-            >
-              {savingName ? '…' : 'Save'}
-            </button>
-            <button
-              onClick={() => setEditingName(false)}
-              style={{ padding: '3px 6px', borderRadius: '5px', border: '1px solid #E2E8F0', background: '#fff', color: '#64748B', fontSize: '10px', cursor: 'pointer' }}
-            >
-              ✕
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ color: '#0F172A', fontWeight: 700, maxWidth: '120px', textAlign: 'right', wordBreak: 'break-all' }}>{websiteName}</span>
-            <button
-              onClick={() => { setEditName(websiteName || ''); setEditingName(true); }}
-              title="Edit website name"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '2px' }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Crawl status */}
-      {crawlStatus && (
-        <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
-            <span style={{ color: '#64748B', fontWeight: 500 }}>Crawl Status</span>
-            <CrawlStatusBadge status={crawlStatus.status} />
-          </div>
-          {crawlStatus.status === 'running' || crawlStatus.status === 'pending' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(37,99,235,0.06)', borderRadius: '7px', padding: '7px 10px' }}>
-              <SpinnerIcon />
-              <span style={{ fontSize: '11px', color: '#2563EB', fontWeight: 500 }}>Analyzing your website…</span>
-            </div>
-          ) : crawlStatus.status === 'completed' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                <span style={{ color: '#64748B' }}>Pages analyzed</span>
-                <span style={{ fontWeight: 700, color: '#0F172A' }}>{crawlStatus.pagesVisited}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
-                <span style={{ color: '#64748B' }}>Knowledge records</span>
-                <span style={{ fontWeight: 700, color: '#16A34A' }}>{crawlStatus.indexedRecords || crawlStatus.entitiesFound}</span>
-              </div>
-            </div>
-          ) : crawlStatus.status === 'failed' ? (
-            <div style={{ fontSize: '11px', color: '#B91C1C', background: '#FEF2F2', borderRadius: '6px', padding: '7px 10px' }}>
-              Crawl failed — try re-crawling below.
-            </div>
-          ) : null}
-        </>
-      )}
-
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-        <button
-          onClick={handleReCrawl}
-          disabled={crawlStatus?.status === 'running' || crawlStatus?.status === 'pending'}
-          style={{
-            flex: 1, padding: '6px 10px', borderRadius: '7px', border: '1px solid #BBF7D0',
-            background: '#FFFFFF', color: '#15803D', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-            opacity: (crawlStatus?.status === 'running' || crawlStatus?.status === 'pending') ? 0.5 : 1,
-            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px',
-          }}
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" />
-          </svg>
-          Re-crawl
-        </button>
-
-        <button
-          onClick={() => window.open(`/api/websites/${websiteId}/data`, '_blank')}
-          style={{
-            flex: 1, padding: '6px 10px', borderRadius: '7px', border: '1px solid #BBF7D0',
-            background: '#FFFFFF', color: '#15803D', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px',
-          }}
-          title="View crawled JSON data"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-          View Data
-        </button>
-
-        <button
-          onClick={() => {
-            if (setWebsiteId) setWebsiteId('');
-            if (setWebsiteName) setWebsiteName('');
-            setCrawlStatus(null);
-          }}
-          style={{
-            padding: '6px 10px', borderRadius: '7px', border: '1px solid #E2E8F0',
-            background: '#FFFFFF', color: '#64748B', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          title="Disconnect website"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function DeploySection({
   draft,
   onChange,
@@ -428,131 +230,28 @@ export default function DeploySection({
   setApiKey,
   isSavedOnServer,
   allowedDomains = [],
-  websiteId = '',
-  setWebsiteId,
   websiteName = 'Default Website',
-  setWebsiteName,
   widgetStatus = 'active',
 }: DeploySectionProps) {
   const [copied, setCopied] = useState(false);
   const [origin, setOrigin] = useState(() => {
+    if (process.env.BASE_URL) {
+      return process.env.BASE_URL;
+    }
     if (process.env.NEXT_PUBLIC_BASE_URL) {
       return process.env.NEXT_PUBLIC_BASE_URL;
-    }
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
     }
     return 'https://your-domain.vercel.app';
   });
   const [showSandbox, setShowSandbox] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // ── Website Intelligence state ──────────────────────────────────────────────
-  const [wsSiteUrl, setWsSiteUrl] = useState('');
-  const [wsSiteName, setWsSiteName] = useState('');
-  const [wsConnecting, setWsConnecting] = useState(false);
-  const [wsError, setWsError] = useState<string | null>(null);
-  const [crawlStatus, setCrawlStatus] = useState<{
-    status: string;
-    pagesVisited: number;
-    entitiesFound: number;
-    indexedRecords: number;
-    jobId?: string;
-    completedAt?: string;
-  } | null>(null);
-  const crawlPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Poll crawl job status when websiteId is present
-  useEffect(() => {
-    if (!websiteId) return;
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/websites/${websiteId}/crawl`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setCrawlStatus({
-          status: data.status || 'never_crawled',
-          pagesVisited: data.pagesVisited || 0,
-          entitiesFound: data.entitiesFound || 0,
-          indexedRecords: data.indexedRecords || 0,
-          jobId: data.jobId,
-          completedAt: data.completedAt,
-        });
-        // Stop polling when done
-        if (data.status === 'completed' || data.status === 'failed' || data.status === 'never_crawled') {
-          if (crawlPollRef.current) clearInterval(crawlPollRef.current);
-        }
-      } catch {}
-    };
-    poll();
-    crawlPollRef.current = setInterval(poll, 4000);
-    return () => { if (crawlPollRef.current) clearInterval(crawlPollRef.current); };
-  }, [websiteId]);
-
-  const handleConnectWebsite = async () => {
-    const url = wsSiteUrl.trim();
-    if (!url) { setWsError('Please enter a website URL or domain'); return; }
-    setWsError(null);
-    setWsConnecting(true);
-    try {
-      const res = await fetch('/api/websites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: wsSiteName.trim() || url,
-          domain: url,
-          triggerCrawl: true,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || 'Failed to connect website');
-      // Start polling the new job
-      if (data.website?.id) {
-        if (setWebsiteId) setWebsiteId(data.website.id);
-        if (setWebsiteName) setWebsiteName(data.website.name);
-        
-        setCrawlStatus({ status: 'pending', pagesVisited: 0, entitiesFound: 0, indexedRecords: 0, jobId: data.crawlJobId });
-        // Reload crawl status from new website
-        if (crawlPollRef.current) clearInterval(crawlPollRef.current);
-        crawlPollRef.current = setInterval(async () => {
-          try {
-            const r = await fetch(`/api/websites/${data.website.id}/crawl`);
-            if (!r.ok) return;
-            const d = await r.json();
-            setCrawlStatus({ status: d.status || 'pending', pagesVisited: d.pagesVisited || 0, entitiesFound: d.entitiesFound || 0, indexedRecords: d.indexedRecords || 0, jobId: d.jobId, completedAt: d.completedAt });
-            if (d.status === 'completed' || d.status === 'failed') { if (crawlPollRef.current) clearInterval(crawlPollRef.current); }
-          } catch {}
-        }, 4000);
-      }
-      setWsSiteUrl('');
-      setWsSiteName('');
-    } catch (err: any) {
-      setWsError(err.message || 'Failed to connect website');
-    } finally {
-      setWsConnecting(false);
-    }
-  };
-
-  const handleReCrawl = async () => {
-    if (!websiteId) return;
-    setCrawlStatus(prev => prev ? { ...prev, status: 'pending' } : { status: 'pending', pagesVisited: 0, entitiesFound: 0, indexedRecords: 0 });
-    try {
-      await fetch(`/api/websites/${websiteId}/crawl`, { method: 'POST' });
-      if (crawlPollRef.current) clearInterval(crawlPollRef.current);
-      crawlPollRef.current = setInterval(async () => {
-        try {
-          const r = await fetch(`/api/websites/${websiteId}/crawl`);
-          if (!r.ok) return;
-          const d = await r.json();
-          setCrawlStatus({ status: d.status || 'pending', pagesVisited: d.pagesVisited || 0, entitiesFound: d.entitiesFound || 0, indexedRecords: d.indexedRecords || 0, jobId: d.jobId, completedAt: d.completedAt });
-          if (d.status === 'completed' || d.status === 'failed') { if (crawlPollRef.current) clearInterval(crawlPollRef.current); }
-        } catch {}
-      }, 4000);
-    } catch {}
-  };
 
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_BASE_URL) {
+    if (process.env.BASE_URL) {
+      setOrigin(process.env.BASE_URL);
+    } else if (process.env.NEXT_PUBLIC_BASE_URL) {
       setOrigin(process.env.NEXT_PUBLIC_BASE_URL);
     } else if (typeof window !== 'undefined') {
       setOrigin(window.location.origin);
@@ -688,86 +387,6 @@ export default function DeploySection({
             </span>
           </div>
         </div>
-      </section>
-
-      {/* ── Website Intelligence ─────────────────────────────── */}
-      <section style={{
-        background: 'linear-gradient(135deg, #F0FDF4, #EFF6FF)',
-        border: '1px solid #BBF7D0',
-        borderRadius: '10px',
-        padding: '12px 14px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" style={{ flexShrink: 0 }}>
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-            <path d="M2 12h20" />
-          </svg>
-          <h4 style={{ ...sectionTitle, margin: 0 }}>Website Intelligence</h4>
-        </div>
-
-        {/* Connected state */}
-        {websiteId ? (
-          <WebsiteConnectedPanel
-            websiteId={websiteId}
-            websiteName={websiteName}
-            setWebsiteId={setWebsiteId}
-            setWebsiteName={setWebsiteName}
-            crawlStatus={crawlStatus}
-            setCrawlStatus={setCrawlStatus}
-            handleReCrawl={handleReCrawl}
-            crawlPollRef={crawlPollRef}
-          />
-
-        ) : (
-          /* Connect form */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
-              Connect your website and the widget will automatically learn your products, services, and content — no manual entry needed.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <input
-                style={{ ...input, fontSize: '11px' }}
-                value={wsSiteName}
-                onChange={e => setWsSiteName(e.target.value)}
-                placeholder="Site name (e.g. Acme Auto)"
-              />
-              <input
-                style={{ ...input, fontSize: '11px' }}
-                value={wsSiteUrl}
-                onChange={e => setWsSiteUrl(e.target.value)}
-                placeholder="Website URL (e.g. https://acme.com)"
-                onKeyDown={e => e.key === 'Enter' && handleConnectWebsite()}
-              />
-            </div>
-            {wsError && (
-              <p style={{ fontSize: '10px', color: '#DC2626', margin: 0 }}>{wsError}</p>
-            )}
-            <button
-              onClick={handleConnectWebsite}
-              disabled={wsConnecting}
-              style={{
-                padding: '7px 12px', borderRadius: '7px', border: 'none',
-                background: wsConnecting ? '#94A3B8' : '#16A34A',
-                color: '#FFFFFF', fontSize: '11px', fontWeight: 700,
-                cursor: wsConnecting ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-              }}
-            >
-              {wsConnecting ? (
-                <><SpinnerIcon />Connecting…</>
-              ) : (
-                <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                  </svg>
-                  Connect & Analyze Website
-                </>
-              )}
-            </button>
-          </div>
-        )}
       </section>
 
       {/* ── Widget Identity ────────────────────────────────── */}
@@ -1044,41 +663,4 @@ const copyBtn: React.CSSProperties = {
   cursor: 'pointer',
   transition: 'background 0.2s',
 };
-
-// ── Website Intelligence helpers ──────────────────────────────────────────────
-
-function CrawlStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string; label: string }> = {
-    pending:       { bg: '#FEF3C7', color: '#D97706', label: 'Queued' },
-    running:       { bg: '#DBEAFE', color: '#2563EB', label: 'Crawling…' },
-    completed:     { bg: '#DCFCE7', color: '#15803D', label: 'Complete' },
-    failed:        { bg: '#FEE2E2', color: '#B91C1C', label: 'Failed' },
-    never_crawled: { bg: '#F1F5F9', color: '#64748B', label: 'Not Started' },
-  };
-  const s = map[status] || map.never_crawled;
-  return (
-    <span style={{
-      padding: '2px 8px', borderRadius: '999px',
-      background: s.bg, color: s.color,
-      fontSize: '10px', fontWeight: 700,
-    }}>
-      {s.label}
-    </span>
-  );
-}
-
-function SpinnerIcon() {
-  return (
-    <svg
-      width="12" height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }}
-    >
-      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-    </svg>
-  );
-}
 

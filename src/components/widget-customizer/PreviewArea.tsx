@@ -22,49 +22,53 @@ export default function PreviewArea({ draft, widgetId }: Props) {
 
   return (
     <div style={styles.previewOuter}>
-      <div style={styles.previewLabel}>
-        <span style={styles.dot} />
-        Live Preview
+      <div style={styles.previewHeader}>
+        <div style={styles.previewLabel}>
+          <span style={styles.dot} />
+          Live Preview
+        </div>
       </div>
 
-      {/* Simulated browser chrome */}
-      <div style={styles.browserChrome}>
-        <div style={styles.browserBar}>
-          <div style={styles.trafficLights}>
-            <span style={{ ...styles.trafficDot, background: '#fc5253' }} />
-            <span style={{ ...styles.trafficDot, background: '#fdbc40' }} />
-            <span style={{ ...styles.trafficDot, background: '#34c84a' }} />
-          </div>
-          <div style={styles.urlBar}>
-            <span style={styles.urlText}>yoursite.com</span>
-          </div>
-        </div>
-
-        {/* Simulated page content */}
-        <div style={styles.fakePageContent}>
-          <div style={styles.fakeNav}>
-            <div style={styles.fakeNavLogo} />
-            <div style={styles.fakeNavLinks}>
-              <div style={styles.fakeLink} />
-              <div style={styles.fakeLink} />
-              <div style={styles.fakeLink} />
+      <div style={styles.previewBody}>
+        {/* Simulated browser chrome */}
+        <div style={styles.browserChrome}>
+          <div style={styles.browserBar}>
+            <div style={styles.trafficLights}>
+              <span style={{ ...styles.trafficDot, background: '#fc5253' }} />
+              <span style={{ ...styles.trafficDot, background: '#fdbc40' }} />
+              <span style={{ ...styles.trafficDot, background: '#34c84a' }} />
+            </div>
+            <div style={styles.urlBar}>
+              <span style={styles.urlText}>yoursite.com</span>
             </div>
           </div>
-          <div style={styles.fakeHero}>
-            <div style={styles.fakeHeading} />
-            <div style={{ ...styles.fakeText, width: '80%' }} />
-            <div style={{ ...styles.fakeText, width: '60%' }} />
-          </div>
 
-          {/* The real widget rendered inside the preview */}
-          <div style={styles.widgetWrapper}>
-            <VoiceAgentWidget config={previewConfig} widgetId={widgetId} />
+          {/* Simulated page content */}
+          <div style={styles.fakePageContent}>
+            <div style={styles.fakeNav}>
+              <div style={styles.fakeNavLogo} />
+              <div style={styles.fakeNavLinks}>
+                <div style={styles.fakeLink} />
+                <div style={styles.fakeLink} />
+                <div style={styles.fakeLink} />
+              </div>
+            </div>
+            <div style={styles.fakeHero}>
+              <div style={styles.fakeHeading} />
+              <div style={{ ...styles.fakeText, width: '80%' }} />
+              <div style={{ ...styles.fakeText, width: '60%' }} />
+            </div>
+
+            {/* The real widget rendered inside the preview */}
+            <div style={styles.widgetWrapper}>
+              <VoiceAgentWidget config={previewConfig} widgetId={widgetId} isDemo={true} />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div style={styles.previewNote}>
-        Widget is fully interactive. Click the launcher to open it.
+        <div style={styles.previewNote}>
+          Widget is fully interactive. Click the launcher to open it.
+        </div>
       </div>
     </div>
   );
@@ -74,23 +78,40 @@ const styles: Record<string, React.CSSProperties> = {
   previewOuter: {
     display: 'flex',
     flexDirection: 'column',
+    height: '100%',
+    background: '#f8fafc',
+    overflow: 'hidden',
+  },
+  previewHeader: {
+    height: '44px',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 16px',
+    borderBottom: '1px solid #e5e7eb',
+    background: '#fafafa',
+    width: '100%',
+    boxSizing: 'border-box',
+    flexShrink: 0,
+  },
+  previewBody: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
-    padding: '24px',
-    background: '#f4f5f7',
-    gap: '12px',
-    overflow: 'hidden',
+    padding: '32px 24px',
+    overflowY: 'auto',
+    gap: '16px',
   },
   previewLabel: {
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
-    fontSize: '11px',
-    fontWeight: 600,
-    color: '#6b7280',
+    gap: '8px',
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#374151',
     textTransform: 'uppercase',
-    letterSpacing: '0.08em',
+    letterSpacing: '0.06em',
   },
   dot: {
     width: '7px',
@@ -111,7 +132,7 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
     display: 'flex',
     flexDirection: 'column',
-    minHeight: 0,
+    minHeight: '450px',
   },
   browserBar: {
     height: '40px',

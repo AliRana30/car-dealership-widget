@@ -88,7 +88,7 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
   },
   header: {
-    padding: '16px',
+    padding: '24px 16px 16px',
     borderBottom: '1px solid #f0f0f0',
     display: 'flex',
     alignItems: 'flex-start',

@@ -125,7 +125,15 @@ export default function VoiceAgentPanel({
       width: typeof panel.width === 'number' ? `${panel.width}px` : panel.width,
       height: panel.height !== undefined ? (typeof panel.height === 'number' ? `${panel.height}px` : panel.height) : 'auto',
       maxWidth: panel.maxWidth !== undefined ? (typeof panel.maxWidth === 'number' ? `${panel.maxWidth}px` : panel.maxWidth) : '100vw',
-      maxHeight: typeof panel.maxHeight === 'number' ? `${panel.maxHeight}px` : panel.maxHeight,
+      maxHeight: (() => {
+        const verticalOffset = targetPos.startsWith('bottom') ? (offset.bottom || 0) : (offset.top || 0);
+        const topGap = 24; // safe spacing from container edge
+        const maxHp = `calc(100% - ${verticalOffset + topGap}px)`;
+        const calculatedMaxHeight = panel.maxHeight !== undefined ? panel.maxHeight : 400;
+        return typeof calculatedMaxHeight === 'number'
+          ? `min(${calculatedMaxHeight}px, ${maxHp})`
+          : `min(${calculatedMaxHeight}, ${maxHp})`;
+      })(),
       display: 'flex',
       flexDirection: 'column',
       background: 'var(--voice-widget-bg-panel, var(--voice-widget-bg, rgba(255, 255, 255, 0.98)))',
