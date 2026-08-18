@@ -20,11 +20,16 @@ const PUBLIC_ROUTES = [
   '/reset-password',
 ];
 
-// API routes that are public (widget embed, call creation, etc.)
+// API routes that are public (widget embed, call creation, webhooks, cron, agent tools, etc.)
 const PUBLIC_API_PREFIXES = [
   '/api/widgets/create-call',
+  '/api/widgets/',
   '/api/retell/',
   '/api/auth/',
+  '/api/webhooks/',
+  '/api/agent/',
+  '/api/cron/',
+  '/api/websites/',
 ];
 
 // Static/embed routes
