@@ -5,10 +5,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createCrawlJob, updateCrawlJob, crawlWebsite, getLatestCrawlJob } from '@/lib/crawler';
+import {
+  createCrawlJob,
+  updateCrawlJob,
+  crawlWebsite,
+  getLatestCrawlJob,
+  type ScanMode,
+} from '@/lib/crawler';
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
   return createClient(url, key);
 }
@@ -47,23 +53,34 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.json({ status: 'never_crawled', websiteId }, { status: 200 });
     }
 
-    // Also get count of indexed records
+    // Get count of indexed records
+    const { data: widgets } = await supabase
+      .from('widgets')
+      .select('id')
+      .eq('website_id', websiteId);
+    const widgetIds = widgets?.map(w => w.id) || [];
+    if (widgetIds.length === 0) {
+      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
+
     const { count } = await supabase
       .from('website_data')
       .select('id', { count: 'exact', head: true })
-      .eq('website_id', websiteId);
+      .in('widget_id', widgetIds);
 
     return NextResponse.json({
-      jobId: job.id,
+      jobId:          job.id,
       websiteId,
-      status: job.status,
-      startUrl: job.start_url,
-      pagesVisited: job.pages_visited || 0,
-      entitiesFound: job.entities_found || 0,
+      status:         job.status,
+      scanMode:       job.scan_mode || 'master',
+      startUrl:       job.start_url,
+      pagesVisited:   job.pages_visited || 0,
+      entitiesFound:  job.entities_found || 0,
+      blockedPages:   job.blocked_pages || 0,
       indexedRecords: count || 0,
-      error: job.error_message || null,
-      startedAt: job.created_at,
-      completedAt: job.completed_at || null,
+      error:          job.error_message || null,
+      startedAt:      job.created_at,
+      completedAt:    job.completed_at || null,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -79,6 +96,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!userId) {
       return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
     }
+
+    const body = await req.json().catch(() => ({}));
+    const scanMode: ScanMode = body?.scanMode === 'quick' ? 'quick' : 'master';
 
     const supabase = getSupabase();
 
@@ -113,24 +133,26 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (existing?.status === 'running' || existing?.status === 'pending') {
       return NextResponse.json(
         {
-          message: 'A crawl is already in progress',
-          jobId: existing.id,
-          status: existing.status,
+          message:  'A crawl is already in progress',
+          jobId:    existing.id,
+          status:   existing.status,
+          scanMode: existing.scan_mode || 'master',
         },
         { status: 202 }
       );
     }
 
     // Create + fire background job
-    const jobId = await createCrawlJob(websiteId, startUrl);
-    runCrawlInBackground(websiteId, startUrl, jobId);
+    const jobId = await createCrawlJob(websiteId, startUrl, scanMode);
+    runCrawlInBackground(websiteId, startUrl, jobId, scanMode);
 
     return NextResponse.json(
       {
-        message: 'Crawl job started',
+        message:  'Crawl job started',
         jobId,
         websiteId,
         startUrl,
+        scanMode,
       },
       { status: 202 }
     );
@@ -142,24 +164,34 @@ export async function POST(req: NextRequest, { params }: Params) {
 
 // ── Background helper ─────────────────────────────────────────────────────────
 
-async function runCrawlInBackground(websiteId: string, startUrl: string, jobId: string) {
+async function runCrawlInBackground(
+  websiteId: string,
+  startUrl: string,
+  jobId: string,
+  scanMode: ScanMode
+) {
   try {
     await updateCrawlJob(jobId, { status: 'running' });
-    const result = await crawlWebsite(websiteId, startUrl);
+    const result = await crawlWebsite(websiteId, startUrl, scanMode);
+    const finalStatus = result.isBlocked ? 'blocked' : 'completed';
     await updateCrawlJob(jobId, {
-      status: 'completed',
-      pages_visited: result.pagesVisited,
+      status:         finalStatus,
+      pages_visited:  result.pagesVisited,
       entities_found: result.entitiesFound,
-      completed_at: new Date().toISOString(),
+      blocked_pages:  result.blockedPages,
+      completed_at:   new Date().toISOString(),
       ...(result.errors.length ? { error_message: result.errors.slice(0, 3).join('; ') } : {}),
     });
-    console.log(`[crawler] Job ${jobId} completed: ${result.pagesVisited} pages, ${result.entitiesFound} entities`);
+    console.log(
+      `[crawler] Job ${jobId} (${scanMode}) ${finalStatus}: ${result.pagesVisited} pages, ${result.blockedPages} blocked, ${result.entitiesFound} entities`
+    );
   } catch (err: any) {
     console.error(`[crawler] Job ${jobId} failed:`, err.message);
     await updateCrawlJob(jobId, {
-      status: 'failed',
+      status:        'failed',
       error_message: err.message,
-      completed_at: new Date().toISOString(),
+      completed_at:  new Date().toISOString(),
     });
   }
 }
+
