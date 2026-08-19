@@ -192,23 +192,41 @@ async function runCrawlInBackground(
   try {
     await updateCrawlJob(jobId, { status: 'running' });
     const result = await crawlWebsite(websiteId, startUrl, scanMode);
-    const finalStatus = result.isBlocked ? 'blocked' : 'completed';
+
+    let finalStatus: 'completed' | 'blocked' | 'failed' = 'completed';
+    let errorMessage: string | undefined = undefined;
+
+    if (result.isBlocked) {
+      finalStatus = 'blocked';
+      errorMessage = 'Crawl blocked by anti-bot firewall (WAF challenge detected).';
+    } else if (result.pagesVisited === 0 && result.entitiesFound === 0) {
+      // Honest failure reporting: zero pages visited and zero entities found
+      finalStatus = 'failed';
+      if (result.errors && result.errors.length > 0) {
+        errorMessage = result.errors.slice(0, 3).join('; ');
+      } else {
+        errorMessage = `Crawl failed to reach ${startUrl}: 0 pages analyzed and 0 knowledge records extracted. Verify site accessibility.`;
+      }
+    } else if (result.errors && result.errors.length > 0) {
+      errorMessage = result.errors.slice(0, 3).join('; ');
+    }
+
     await updateCrawlJob(jobId, {
       status:         finalStatus,
       pages_visited:  result.pagesVisited,
       entities_found: result.entitiesFound,
       blocked_pages:  result.blockedPages,
       completed_at:   new Date().toISOString(),
-      ...(result.errors.length ? { error_message: result.errors.slice(0, 3).join('; ') } : {}),
+      ...(errorMessage ? { error_message: errorMessage } : {}),
     });
     console.log(
-      `[crawler] Job ${jobId} (${scanMode}) ${finalStatus}: ${result.pagesVisited} pages, ${result.blockedPages} blocked, ${result.entitiesFound} entities`
+      `[crawler] Job ${jobId} (${scanMode}) ${finalStatus}: ${result.pagesVisited} pages, ${result.blockedPages} blocked, ${result.entitiesFound} entities${errorMessage ? ` (Error: ${errorMessage})` : ''}`
     );
   } catch (err: any) {
     console.error(`[crawler] Job ${jobId} failed:`, err.message);
     await updateCrawlJob(jobId, {
       status:        'failed',
-      error_message: err.message,
+      error_message: err.message || `Crawl failed unexpectedly at stage: execution for ${startUrl}`,
       completed_at:  new Date().toISOString(),
     });
   }

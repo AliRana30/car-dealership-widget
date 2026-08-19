@@ -66,18 +66,38 @@ function runCrawlInBackground(websiteId: string, startUrl: string, jobId: string
     try {
       await updateCrawlJob(jobId, { status: 'running' });
       const result = await crawlWebsite(websiteId, startUrl, scanMode);
+
+      let finalStatus: 'completed' | 'blocked' | 'failed' = 'completed';
+      let errorMessage: string | undefined = undefined;
+
+      if (result.isBlocked) {
+        finalStatus = 'blocked';
+        errorMessage = 'Crawl blocked by anti-bot firewall (WAF challenge detected).';
+      } else if (result.pagesVisited === 0 && result.entitiesFound === 0) {
+        // Honest failure reporting: zero pages visited and zero entities found
+        finalStatus = 'failed';
+        if (result.errors && result.errors.length > 0) {
+          errorMessage = result.errors.slice(0, 3).join('; ');
+        } else {
+          errorMessage = `Crawl failed to reach ${startUrl}: 0 pages analyzed and 0 knowledge records extracted.`;
+        }
+      } else if (result.errors && result.errors.length > 0) {
+        errorMessage = result.errors.slice(0, 3).join('; ');
+      }
+
       await updateCrawlJob(jobId, {
-        status: result.isBlocked ? 'blocked' : 'completed',
+        status: finalStatus,
         pages_visited: result.pagesVisited,
         entities_found: result.entitiesFound,
         blocked_pages: result.blockedPages || 0,
         completed_at: new Date().toISOString(),
+        ...(errorMessage ? { error_message: errorMessage } : {}),
       });
     } catch (err: any) {
       console.error(`[cron/recrawl] Background crawl for website ${websiteId} failed:`, err);
       await updateCrawlJob(jobId, {
         status: 'failed',
-        error_message: err?.message || 'Crawl failed in background',
+        error_message: err?.message || `Crawl failed in background at stage: execution for ${startUrl}`,
         completed_at: new Date().toISOString(),
       }).catch(() => {});
     }

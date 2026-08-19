@@ -7,13 +7,10 @@ import {
   ShoppingBag,
   Layers,
   Clock,
-  Radio,
   FileUp,
   RefreshCw,
   Eye,
-  Trash2,
   Edit2,
-  Check,
   X,
   ChevronDown,
 } from 'lucide-react';
@@ -33,11 +30,11 @@ interface CrawlerSectionProps {
 
 function CrawlStatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string; label: string }> = {
-    pending:       { bg: '#FEF3C7', color: '#D97706', label: 'Queued' },
-    running:       { bg: '#DBEAFE', color: '#2563EB', label: 'Crawling…' },
-    completed:     { bg: '#DCFCE7', color: '#15803D', label: 'Complete' },
-    failed:        { bg: '#FEE2E2', color: '#B91C1C', label: 'Failed' },
-    blocked:       { bg: '#FEE2E2', color: '#DC2626', label: 'Blocked by WAF' },
+    pending: { bg: '#FEF3C7', color: '#D97706', label: 'Queued' },
+    running: { bg: '#DBEAFE', color: '#2563EB', label: 'Crawling…' },
+    completed: { bg: '#DCFCE7', color: '#15803D', label: 'Complete' },
+    failed: { bg: '#FEE2E2', color: '#B91C1C', label: 'Failed' },
+    blocked: { bg: '#FEE2E2', color: '#DC2626', label: 'Blocked by WAF' },
     never_crawled: { bg: '#F1F5F9', color: '#64748B', label: 'Not Started' },
   };
   const s = map[status] || map.never_crawled;
@@ -923,10 +920,10 @@ function WebsiteConnectedPanel({
   handleReCrawl,
 }: WebsiteConnectedPanelProps) {
   const [editingName, setEditingName] = useState(false);
-  const [editName, setEditName]       = useState(websiteName || '');
-  const [savingName, setSavingName]   = useState(false);
-  const [reScanMode, setReScanMode]   = useState<ScanMode>(crawlStatus?.scanMode || 'master');
-  const [cssForm, setCssForm]         = useState<CssSchemaFormState>({
+  const [editName, setEditName] = useState(websiteName || '');
+  const [savingName, setSavingName] = useState(false);
+  const [reScanMode, setReScanMode] = useState<ScanMode>(crawlStatus?.scanMode || 'master');
+  const [cssForm, setCssForm] = useState<CssSchemaFormState>({
     baseSelector: '',
     titleSelector: '',
     descSelector: '',
@@ -935,7 +932,7 @@ function WebsiteConnectedPanel({
     linkSelector: '',
     entityType: 'product',
   });
-  const [savingCss, setSavingCss]     = useState(false);
+  const [savingCss, setSavingCss] = useState(false);
   const [detectedPlatform, setDetectedPlatform] = useState<string>('unknown');
   const [syncFrequency, setSyncFrequency] = useState<SyncFrequency>('off');
   const isBusy = crawlStatus?.status === 'running' || crawlStatus?.status === 'pending';
@@ -958,7 +955,7 @@ function WebsiteConnectedPanel({
         if (site?.sync_frequency) {
           setSyncFrequency(site.sync_frequency);
         }
-      } catch {}
+      } catch { }
     };
     fetchWebsiteData();
   }, [websiteId]);
@@ -972,7 +969,7 @@ function WebsiteConnectedPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cssSelectorSchema: schema }),
       });
-    } catch {}
+    } catch { }
     setSavingCss(false);
   };
 
@@ -987,7 +984,7 @@ function WebsiteConnectedPanel({
         body: JSON.stringify({ name: editName.trim() }),
       });
       if (res.ok && setWebsiteName) setWebsiteName(editName.trim());
-    } catch {}
+    } catch { }
     setSavingName(false);
     setEditingName(false);
   };
@@ -1101,8 +1098,48 @@ function WebsiteConnectedPanel({
               </div>
             </div>
           ) : crawlStatus.status === 'failed' ? (
-            <div style={{ fontSize: '11px', color: '#B91C1C', background: '#FEF2F2', borderRadius: '6px', padding: '7px 10px' }}>
-              Crawl failed — try re-crawling below.
+            <div style={{
+              background: '#FEF2F2',
+              border: '1.5px solid #FCA5A5',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <AlertCircle size={14} color="#DC2626" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#991B1B' }}>
+                  Crawl Failed (0 Pages / 0 Knowledge Records)
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '10px', color: '#64748B' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Pages analyzed</span>
+                  <span style={{ fontWeight: 600, color: '#DC2626' }}>0</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Knowledge records</span>
+                  <span style={{ fontWeight: 600, color: '#DC2626' }}>0</span>
+                </div>
+              </div>
+              {crawlStatus.error && (
+                <div style={{
+                  fontSize: '10px',
+                  color: '#7F1D1D',
+                  background: '#FEE2E2',
+                  padding: '6px 8px',
+                  borderRadius: '5px',
+                  lineHeight: '1.4',
+                  fontFamily: 'monospace',
+                  wordBreak: 'break-word',
+                }}>
+                  ⚠️ {crawlStatus.error}
+                </div>
+              )}
+              <div style={{ fontSize: '10px', color: '#991B1B', lineHeight: '1.4' }}>
+                💡 <strong>Next steps:</strong> Verify your URL is publicly reachable, try a <strong>Quick Scan</strong>, configure <strong>CSS Selectors</strong>, or import knowledge directly.
+              </div>
             </div>
           ) : null}
         </>
@@ -1204,17 +1241,17 @@ function WebsiteConnectedPanel({
 // ── Main CrawlerSection ───────────────────────────────────────────────────────
 
 export default function CrawlerSection({
-  websiteId    = '',
+  websiteId = '',
   setWebsiteId,
-  websiteName  = 'Default Website',
+  websiteName = 'Default Website',
   setWebsiteName,
-  widgetId     = '',
+  widgetId = '',
 }: CrawlerSectionProps) {
-  const [wsSiteUrl,   setWsSiteUrl]   = useState('');
-  const [wsSiteName,  setWsSiteName]  = useState('');
+  const [wsSiteUrl, setWsSiteUrl] = useState('');
+  const [wsSiteName, setWsSiteName] = useState('');
   const [wsConnecting, setWsConnecting] = useState(false);
-  const [wsError,     setWsError]     = useState<string | null>(null);
-  const [scanMode,    setScanMode]    = useState<ScanMode>('master');
+  const [wsError, setWsError] = useState<string | null>(null);
+  const [scanMode, setScanMode] = useState<ScanMode>('master');
   const [connectCssForm, setConnectCssForm] = useState<CssSchemaFormState>({
     baseSelector: '',
     titleSelector: '',
@@ -1233,6 +1270,7 @@ export default function CrawlerSection({
     indexedRecords: number;
     jobId?: string;
     completedAt?: string;
+    error?: string | null;
   } | null>(null);
   const crawlPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -1245,19 +1283,20 @@ export default function CrawlerSection({
         if (!res.ok) return;
         const data = await res.json();
         setCrawlStatus({
-          status:         data.status || 'never_crawled',
-          scanMode:       data.scanMode || 'master',
-          pagesVisited:   data.pagesVisited   || 0,
-          entitiesFound:  data.entitiesFound  || 0,
-          blockedPages:   data.blockedPages   || data.blocked_pages || 0,
+          status: data.status || 'never_crawled',
+          scanMode: data.scanMode || 'master',
+          pagesVisited: data.pagesVisited || 0,
+          entitiesFound: data.entitiesFound || 0,
+          blockedPages: data.blockedPages || data.blocked_pages || 0,
           indexedRecords: data.indexedRecords || 0,
-          jobId:          data.jobId,
-          completedAt:    data.completedAt,
+          jobId: data.jobId,
+          completedAt: data.completedAt,
+          error: data.error || data.error_message || null,
         });
         if (data.status === 'completed' || data.status === 'failed' || data.status === 'blocked' || data.status === 'never_crawled') {
           if (crawlPollRef.current) clearInterval(crawlPollRef.current);
         }
-      } catch {}
+      } catch { }
     };
     poll();
     crawlPollRef.current = setInterval(poll, 4000);
@@ -1275,8 +1314,8 @@ export default function CrawlerSection({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name:         wsSiteName.trim() || url,
-          domain:       url,
+          name: wsSiteName.trim() || url,
+          domain: url,
           triggerCrawl: true,
           scanMode,
           cssSelectorSchema: customSchema,
@@ -1287,7 +1326,7 @@ export default function CrawlerSection({
       if (!res.ok) throw new Error(data.message || data.error || 'Failed to connect website');
 
       if (data.website?.id) {
-        if (setWebsiteId)   setWebsiteId(data.website.id);
+        if (setWebsiteId) setWebsiteId(data.website.id);
         if (setWebsiteName) setWebsiteName(data.website.name);
 
         setCrawlStatus({ status: 'pending', scanMode, pagesVisited: 0, entitiesFound: 0, blockedPages: 0, indexedRecords: 0, jobId: data.crawlJobId });
@@ -1299,7 +1338,7 @@ export default function CrawlerSection({
             const d = await r.json();
             setCrawlStatus({ status: d.status || 'pending', scanMode: d.scanMode || scanMode, pagesVisited: d.pagesVisited || 0, entitiesFound: d.entitiesFound || 0, blockedPages: d.blockedPages || d.blocked_pages || 0, indexedRecords: d.indexedRecords || 0, jobId: d.jobId, completedAt: d.completedAt });
             if (d.status === 'completed' || d.status === 'failed' || d.status === 'blocked') { if (crawlPollRef.current) clearInterval(crawlPollRef.current); }
-          } catch {}
+          } catch { }
         }, 4000);
       }
       setWsSiteUrl('');
@@ -1331,9 +1370,9 @@ export default function CrawlerSection({
           const d = await r.json();
           setCrawlStatus({ status: d.status || 'pending', scanMode: d.scanMode || mode, pagesVisited: d.pagesVisited || 0, entitiesFound: d.entitiesFound || 0, blockedPages: d.blockedPages || d.blocked_pages || 0, indexedRecords: d.indexedRecords || 0, jobId: d.jobId, completedAt: d.completedAt });
           if (d.status === 'completed' || d.status === 'failed' || d.status === 'blocked') { if (crawlPollRef.current) clearInterval(crawlPollRef.current); }
-        } catch {}
+        } catch { }
       }, 4000);
-    } catch {}
+    } catch { }
   };
 
 

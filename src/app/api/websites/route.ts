@@ -292,20 +292,37 @@ async function runCrawlInBackground(
 
     const result = await crawlWebsite(websiteId, startUrl, scanMode);
 
-    const finalStatus = result.isBlocked ? 'blocked' : 'completed';
+    let finalStatus: 'completed' | 'blocked' | 'failed' = 'completed';
+    let errorMessage: string | undefined = undefined;
+
+    if (result.isBlocked) {
+      finalStatus = 'blocked';
+      errorMessage = 'Crawl blocked by anti-bot firewall (WAF challenge detected).';
+    } else if (result.pagesVisited === 0 && result.entitiesFound === 0) {
+      // Honest failure reporting: zero pages visited and zero entities found
+      finalStatus = 'failed';
+      if (result.errors && result.errors.length > 0) {
+        errorMessage = result.errors.slice(0, 3).join('; ');
+      } else {
+        errorMessage = `Crawl failed to reach ${startUrl}: 0 pages analyzed and 0 knowledge records extracted. Verify site accessibility.`;
+      }
+    } else if (result.errors && result.errors.length > 0) {
+      errorMessage = result.errors.slice(0, 3).join('; ');
+    }
+
     await updateCrawlJob(jobId, {
       status: finalStatus,
       pages_visited: result.pagesVisited,
       entities_found: result.entitiesFound,
       blocked_pages: result.blockedPages || 0,
       completed_at: new Date().toISOString(),
-      ...(result.isBlocked ? { error_message: 'Crawl blocked by anti-bot firewall (WAF challenge detected).' } : {}),
+      ...(errorMessage ? { error_message: errorMessage } : {}),
     });
   } catch (err: any) {
     console.error(`[runCrawlInBackground] Job ${jobId} failed:`, err);
     await updateCrawlJob(jobId, {
       status: 'failed',
-      error_message: err.message || 'Crawl failed unexpectedly',
+      error_message: err.message || `Crawl failed unexpectedly at stage: execution for ${startUrl}`,
       completed_at: new Date().toISOString(),
     });
   }
