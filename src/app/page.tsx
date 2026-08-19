@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 // ── Icon Helper ─────────────────────────────────────────────────────────────
 
@@ -62,9 +63,12 @@ const PATHS = {
   widget: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
 };
 
-// ── Main Page Component ─────────────────────────────────────────────────────
+// ── Headline Words for Staggered Animation ──────────────────────────────────
+const LINE1_WORDS = ['Every', 'call', 'answered.'];
+const LINE2_WORDS = ['Every', 'appointment', 'booked.'];
 
 export default function HomePage() {
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [heroPhase, setHeroPhase] = useState(0);
   const [carouselIndex, setCarouselIndex] = useState(0);
@@ -79,21 +83,24 @@ export default function HomePage() {
   // Hero cycle animation
   useEffect(() => {
     const timer = setInterval(() => {
-      setHeroPhase((prev) => (prev + 1) % 4);
-    }, 3800);
+      setHeroPhase((prev) => (prev + 1) % 3);
+    }, 4000);
     return () => clearInterval(timer);
   }, []);
 
-  // Carousel autoplay
+  // Carousel autoplay — SCOPED TO CAROUSEL CONTAINER (never scrolls window)
   const startCarouselAutoPlay = useCallback(() => {
     if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
     autoPlayTimerRef.current = setInterval(() => {
       setCarouselIndex((prev) => {
         const next = (prev + 1) % 5;
         if (carouselRef.current) {
-          const cards = carouselRef.current.children;
-          if (cards[next]) {
-            (cards[next] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+          const card = carouselRef.current.children[next] as HTMLElement;
+          if (card) {
+            carouselRef.current.scrollTo({
+              left: card.offsetLeft - carouselRef.current.offsetLeft,
+              behavior: 'smooth',
+            });
           }
         }
         return next;
@@ -112,9 +119,12 @@ export default function HomePage() {
     if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
     setCarouselIndex(index);
     if (carouselRef.current) {
-      const cards = carouselRef.current.children;
-      if (cards[index]) {
-        (cards[index] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+      const card = carouselRef.current.children[index] as HTMLElement;
+      if (card) {
+        carouselRef.current.scrollTo({
+          left: card.offsetLeft - carouselRef.current.offsetLeft,
+          behavior: 'smooth',
+        });
       }
     }
     setTimeout(startCarouselAutoPlay, 5000);
@@ -143,91 +153,54 @@ export default function HomePage() {
   // Features Data
   const features = [
     {
-      title: 'Ultra-Low Latency Voice & Chat',
+      title: 'Live Calendar Booking',
+      icon: <SvgIcon paths={PATHS.calendar} size={22} color="#FFFDF8" />,
+      detail: 'Reads your real-time schedule, offers times that actually work, and books directly into your calendar.',
+      tooltip: 'Bidirectional sync with Google Calendar, Outlook, and webhook integrations.',
+    },
+    {
+      title: 'Answers Business FAQs',
+      icon: <SvgIcon paths={PATHS.message} size={22} color="#FFFDF8" />,
+      detail: 'Trained on your business hours, location, parking, policies, and service menus.',
+      tooltip: 'Ingests website intelligence, sitemaps, and uploaded document knowledge.',
+    },
+    {
+      title: 'Call Recordings & Transcripts',
       icon: <SvgIcon paths={PATHS.phone} size={22} color="#FFFDF8" />,
-      detail: 'Natural, human-like voice conversations powered by Retell AI & Vapi WebRTC with instant text chat fallback.',
-      tooltip: 'Real-time WebRTC audio streaming with active speech interruption and emotion conditioning.',
+      detail: 'Listen to call recordings or read word-for-word transcripts of every caller interaction.',
+      tooltip: 'Searchable conversation logs with extracted customer notes and booking intents.',
     },
     {
-      title: 'Dynamic Website Intelligence RAG',
-      icon: <SvgIcon paths={PATHS.globe} size={22} color="#FFFDF8" />,
-      detail: 'Deep recursive crawler and connectors ingest your live inventory, services, and FAQs into pgvector embeddings.',
-      tooltip: 'Automated 12-hour sync schedules and real-time product feed ingestion.',
+      title: 'Custom Voice & Tone',
+      icon: <SvgIcon paths={PATHS.sparkles} size={22} color="#FFFDF8" />,
+      detail: 'Choose the voice, accent, speaking pace, and brand personality that fits your business.',
+      tooltip: 'Configurable greeting prompts, interruption sensitivity, and ambient noise filtering.',
     },
     {
-      title: 'Agent-Initiated Browser Navigation',
-      icon: <SvgIcon paths={PATHS.compass} size={22} color="#FFFDF8" />,
-      detail: 'When visitors ask to see a specific product or listing, the agent navigates the host page directly while speaking.',
-      tooltip: 'Realtime session broadcast channel with conversation resume-on-navigate.',
-    },
-    {
-      title: 'Pixel-Perfect Visual Customizer',
-      icon: <SvgIcon paths={PATHS.layout} size={22} color="#FFFDF8" />,
-      detail: 'Live preview across mobile, tablet, and desktop viewports with customizable themes, fonts, and launcher variants.',
-      tooltip: 'WCAG contrast validation, draggable splitter canvas, and quick preset switches.',
-    },
-    {
-      title: 'Enterprise Security & Sync',
-      icon: <SvgIcon paths={PATHS.shield} size={22} color="#FFFDF8" />,
-      detail: 'Private server-side API keys, per-IP rate limiting, Shopify & WooCommerce HMAC cryptographic validation.',
-      tooltip: 'No credentials exposed to browser clients with clean sandboxed iframes.',
+      title: 'SMS Follow-Ups & Reminders',
+      icon: <SvgIcon paths={PATHS.refresh} size={22} color="#FFFDF8" />,
+      detail: 'Automatically texts confirmation details and calendar links to callers immediately after the call.',
+      tooltip: 'Instant SMS notifications with customizable confirmation templates.',
     },
   ];
 
   // Integrations Marquee
   const integrations = [
+    { name: 'Google Calendar', icon: <SvgIcon paths={PATHS.calendar} size={18} /> },
+    { name: 'Outlook Calendar', icon: <SvgIcon paths={PATHS.calendar} size={18} /> },
     { name: 'Shopify Storefront', icon: <SvgIcon paths={PATHS.globe} size={18} /> },
     { name: 'WooCommerce API', icon: <SvgIcon paths={PATHS.refresh} size={18} /> },
     { name: 'Retell AI WebRTC', icon: <SvgIcon paths={PATHS.phone} size={18} /> },
     { name: 'Vapi AI Assistant', icon: <SvgIcon paths={PATHS.sparkles} size={18} /> },
-    { name: 'Crawl4AI Spider', icon: <SvgIcon paths={PATHS.globe} size={18} /> },
-    { name: 'Google Calendar & Booking', icon: <SvgIcon paths={PATHS.calendar} size={18} /> },
-    { name: 'Supabase pgvector', icon: <SvgIcon paths={PATHS.shield} size={18} /> },
+    { name: 'Calendly Sync', icon: <SvgIcon paths={PATHS.calendar} size={18} /> },
   ];
-
-  // Hero interactive state simulations
-  const heroStates = [
-    {
-      icon: <SvgIcon paths={PATHS.phone} size={32} color="#FFFDF8" />,
-      label: 'Incoming Visitor Call...',
-      sub: 'Customer: "Do you have the 2024 Ram 1500 in stock?"',
-      badge: '🎙️ Live Audio Connected',
-      badgeColor: '#16A34A',
-      chipText: 'Searching live vehicle database...',
-    },
-    {
-      icon: <SvgIcon paths={PATHS.globe} size={32} color="#FFFDF8" />,
-      label: 'Website Intelligence Lookup',
-      sub: 'Agent: "Yes! We have 3 available starting at $49,995."',
-      badge: '⚡ pgvector Semantic Match',
-      badgeColor: '#2563EB',
-      chipText: '3 in-stock matching records retrieved',
-    },
-    {
-      icon: <SvgIcon paths={PATHS.compass} size={32} color="#FFFDF8" />,
-      label: 'Autonomous Page Navigation',
-      sub: 'Agent: "I\'ve opened the full listing on your screen now."',
-      badge: '🧭 Realtime Host Navigation',
-      badgeColor: '#9333EA',
-      chipText: 'Navigating to /inventory/ram-1500',
-    },
-    {
-      icon: <SvgIcon paths={PATHS.calendar} size={32} color="#FFFDF8" />,
-      label: 'Test Drive Scheduled',
-      sub: 'Agent: "Your test drive is confirmed for Thursday at 2:30 PM!"',
-      badge: '✓ Booking Synchronized',
-      badgeColor: '#D9714B',
-      chipText: 'Calendar confirmation sent via SMS',
-    },
-  ];
-
-  const currentHero = heroStates[heroPhase];
 
   return (
-    <div style={{ position: 'relative', isolation: 'isolate', fontFamily: "'Figtree', 'Inter', system-ui, sans-serif", color: '#0E1B2A', minHeight: '100vh', overflowX: 'hidden' }}>
-      
-      {/* ── Global Styles & Ambient Drift Animations ────────────────────── */}
-      <style dangerouslySetInnerHTML={{ __html: `
+    <div suppressHydrationWarning style={{ position: 'relative', isolation: 'isolate', fontFamily: "'Figtree', 'Inter', system-ui, sans-serif", color: '#0E1B2A', minHeight: '100vh', overflowX: 'hidden' }}>
+
+      {/* ── Global Styles & Rich Animations ─────────────────────────────── */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes blobDriftA {
           0% { transform: translate(-6%, -4%) scale(1); }
           50% { transform: translate(4%, 6%) scale(1.08); }
@@ -238,10 +211,26 @@ export default function HomePage() {
           50% { transform: translate(-5%, -6%) scale(1.06); }
           100% { transform: translate(5%, 4%) scale(1); }
         }
+        @keyframes wordEnter {
+          0% { opacity: 0; transform: translateY(18px) scale(0.96); filter: blur(4px); }
+          100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+        }
         @keyframes pulseRing {
-          0% { box-shadow: 0 0 0 0 rgba(47,143,224,0.4); }
-          70% { box-shadow: 0 0 0 20px rgba(47,143,224,0); }
+          0% { box-shadow: 0 0 0 0 rgba(47,143,224,0.45); }
+          70% { box-shadow: 0 0 0 24px rgba(47,143,224,0); }
           100% { box-shadow: 0 0 0 0 rgba(47,143,224,0); }
+        }
+        @keyframes floatIcon {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-12px) rotate(3deg); }
+        }
+        @keyframes floatCard {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-8px); }
+        }
+        @keyframes soundWave {
+          0%, 100% { height: 6px; }
+          50% { height: 28px; }
         }
         @keyframes marqueeScroll {
           0% { transform: translateX(0); }
@@ -254,33 +243,59 @@ export default function HomePage() {
         .mobile-hamburger-btn { display: none; }
         .hero-grid-layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; }
 
+        .btn-hover-lift {
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .btn-hover-lift:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px -6px rgba(47,143,224,0.45) !important;
+        }
+
         @media (max-width: 900px) {
           .desktop-nav-items { display: none !important; }
           .mobile-hamburger-btn { display: flex !important; }
-          .hero-grid-layout { grid-template-columns: 1fr !important; gap: 32px !important; }
+          .hero-grid-layout { grid-template-columns: 1fr !important; gap: 36px !important; }
         }
       `}} />
 
-      {/* ── Ambient Background Layer ────────────────────────────────────── */}
+      {/* ── Ambient Background Layer with Floating Elements ─────────────── */}
       <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: '#E9F2FB', overflow: 'hidden', pointerEvents: 'none' }}>
-        <div style={{ position: 'absolute', top: '-10%', left: '-10%', width: '60%', height: '60%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(47,143,224,0.2), transparent 70%)', filter: 'blur(50px)', animation: 'blobDriftA 26s ease-in-out infinite' }} />
-        <div style={{ position: 'absolute', bottom: '-15%', right: '-10%', width: '65%', height: '65%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(217,113,75,0.12), transparent 70%)', filter: 'blur(60px)', animation: 'blobDriftB 32s ease-in-out infinite' }} />
-        <div style={{ position: 'absolute', inset: 0, opacity: 0.08, backgroundImage: "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2744%27 height=%2744%27%3E%3Cpath d=%27M44 0H0V44%27 fill=%27none%27 stroke=%27%236b6656%27 stroke-width=%271%27/%3E%3C/svg%3E')", backgroundSize: '44px 44px' }} />
+        <div style={{ position: 'absolute', top: '-10%', left: '-10%', width: '60%', height: '60%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(47,143,224,0.22), transparent 70%)', filter: 'blur(50px)', animation: 'blobDriftA 24s ease-in-out infinite' }} />
+        <div style={{ position: 'absolute', bottom: '-15%', right: '-10%', width: '65%', height: '65%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(217,113,75,0.14), transparent 70%)', filter: 'blur(60px)', animation: 'blobDriftB 28s ease-in-out infinite' }} />
+
+        {/* Floating background decorative icon badges */}
+        <div style={{ position: 'absolute', top: '15%', left: '8%', opacity: 0.25, animation: 'floatIcon 8s ease-in-out infinite' }}>
+          <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <SvgIcon paths={PATHS.phone} size={22} color="#FFFFFF" />
+          </div>
+        </div>
+        <div style={{ position: 'absolute', top: '22%', right: '12%', opacity: 0.25, animation: 'floatIcon 10s ease-in-out 1s infinite' }}>
+          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: '#D9714B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <SvgIcon paths={PATHS.calendar} size={24} color="#FFFFFF" />
+          </div>
+        </div>
+        <div style={{ position: 'absolute', bottom: '25%', left: '12%', opacity: 0.2, animation: 'floatIcon 9s ease-in-out 2s infinite' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <SvgIcon paths={PATHS.sparkles} size={20} color="#FFFFFF" />
+          </div>
+        </div>
+
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.07, backgroundImage: "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2744%27 height=%2744%27%3E%3Cpath d=%27M44 0H0V44%27 fill=%27none%27 stroke=%27%236b6656%27 stroke-width=%271%27/%3E%3C/svg%3E')", backgroundSize: '44px 44px' }} />
       </div>
 
       {/* ── Navigation Bar ──────────────────────────────────────────────── */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(233,242,251,0.85)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(14,27,42,0.08)' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(233,242,251,0.88)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(14,27,42,0.08)' }}>
         <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '0 32px', height: '68px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px' }}>
-          
+
           {/* Logo & Brand */}
           <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#0E1B2A' }}>
             <div style={{
               width: '36px', height: '36px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
+              background: 'linear-gradient(135deg, #16A34A, #15803D)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
-              boxShadow: '0 4px 12px rgba(47,143,224,0.35)',
+              boxShadow: '0 4px 12px rgba(22,163,74,0.35)',
             }}>
-              <SvgIcon paths={PATHS.widget} size={20} color="#FFFDF8" />
+              <SvgIcon paths={PATHS.phone} size={20} color="#FFFDF8" />
             </div>
             <span style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em', color: '#0E1B2A' }}>Widgetized</span>
           </Link>
@@ -290,8 +305,7 @@ export default function HomePage() {
             <a href="#features" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Features</a>
             <a href="#channels" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Capabilities</a>
             <a href="#how-it-works" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>How It Works</a>
-            <Link href="/widget-customizer?id=front-desk" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Live Customizer</Link>
-            <Link href="/dashboard" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none' }}>Dashboard</Link>
+            <Link href="/dashboard" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Dashboard</Link>
           </nav>
 
           {/* Desktop Auth & Action Buttons */}
@@ -299,25 +313,28 @@ export default function HomePage() {
             <Link
               href="/login"
               style={{
-                padding: '9px 18px', borderRadius: '10px',
-                border: '1px solid rgba(14,27,42,0.15)', background: 'rgba(255,255,255,0.7)',
+                padding: '9px 20px', borderRadius: '10px',
+                border: '1px solid rgba(14,27,42,0.18)', background: 'rgba(255,255,255,0.85)',
                 color: '#0E1B2A', fontSize: '14px', fontWeight: 600,
-                textDecoration: 'none', transition: 'all 0.2s ease',
+                textDecoration: 'none', display: 'inline-block',
+                cursor: 'pointer',
               }}
             >
               Login
             </Link>
             <Link
               href="/signup"
+              className="btn-hover-lift"
               style={{
-                padding: '9px 20px', borderRadius: '10px',
+                padding: '9px 22px', borderRadius: '10px',
                 background: '#2F8FE0', color: '#FFFDF8',
                 fontSize: '14px', fontWeight: 600,
-                textDecoration: 'none', transition: 'all 0.25s ease',
+                textDecoration: 'none', display: 'inline-block',
                 boxShadow: '0 4px 14px rgba(47,143,224,0.3)',
+                cursor: 'pointer',
               }}
             >
-              Sign Up Free
+              Get Started
             </Link>
           </div>
 
@@ -345,8 +362,8 @@ export default function HomePage() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                <SvgIcon paths={PATHS.widget} size={18} color="#FFFDF8" />
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #16A34A, #15803D)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                <SvgIcon paths={PATHS.phone} size={18} color="#FFFDF8" />
               </div>
               <span style={{ fontSize: '18px', fontWeight: 700 }}>Widgetized</span>
             </div>
@@ -359,14 +376,32 @@ export default function HomePage() {
             <a href="#features" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Features</a>
             <a href="#channels" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Capabilities</a>
             <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
-            <Link href="/widget-customizer?id=front-desk" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Live Customizer</Link>
-            <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Fleet Dashboard</Link>
+            <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Fleet Dashboard</Link>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '280px', marginTop: '24px' }}>
-              <Link href="/login" onClick={() => setMobileMenuOpen(false)} style={{ padding: '12px', borderRadius: '10px', background: '#FFFFFF', border: '1px solid #E5E7EB', color: '#0E1B2A', textAlign: 'center', fontWeight: 600, textDecoration: 'none' }}>
+              <Link
+                href="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  padding: '12px', borderRadius: '10px',
+                  background: '#FFFFFF', border: '1px solid #E5E7EB',
+                  color: '#0E1B2A', textAlign: 'center', fontWeight: 600,
+                  textDecoration: 'none', cursor: 'pointer',
+                }}
+              >
                 Login
               </Link>
-              <Link href="/signup" onClick={() => setMobileMenuOpen(false)} style={{ padding: '12px', borderRadius: '10px', background: '#2F8FE0', color: '#FFFDF8', textAlign: 'center', fontWeight: 600, textDecoration: 'none', boxShadow: '0 4px 14px rgba(47,143,224,0.3)' }}>
+              <Link
+                href="/signup"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  padding: '12px', borderRadius: '10px',
+                  background: '#2F8FE0', color: '#FFFDF8',
+                  textAlign: 'center', fontWeight: 600,
+                  textDecoration: 'none', boxShadow: '0 4px 14px rgba(47,143,224,0.3)',
+                  cursor: 'pointer',
+                }}
+              >
                 Sign Up Free
               </Link>
             </div>
@@ -374,37 +409,67 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Hero Section ────────────────────────────────────────────────── */}
+      {/* ── Hero Section (With Animated Words & Interactive Visual Card) ── */}
       <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '56px 32px 56px' }}>
         <div className="hero-grid-layout" style={{ alignItems: 'center' }}>
-          
+
           {/* Left Hero Copy */}
           <div>
-            <h1 style={{ fontFamily: "'Figtree', sans-serif", letterSpacing: '-0.025em', margin: '0 0 14px' }}>
-              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 0.98, color: '#0E1B2A' }}>
-                Every call answered.
+            <h1 style={{ fontFamily: "'Figtree', sans-serif", letterSpacing: '-0.025em', margin: '0 0 16px' }}>
+              {/* Line 1 with Word-by-Word Staggered Entrance */}
+              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 0.98, color: '#0E1B2A', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {LINE1_WORDS.map((w, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      display: 'inline-block',
+                      animation: `wordEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.08}s both`,
+                    }}
+                  >
+                    {w}
+                  </span>
+                ))}
               </div>
-              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 1.05, marginTop: '4px', color: '#2F8FE0' }}>
-                Every appointment booked.
+
+              {/* Line 2 with Word-by-Word Staggered Entrance */}
+              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 1.05, marginTop: '6px', color: '#2F8FE0', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {LINE2_WORDS.map((w, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      display: 'inline-block',
+                      animation: `wordEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${(idx + 3) * 0.08}s both`,
+                    }}
+                  >
+                    {w}
+                  </span>
+                ))}
               </div>
             </h1>
 
-            <p style={{ fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.72)', maxWidth: '460px', margin: '0 0 30px' }}>
+            <p style={{
+              fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.72)', maxWidth: '460px', margin: '0 0 30px',
+              animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both',
+            }}>
               An agent trained on your business's own hours, services, and calendar answers the call, books the appointment, and lets you review exactly what happened afterward.
             </p>
 
             {/* CTAs */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '22px', flexWrap: 'wrap', marginBottom: '32px' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '22px', flexWrap: 'wrap', marginBottom: '32px',
+              animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.55s both',
+            }}>
               <Link
                 href="/signup"
+                className="btn-hover-lift"
                 style={{
-                  padding: '14px 28px', borderRadius: '12px',
+                  padding: '14px 30px', borderRadius: '12px',
                   background: '#2F8FE0', color: '#FFFDF8',
-                  fontSize: '15px', fontWeight: 600,
+                  fontSize: '15.5px', fontWeight: 600,
                   textDecoration: 'none', display: 'inline-block',
                   whiteSpace: 'nowrap', flexShrink: 0,
                   boxShadow: '0 10px 24px -8px rgba(14,27,42,0.32)',
-                  transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+                  cursor: 'pointer',
                 }}
               >
                 Sign Up Free
@@ -414,6 +479,7 @@ export default function HomePage() {
                 style={{
                   fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0',
                   textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  transition: 'transform 0.2s ease',
                 }}
               >
                 See a call become a booking ↓
@@ -421,7 +487,10 @@ export default function HomePage() {
             </div>
 
             {/* Feature Checklist */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: '18px',
+              animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.65s both',
+            }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                 <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
                   <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
@@ -450,37 +519,53 @@ export default function HomePage() {
           </div>
 
           {/* Right Interactive Simulation Card */}
-          <div>
+          <div style={{ animation: 'floatCard 6s ease-in-out infinite' }}>
             <div style={{
               position: 'relative', padding: '40px 32px', borderRadius: '24px',
-              background: 'rgba(251,253,255,0.92)', border: '1px solid rgba(14,27,42,0.12)',
+              background: 'rgba(251,253,255,0.95)', border: '1px solid rgba(14,27,42,0.12)',
               boxShadow: '0 1px 2px rgba(14,27,42,0.06), 0 30px 60px -30px rgba(14,27,42,0.22)',
               minHeight: '340px', display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: '22px', overflow: 'hidden',
             }}>
               {/* Pulsing Icon */}
               <div style={{
-                width: '72px', height: '72px', borderRadius: '50%',
-                background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 0 0 rgba(47,143,224,0.4)',
+                width: '76px', height: '76px', borderRadius: '50%',
+                background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 0 0 rgba(47,143,224,0.45)',
                 animation: 'pulseRing 2.4s infinite',
               }}>
-                <SvgIcon paths={PATHS.phone} size={30} color="#FFFDF8" />
+                <SvgIcon paths={PATHS.phone} size={32} color="#FFFDF8" />
               </div>
 
-              {/* Status Label */}
-              <div style={{ fontSize: '14.5px', fontWeight: 600, color: '#0E1B2A', textAlign: 'center' }}>
+              {/* Animated Sound Wave Bars */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', height: '30px' }}>
+                {[0.4, 0.8, 0.5, 0.9, 0.6, 0.7, 0.3].map((delay, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: '3.5px',
+                      background: '#2F8FE0',
+                      borderRadius: '2px',
+                      animation: `soundWave 1.2s ease-in-out ${delay}s infinite`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Status Label with Smooth Transition */}
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#0E1B2A', textAlign: 'center', transition: 'all 0.3s ease' }}>
                 {heroPhase === 0 && 'Inbound call answered'}
-                {heroPhase === 1 && 'Searching live availability'}
-                {heroPhase === 2 && 'Appointment confirmed'}
-                {heroPhase === 3 && 'Confirmation SMS dispatched'}
+                {heroPhase === 1 && 'Checking live availability...'}
+                {heroPhase === 2 && 'Appointment confirmed & calendar synced'}
               </div>
 
               {/* Calendar Action Pill */}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '14px 18px', borderRadius: '14px',
+                padding: '14px 20px', borderRadius: '14px',
                 background: 'rgba(47,143,224,0.14)', border: '1px solid rgba(47,143,224,0.3)',
+                boxShadow: '0 2px 8px rgba(47,143,224,0.15)',
               }}>
                 <SvgIcon paths={PATHS.calendar} size={18} color="#2F8FE0" />
                 <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#2F8FE0' }}>
@@ -496,12 +581,12 @@ export default function HomePage() {
       <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 32px' }}>
         <div style={{ height: '1px', background: 'rgba(14,27,42,0.1)', marginBottom: '20px' }} />
         <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(217,113,75,0.9)', marginBottom: '18px' }}>
-          Works with your existing stack
+          Works with what you already use
         </div>
         <div style={{ overflow: 'hidden', maskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)', WebkitMaskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)' }}>
           <div style={{ display: 'flex', width: 'max-content', gap: '56px', animation: 'marqueeScroll 28s linear infinite' }}>
             {[...integrations, ...integrations].map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'rgba(14,27,42,0.5)', fontWeight: 600, fontSize: '14.5px' }}>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'rgba(14,27,42,0.55)', fontWeight: 600, fontSize: '14.5px' }}>
                 {item.icon}
                 <span>{item.name}</span>
               </div>
@@ -515,10 +600,10 @@ export default function HomePage() {
       <section id="features" style={{ maxWidth: '1240px', margin: '0 auto', padding: '64px 32px 56px' }}>
         <div style={{ maxWidth: '620px', margin: '0 auto 40px', textAlign: 'center' }}>
           <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
-            Engineered for Real-World Front Desks
+            Everything your front desk needs. Nothing it doesn't.
           </h2>
           <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
-            Every capability required to answer, inform, navigate, and convert visitors automatically.
+            Five things, done thoroughly, instead of a hundred things done halfway.
           </p>
         </div>
 
@@ -599,10 +684,10 @@ export default function HomePage() {
       <section id="channels" style={{ maxWidth: '1240px', margin: '0 auto', padding: '48px 32px' }}>
         <div style={{ maxWidth: '580px', margin: '0 auto 40px', textAlign: 'center' }}>
           <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
-            Unified Omnichannel Intelligence
+            Works right alongside what you already use
           </h2>
           <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
-            Embed anywhere with a single script tag or connect directly with existing phone lines.
+            No new accounts, no new devices. It plugs into your existing phone line, calendar, and texts.
           </p>
         </div>
 
@@ -630,10 +715,10 @@ export default function HomePage() {
       <section id="how-it-works" style={{ maxWidth: '1100px', margin: '0 auto', padding: '56px 32px 64px' }}>
         <div style={{ maxWidth: '580px', margin: '0 auto 48px', textAlign: 'center' }}>
           <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
-            What Happens on a Live Call
+            What happens on a real call
           </h2>
           <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
-            From initial greeting to booking and host navigation — handled completely automatically.
+            An administrative front desk, start to finish — no clinical decisions, just the calendar and paperwork handled.
           </p>
         </div>
 
@@ -674,35 +759,38 @@ export default function HomePage() {
       <section style={{ maxWidth: '960px', margin: '0 auto', padding: '48px 32px 96px' }}>
         <div style={{ textAlign: 'center', padding: '64px 36px', borderRadius: '28px', background: '#0E1B2A', color: '#FFFDF8', boxShadow: '0 24px 64px -12px rgba(14,27,42,0.35)' }}>
           <h2 style={{ fontSize: 'clamp(28px, 3.6vw, 42px)', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 16px' }}>
-            Elevate Your Business Front Desk
+            Be one of the first practices on Widgetized
           </h2>
           <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.72)', maxWidth: '520px', margin: '0 auto 36px' }}>
-            Deploy your AI voice and text agent widget in minutes. Answer inquiries, navigate visitors, and book appointments 24/7.
+            Start answering every call and booking every appointment automatically.
           </p>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
             <Link
               href="/signup"
+              className="btn-hover-lift"
               style={{
                 padding: '14px 32px', borderRadius: '12px',
                 background: '#2F8FE0', color: '#FFFDF8',
                 fontSize: '15px', fontWeight: 700,
                 textDecoration: 'none', display: 'inline-block',
                 boxShadow: '0 6px 20px rgba(47,143,224,0.4)',
+                cursor: 'pointer',
               }}
             >
-              Get Started Free
+              Sign Up Free
             </Link>
             <Link
-              href="/widget-customizer?id=front-desk"
+              href="/login"
               style={{
                 padding: '14px 28px', borderRadius: '12px',
                 background: 'rgba(255,255,255,0.12)', color: '#FFFDF8',
                 border: '1px solid rgba(255,255,255,0.2)',
                 fontSize: '15px', fontWeight: 600,
                 textDecoration: 'none', display: 'inline-block',
+                cursor: 'pointer',
               }}
             >
-              Open Live Customizer
+              Login
             </Link>
           </div>
         </div>
@@ -728,7 +816,6 @@ export default function HomePage() {
               Product
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <Link href="/widget-customizer?id=front-desk" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Widget Customizer</Link>
               <Link href="/dashboard" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Fleet Dashboard</Link>
               <a href="#features" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Features & Tools</a>
               <a href="#how-it-works" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>

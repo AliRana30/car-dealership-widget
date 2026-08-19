@@ -130,7 +130,7 @@ export default function SignupPage() {
 
       toast.success('Account created successfully!', { id: toastId });
       // Redirect to main dashboard
-      router.push('/');
+      router.push('/dashboard');
       router.refresh();
     } catch (err: any) {
       toast.error('An unexpected error occurred. Please try again.', { id: toastId });

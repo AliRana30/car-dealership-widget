@@ -13,6 +13,7 @@ import { decryptSession, SESSION_COOKIE } from '@/lib/session';
 
 // Pages that are public
 const PUBLIC_ROUTES = [
+  '/',
   '/login',
   '/signup',
   '/forgot-password',
@@ -68,9 +69,10 @@ export async function middleware(req: NextRequest) {
   // 2. Decrypt session if token is present
   const session = rawToken ? await decryptSession(rawToken) : null;
 
-  // 3. If authenticated user visits login/signup, redirect to dashboard
-  if (session && PUBLIC_ROUTES.includes(pathname)) {
-    return NextResponse.redirect(new URL('/', req.url));
+  // 3. If authenticated user visits login/signup, redirect to dashboard (unless forced logout flag)
+  const isLogoutRequest = req.nextUrl.searchParams.has('logout');
+  if (session && (pathname === '/login' || pathname === '/signup') && !isLogoutRequest) {
+    return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
   // 4. If public route, pass through (inject headers if session happens to exist)

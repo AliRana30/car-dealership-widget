@@ -69,7 +69,7 @@ export default function LoginPage() {
 
       toast.success('Login successful!', { id: toastId });
       // Successful login, refresh router state and push to dashboard
-      router.push('/');
+      router.push('/dashboard');
       router.refresh();
     } catch (err: any) {
       toast.error('An unexpected error occurred. Please check your connection.', { id: toastId });
