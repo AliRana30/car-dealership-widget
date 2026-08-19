@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Retell from 'retell-sdk';
+import { randomUUID } from 'crypto';
 import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords } from '@/config/widgetsDb';
 
 function maskIp(ip: string): string {
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { chatId?: string | null; content?: string; widgetId?: string } = {};
+  let body: { chatId?: string | null; content?: string; widgetId?: string; sessionId?: string } = {};
   try {
     body = (await req.json()) ?? {};
   } catch {
@@ -130,8 +131,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { content, widgetId } = body;
+  const { content, widgetId, sessionId: incomingSessionId } = body;
   let { chatId } = body;
+  const sessionId = incomingSessionId && typeof incomingSessionId === 'string' ? incomingSessionId : randomUUID();
 
   if (!content || typeof content !== 'string' || content.trim() === '') {
     return NextResponse.json(
@@ -288,6 +290,7 @@ export async function POST(req: NextRequest) {
       {
         chatId,
         messages: cleanMessages,
+        sessionId,
       },
       { status: 200, headers }
     );

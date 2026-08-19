@@ -3,6 +3,7 @@ import type { RetellWebClient } from 'retell-client-js-sdk';
 import { CallState, TranscriptMessage, VoiceWidgetConfig } from '@/config/voiceWidget/types';
 export type { CallState };
 import { defaultVoiceWidgetConfig, deepMerge } from '@/config/voiceWidget/default';
+import { subscribeToSessionChannel } from '@/lib/realtime/session';
 import VoiceAgentLauncher from './VoiceAgentLauncher';
 import VoiceAgentPanel from './VoiceAgentPanel';
 
@@ -95,6 +96,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
     // Cache for voice transcript results to avoid redundant network calls
     const [voiceResults, setVoiceResults] = useState<Record<string, any[]>>({});
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const fetchedContents = useRef<Set<string>>(new Set());
 
     useEffect(() => {
@@ -107,18 +109,28 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
       transcript.forEach((msg) => {
         const content = msg.content?.trim();
-        if (!content || content.length < 5 || msg.isPartial) return;
-        if (fetchedContents.current.has(content)) return;
+        if (!content || msg.role !== 'agent' || fetchedContents.current.has(content)) {
+          return;
+        }
+
         fetchedContents.current.add(content);
 
-        const targetId = widgetId || 'default';
-        fetch(`/api/widgets/${encodeURIComponent(targetId)}/search?query=${encodeURIComponent(content)}`)
-          .then((res) => (res.ok ? res.json() : []))
+        // Query backend for relevant structured entity records
+        fetch('/api/agent/tools', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'search',
+            query: content,
+            widgetId: widgetId || 'default',
+          }),
+        })
+          .then((res) => res.json())
           .then((data) => {
-            if (data && Array.isArray(data) && data.length > 0) {
+            if (data.results && Array.isArray(data.results) && data.results.length > 0) {
               setVoiceResults((prev) => ({
                 ...prev,
-                [content]: data,
+                [content]: data.results,
               }));
             }
           })
@@ -168,6 +180,49 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         }
       };
     }, []);
+
+    // ── Phase 9.2: Realtime Session Channel Subscription & Clean Teardown ───
+    useEffect(() => {
+      const targetSessionId = activeSessionId || sessionIdRef.current;
+      const isSessionActive =
+        ['connecting', 'connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState) ||
+        (isOpen && activeTab === 'text' && Boolean(targetSessionId));
+
+      if (!targetSessionId || !isSessionActive) {
+        return;
+      }
+
+      const unsubscribe = subscribeToSessionChannel(targetSessionId, (event: string, payload: any) => {
+        if (event === 'navigate') {
+          // Phase 9.1 toggle check:
+          if (mergedConfig.behavior.allowAgentNavigation) {
+            const targetUrl = payload?.url;
+            if (targetUrl) {
+              // PostMessage to parent frame if running inside an iframe
+              if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url: targetUrl, payload }, '*');
+              }
+              // Direct browser navigation if top-level window
+              try {
+                if (typeof window !== 'undefined') {
+                  window.location.href = targetUrl;
+                }
+              } catch {}
+            }
+          } else {
+            console.log('[Widget Navigation] Agent requested navigation, but allowAgentNavigation is disabled in widget settings.');
+          }
+        } else if (event === 'ui_action') {
+          if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'WIDGET_UI_ACTION', action: payload?.action, payload }, '*');
+          }
+        }
+      });
+
+      return () => {
+        unsubscribe();
+      };
+    }, [activeSessionId, callState, isOpen, activeTab, mergedConfig.behavior.allowAgentNavigation]);
 
     // Iframe postMessage communications
     useEffect(() => {
@@ -313,6 +368,10 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           const data = await res.json();
           if (data.chatId) {
             setChatId(data.chatId);
+          }
+          if (data.sessionId) {
+            sessionIdRef.current = data.sessionId;
+            setActiveSessionId(data.sessionId);
           }
           if (data.messages && Array.isArray(data.messages)) {
             const mapped = data.messages.map((m: any) => ({
@@ -481,6 +540,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
           const token = data.accessToken;
           sessionIdRef.current = data.sessionId;
+          setActiveSessionId(data.sessionId);
           callIdRef.current = data.callId;
 
           const { RetellWebClient } = await import('retell-client-js-sdk');
@@ -502,6 +562,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             setAgentSpeaking(false);
             setUserSpeaking(false);
             isStartingRef.current = false;
+            setActiveSessionId(null);
             if (clientRef.current === activeClient) {
               clientRef.current = null;
             }
@@ -577,6 +638,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           }
 
           sessionIdRef.current = data.sessionId;
+          setActiveSessionId(data.sessionId);
           callIdRef.current = 'vapi-call';
 
           const VapiSdk = (await import('@vapi-ai/web')).default;
@@ -604,6 +666,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             setAgentSpeaking(false);
             setUserSpeaking(false);
             isStartingRef.current = false;
+            setActiveSessionId(null);
             if (clientRef.current === activeClient) {
               clientRef.current = null;
             }
