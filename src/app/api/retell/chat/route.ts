@@ -375,7 +375,7 @@ export async function POST(req: NextRequest) {
     const fallbackResponseText = await generateChatFallbackResponse(
       content,
       relevantData,
-      widget.name || widget.branding?.companyName || 'our business'
+      widget.name || widget.config?.branding?.companyName || 'our business'
     );
 
     const fallbackMessages = [
