@@ -65,20 +65,28 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.json({ status: 'never_crawled', websiteId }, { status: 200 });
     }
 
-    // Get count of indexed records
+    // Get count of indexed records (resolving UUID and slug)
     const { data: widgets } = await supabase
       .from('widgets')
-      .select('id')
-      .eq('website_id', websiteId);
-    const widgetIds = widgets?.map(w => w.id) || [];
-    if (widgetIds.length === 0) {
-      widgetIds.push('00000000-0000-0000-0000-000000000000');
+      .select('id, widget_id, website_id')
+      .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
+
+    const widgetIds = new Set<string>();
+    if (websiteId) widgetIds.add(websiteId);
+    if (existingWebsite?.id) widgetIds.add(existingWebsite.id);
+    if (widgets) {
+      widgets.forEach(w => {
+        if (w.id) widgetIds.add(w.id);
+        if (w.widget_id) widgetIds.add(w.widget_id);
+        if (w.website_id) widgetIds.add(w.website_id);
+      });
     }
+    const filterWidgetIds = Array.from(widgetIds);
 
     const { count } = await supabase
       .from('website_data')
       .select('id', { count: 'exact', head: true })
-      .in('widget_id', widgetIds);
+      .in('widget_id', filterWidgetIds);
 
     return NextResponse.json({
       jobId:          job.id,
