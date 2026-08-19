@@ -502,17 +502,22 @@ export async function saveWidgetConfiguration(
   }
 }
 
-export async function getRelevantWebsiteData(websiteId: string, query: string): Promise<string> {
+export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: string): Promise<string> {
   try {
     const { data: widgets } = await supabase
       .from('widgets')
-      .select('id')
-      .eq('website_id', websiteId);
+      .select('id, website_id')
+      .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
 
-    const widgetIds = widgets?.map(w => w.id) || [];
-    if (widgetIds.length === 0) {
-      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    const widgetIds = new Set<string>();
+    if (websiteOrWidgetId) widgetIds.add(websiteOrWidgetId);
+    if (widgets) {
+      widgets.forEach(w => {
+        if (w.id) widgetIds.add(w.id);
+        if (w.website_id) widgetIds.add(w.website_id);
+      });
     }
+    const filterWidgetIds = Array.from(widgetIds);
 
     // Try pgvector similarity search first
     try {
@@ -522,14 +527,11 @@ export async function getRelevantWebsiteData(websiteId: string, query: string): 
           query_embedding: queryEmbedding,
           match_threshold: 0.1, // low threshold to capture slightly related elements
           match_count: 3,
-          filter_widget_ids: widgetIds
+          filter_widget_ids: filterWidgetIds
         });
 
       if (!matchError && matchedRecords && matchedRecords.length > 0) {
         return matchedRecords.map((r: any) => `Title: ${r.title}\nContent: ${r.content}`).join('\n\n');
-      }
-      if (matchError) {
-        console.warn('[widgetsDb] rpc match_website_data failed, falling back to keyword search:', matchError.message);
       }
     } catch (err) {
       console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
@@ -539,7 +541,7 @@ export async function getRelevantWebsiteData(websiteId: string, query: string): 
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .in('widget_id', widgetIds);
+      .or(`website_id.in.(${filterWidgetIds.join(',')}),widget_id.in.(${filterWidgetIds.join(',')})`);
 
     if (error || !records || records.length === 0) {
       return '';
@@ -600,20 +602,25 @@ export interface WebsiteDataRecord {
  * Falls back to top-3 records when query has no useful keywords.
  */
 export async function getRelevantWebsiteRecords(
-  websiteId: string,
+  websiteOrWidgetId: string,
   query: string,
   limit = 3
 ): Promise<WebsiteDataRecord[]> {
   try {
     const { data: widgets } = await supabase
       .from('widgets')
-      .select('id')
-      .eq('website_id', websiteId);
+      .select('id, website_id')
+      .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
 
-    const widgetIds = widgets?.map(w => w.id) || [];
-    if (widgetIds.length === 0) {
-      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    const widgetIds = new Set<string>();
+    if (websiteOrWidgetId) widgetIds.add(websiteOrWidgetId);
+    if (widgets) {
+      widgets.forEach(w => {
+        if (w.id) widgetIds.add(w.id);
+        if (w.website_id) widgetIds.add(w.website_id);
+      });
     }
+    const filterWidgetIds = Array.from(widgetIds);
 
     // Try pgvector similarity search first
     try {
@@ -623,7 +630,7 @@ export async function getRelevantWebsiteRecords(
           query_embedding: queryEmbedding,
           match_threshold: 0.1,
           match_count: limit,
-          filter_widget_ids: widgetIds
+          filter_widget_ids: filterWidgetIds
         });
 
       if (!matchError && matchedRecords && matchedRecords.length > 0) {
@@ -657,9 +664,6 @@ export async function getRelevantWebsiteRecords(
           return result;
         });
       }
-      if (matchError) {
-        console.warn('[widgetsDb] rpc match_website_data failed, falling back to keyword search:', matchError.message);
-      }
     } catch (err) {
       console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
     }
@@ -668,7 +672,7 @@ export async function getRelevantWebsiteRecords(
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .in('widget_id', widgetIds);
+      .or(`website_id.in.(${filterWidgetIds.join(',')}),widget_id.in.(${filterWidgetIds.join(',')})`);
 
     if (error || !records || records.length === 0) return [];
 
