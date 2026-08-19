@@ -176,18 +176,24 @@ export async function crawlWebsite(
   // Find associated widgets to retrieve existing hashes for incremental change detection
   const { data: widgets } = await supabase
     .from('widgets')
-    .select('id')
-    .eq('website_id', websiteId);
+    .select('id, widget_id, website_id')
+    .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
 
-  const widgetIds = widgets?.map(w => w.id) || [];
-  if (widgetIds.length === 0) {
-    widgetIds.push('00000000-0000-0000-0000-000000000000');
+  const widgetIds = new Set<string>();
+  if (websiteId) widgetIds.add(websiteId);
+  if (widgets) {
+    widgets.forEach(w => {
+      if (w.id) widgetIds.add(w.id);
+      if (w.widget_id) widgetIds.add(w.widget_id);
+      if (w.website_id) widgetIds.add(w.website_id);
+    });
   }
+  const filterWidgetIds = Array.from(widgetIds);
 
   const { data: existingRows } = await supabase
     .from('website_data')
     .select('id, widget_id, source_url, content_hash, title, short_description, content, entity_type, metadata, image_urls, category_path, data_type')
-    .in('widget_id', widgetIds);
+    .in('widget_id', filterWidgetIds);
 
   // ── Step 3: Crawl discovered non-product pages via Crawl4AI ─────────────────
   const allEntities: CrawledEntity[] = [];
@@ -562,20 +568,30 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
   if (!entities.length) return;
   const supabase = getSupabase();
 
-  // Find widget(s) associated with websiteId
+  // Find widget(s) associated with websiteId (matching id, website_id, or widget_id)
   const { data: widgets, error: widgetError } = await supabase
     .from('widgets')
-    .select('id')
-    .eq('website_id', websiteId);
+    .select('id, widget_id, website_id')
+    .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
 
   if (widgetError) {
     console.error('[crawler] Widget lookup error:', widgetError.message);
   }
 
-  const widgetIds = widgets?.map(w => w.id) || [];
-  if (widgetIds.length === 0) {
-    widgetIds.push('00000000-0000-0000-0000-000000000000');
+  const targetWidgetIds = new Set<string>();
+  if (websiteId && websiteId !== '00000000-0000-0000-0000-000000000000') {
+    targetWidgetIds.add(websiteId);
   }
+  if (widgets && widgets.length > 0) {
+    widgets.forEach(w => {
+      if (w.id) targetWidgetIds.add(w.id);
+      if (w.widget_id) targetWidgetIds.add(w.widget_id);
+    });
+  }
+  if (targetWidgetIds.size === 0) {
+    targetWidgetIds.add(websiteId);
+  }
+  const widgetIds = Array.from(targetWidgetIds);
 
   // Fetch existing records for these widgets to check for connector-sourced rows
   const { data: existingRecords } = await supabase
