@@ -541,7 +541,7 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .or(`website_id.in.(${filterWidgetIds.join(',')}),widget_id.in.(${filterWidgetIds.join(',')})`);
+      .in('widget_id', filterWidgetIds);
 
     if (error || !records || records.length === 0) {
       return '';
@@ -672,7 +672,7 @@ export async function getRelevantWebsiteRecords(
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .or(`website_id.in.(${filterWidgetIds.join(',')}),widget_id.in.(${filterWidgetIds.join(',')})`);
+      .in('widget_id', filterWidgetIds);
 
     if (error || !records || records.length === 0) return [];
 

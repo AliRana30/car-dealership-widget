@@ -132,7 +132,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
     const { data: rawRecords, error: dataError } = await supabase
       .from('website_data')
       .select('id, source_url, title, entity_type, content, metadata, short_description, image_urls, data_type, category_path, created_at')
-      .or(`website_id.in.(${filterWidgetIds.join(',')}),widget_id.in.(${filterWidgetIds.join(',')})`)
+      .in('widget_id', filterWidgetIds)
       .order('created_at', { ascending: false });
 
     if (dataError) {
