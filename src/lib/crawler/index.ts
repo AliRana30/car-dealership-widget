@@ -579,16 +579,11 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
   }
 
   const targetWidgetIds = new Set<string>();
-  if (websiteId && websiteId !== '00000000-0000-0000-0000-000000000000') {
-    targetWidgetIds.add(websiteId);
-  }
   if (widgets && widgets.length > 0) {
     widgets.forEach(w => {
       if (w.id) targetWidgetIds.add(w.id);
-      if (w.widget_id) targetWidgetIds.add(w.widget_id);
     });
-  }
-  if (targetWidgetIds.size === 0) {
+  } else if (websiteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(websiteId)) {
     targetWidgetIds.add(websiteId);
   }
   const widgetIds = Array.from(targetWidgetIds);

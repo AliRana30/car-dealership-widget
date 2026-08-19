@@ -170,13 +170,18 @@ export async function ingestWooCommerceProducts(
   // Find widget(s) associated with this website
   const { data: widgets } = await supabase
     .from('widgets')
-    .select('id')
-    .eq('website_id', website.id);
+    .select('id, widget_id, website_id')
+    .or(`id.eq.${website.id},website_id.eq.${website.id},widget_id.eq.${website.id}`);
 
-  const widgetIds = widgets?.map(w => w.id) || [];
-  if (widgetIds.length === 0) {
-    widgetIds.push('00000000-0000-0000-0000-000000000000');
+  const targetWidgetIds = new Set<string>();
+  if (widgets && widgets.length > 0) {
+    widgets.forEach(w => {
+      if (w.id) targetWidgetIds.add(w.id);
+    });
+  } else if (website.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(website.id)) {
+    targetWidgetIds.add(website.id);
   }
+  const widgetIds = Array.from(targetWidgetIds);
 
   console.log(`[woocommerce-connector] Fetching products from ${baseUrl}/wp-json/wc/v3/products...`);
 

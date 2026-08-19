@@ -26,6 +26,7 @@ interface CrawlerSectionProps {
   setWebsiteId?: (val: string) => void;
   websiteName?: string;
   setWebsiteName?: (val: string) => void;
+  widgetId?: string;
 }
 
 // ── Small helpers ───────────────────────────────────────
@@ -1207,6 +1208,7 @@ export default function CrawlerSection({
   setWebsiteId,
   websiteName  = 'Default Website',
   setWebsiteName,
+  widgetId     = '',
 }: CrawlerSectionProps) {
   const [wsSiteUrl,   setWsSiteUrl]   = useState('');
   const [wsSiteName,  setWsSiteName]  = useState('');
@@ -1278,6 +1280,7 @@ export default function CrawlerSection({
           triggerCrawl: true,
           scanMode,
           cssSelectorSchema: customSchema,
+          widgetId,
         }),
       });
       const data = await res.json();

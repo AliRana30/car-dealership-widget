@@ -163,8 +163,22 @@ export async function POST(req: NextRequest) {
       wsError = fallbackResult.error;
     }
 
-    if (wsError || !website) {
-      throw new Error(wsError?.message || 'Failed to create website');
+    const targetWidgetId = body?.widgetId || body?.widget_id || null;
+
+    // Immediately link newly created website to the owning widget
+    if (targetWidgetId) {
+      const { data: linkedWidget, error: widgetLinkError } = await supabase
+        .from('widgets')
+        .update({ website_id: website.id })
+        .or(`id.eq.${targetWidgetId},widget_id.eq.${targetWidgetId}`)
+        .select('id, widget_id, website_id')
+        .maybeSingle();
+
+      if (widgetLinkError) {
+        console.error('[api/websites] Failed to update widget.website_id:', widgetLinkError.message);
+      } else {
+        console.log(`[api/websites] Successfully linked website ${website.id} to widget ${targetWidgetId} (${linkedWidget?.id})`);
+      }
     }
 
     let jobId: string | null = null;

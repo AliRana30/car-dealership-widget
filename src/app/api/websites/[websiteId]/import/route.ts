@@ -64,13 +64,18 @@ export async function POST(
     // Find associated widgets
     const { data: widgets } = await supabase
       .from('widgets')
-      .select('id')
-      .eq('website_id', websiteId);
+      .select('id, widget_id, website_id')
+      .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
 
-    const widgetIds = widgets?.map(w => w.id) || [];
-    if (widgetIds.length === 0) {
-      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    const targetWidgetIds = new Set<string>();
+    if (widgets && widgets.length > 0) {
+      widgets.forEach(w => {
+        if (w.id) targetWidgetIds.add(w.id);
+      });
+    } else if (websiteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(websiteId)) {
+      targetWidgetIds.add(websiteId);
     }
+    const widgetIds = Array.from(targetWidgetIds);
 
     // Process and map each raw item
     const rowsToSave: WebsiteDataRow[] = [];

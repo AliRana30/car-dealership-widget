@@ -592,6 +592,7 @@ export default function WidgetCustomizerApp() {
                 setWebsiteId={setWebsiteId}
                 websiteName={websiteName}
                 setWebsiteName={setWebsiteName}
+                widgetId={widgetId}
               />
             )}
             {activeSection === 'deploy' && (
