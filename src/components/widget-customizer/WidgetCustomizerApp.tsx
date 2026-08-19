@@ -145,6 +145,9 @@ const TOGGLE_CSS = `
       padding: 0 10px !important;
       font-size: 12px !important;
     }
+    .customizer-hamburger-btn {
+      display: flex !important;
+    }
   }
 `;
 
@@ -218,6 +221,7 @@ export default function WidgetCustomizerApp() {
   const [websiteId, setWebsiteId] = useState('');
   const [websiteName, setWebsiteName] = useState('Default Website');
   const [widgetStatus, setWidgetStatus] = useState<'active' | 'inactive' | 'paused'>('active');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Fetch on mount if id is in query params
   useEffect(() => {
@@ -377,8 +381,8 @@ export default function WidgetCustomizerApp() {
       {/* ── Top Bar ──────────────────────────────────── */}
       <header style={styles.header}>
         <div style={styles.headerLeft}>
-          <Link href="/" style={styles.backLink}>
-            ← Back
+          <Link href="/dashboard" style={styles.backLink}>
+            ← Dashboard
           </Link>
           <div style={styles.headerDivider} />
           <div style={styles.headerTitle}>Widget Customizer</div>
@@ -391,8 +395,119 @@ export default function WidgetCustomizerApp() {
           }}>
             {saved ? '✓ Saved' : 'Save'}
           </button>
+          {/* Mobile hamburger button */}
+          <button
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+            style={{
+              display: 'none',
+              background: 'none',
+              border: '1px solid #e5e7eb',
+              borderRadius: '7px',
+              padding: '6px 8px',
+              cursor: 'pointer',
+              color: '#374151',
+            }}
+            className="customizer-hamburger-btn"
+            aria-label="Toggle customizer sections menu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {mobileMenuOpen ? (
+                <>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </>
+              ) : (
+                <>
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <line x1="4" y1="12" x2="20" y2="12" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                </>
+              )}
+            </svg>
+          </button>
         </div>
       </header>
+
+      {/* Mobile Drawer Overlay */}
+      {mobileMenuOpen && (
+        <div style={{
+          background: '#ffffff',
+          borderBottom: '1px solid #e5e7eb',
+          padding: '16px 20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
+          zIndex: 45,
+        }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.08em', marginBottom: '4px' }}>
+            Sections & Navigation
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '6px' }}>
+            {(Object.keys(SECTION_TITLES) as CustomizerSection[]).map((sec) => (
+              <button
+                key={sec}
+                onClick={() => {
+                  handleSectionChange(sec);
+                  setMobileTab('editor');
+                  setMobileMenuOpen(false);
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: activeSection === sec ? '1px solid #2563eb' : '1px solid #e5e7eb',
+                  background: activeSection === sec ? '#eff6ff' : '#f9fafb',
+                  color: activeSection === sec ? '#1d4ed8' : '#374151',
+                  fontSize: '12px',
+                  fontWeight: activeSection === sec ? 600 : 500,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                {SECTION_TITLES[sec]}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', paddingTop: '10px', borderTop: '1px solid #f1f5f9', marginTop: '6px' }}>
+            <Link
+              href="/dashboard"
+              onClick={() => setMobileMenuOpen(false)}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #e5e7eb',
+                background: '#ffffff',
+                color: '#374151',
+                fontSize: '12px',
+                fontWeight: 600,
+                textAlign: 'center',
+                textDecoration: 'none',
+              }}
+            >
+              ← Dashboard
+            </Link>
+            <Link
+              href="/"
+              onClick={() => setMobileMenuOpen(false)}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #e5e7eb',
+                background: '#ffffff',
+                color: '#374151',
+                fontSize: '12px',
+                fontWeight: 600,
+                textAlign: 'center',
+                textDecoration: 'none',
+              }}
+            >
+              Homepage
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Mobile Tab Switcher */}
       <div style={styles.mobileTabs} className="mobile-tabs-container">

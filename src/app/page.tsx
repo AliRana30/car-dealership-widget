@@ -1,635 +1,764 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import toast from 'react-hot-toast';
 
-interface WidgetSummary {
-  id: string;
-  name: string;
-  provider: 'retell' | 'vapi';
-  hasRetellKey: boolean;
-  hasRetellAgentId: boolean;
-  hasVapiKey: boolean;
-  hasVapiAssistantId: boolean;
-  config: any;
-  createdAt: string;
-}
+// ── Icon Helper ─────────────────────────────────────────────────────────────
 
-// ── Icon helpers ───────────────────────────────────────────────────────────
-
-function Icon({ d, size = 16 }: { d: string | string[]; size?: number }) {
-  const paths = Array.isArray(d) ? d : [d];
+function SvgIcon({ paths, size = 20, stroke = 1.75, color = 'currentColor', className = '' }: {
+  paths: string[];
+  size?: number;
+  stroke?: number;
+  color?: string;
+  className?: string;
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      {paths.map((p, i) => <path key={i} d={p} />)}
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={stroke}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {paths.map((p, i) => (
+        <path key={i} d={p} />
+      ))}
     </svg>
   );
 }
 
-const ICONS = {
-  plus: 'M12 5v14M5 12h14',
-  edit: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z',
-  trash: ['M3 6h18', 'M19 6l-1 14H6L5 6', 'M8 6V4h8v2'],
-  external: ['M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6', 'M15 3h6v6', 'M10 14L21 3'],
-  key: ['M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4'],
-  check: 'M20 6L9 17l-5-5',
-  copy: ['M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M16 4h2a2 2 0 0 1 2 2v2', 'M8 4h8'],
+const PATHS = {
+  phone: ['M6.6 4.2h3.4l1.3 5-2.5 1.6a12.4 12.4 0 0 0 5.9 5.9l1.6-2.5 5 1.3v3.4a2 2 0 0 1-2.1 2C10.7 20.2 3.8 13.3 3.1 5.9c-.1-1 .7-1.7 1.6-1.7z'],
+  calendar: [
+    'M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13A1.5 1.5 0 0 1 18.5 20h-13A1.5 1.5 0 0 1 4 18.5z',
+    'M4 9.5h16',
+    'M8.5 2v4',
+    'M15.5 2v4',
+    'M8.8 13.4l1.8 1.8 3.4-3.4',
+  ],
+  message: ['M20 11.5c0 4.1-3.6 7.5-8 7.5-1.1 0-2.2-.2-3.1-.6L4 20l1.3-3.9A7.6 7.6 0 0 1 4 11.5C4 7.4 7.6 4 12 4s8 3.4 8 7.5z'],
+  sparkles: [
+    'M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z',
+  ],
+  globe: [
+    'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z',
+    'M2 12h20',
+    'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+  ],
+  compass: [
+    'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z',
+    'M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z',
+  ],
+  layout: ['M4 4h6v9H4z', 'M14 4h6v5h-6z', 'M14 12h6v8h-6z', 'M4 16h6v4H4z'],
+  check: ['M5 12.5l4.5 4.5L19 7'],
+  menu: ['M4 6h16', 'M4 12h16', 'M4 18h16'],
+  close: ['M6 6l12 12', 'M18 6L6 18'],
+  shield: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'],
+  refresh: ['M20 12a8 8 0 0 1-14.2 5', 'M4 12a8 8 0 0 1 14.2-5', 'M19 3v5h-5', 'M5 21v-5h5'],
   widget: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
-  back: 'M19 12H5M12 5l-7 7 7 7',
 };
 
-function ProviderBadge({ provider }: { provider: 'retell' | 'vapi' }) {
-  const isRetell = provider === 'retell';
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '4px',
-      padding: '2px 8px',
-      borderRadius: '20px',
-      fontSize: '11px',
-      fontWeight: 600,
-      background: isRetell ? '#EFF6FF' : '#F5F3FF',
-      color: isRetell ? '#1D4ED8' : '#6D28D9',
-      border: `1px solid ${isRetell ? '#BFDBFE' : '#DDD6FE'}`,
-    }}>
-      {isRetell ? 'Retell AI' : 'Vapi AI'}
-    </span>
-  );
-}
+// ── Main Page Component ─────────────────────────────────────────────────────
 
-function StatusDot({ ok }: { ok: boolean }) {
-  return (
-    <span title={ok ? 'Configured' : 'Missing credential'} style={{
-      display: 'inline-block',
-      width: '7px', height: '7px',
-      borderRadius: '50%',
-      background: ok ? '#22C55E' : '#F59E0B',
-      boxShadow: ok ? '0 0 0 2px rgba(34,197,94,0.25)' : '0 0 0 2px rgba(245,158,11,0.25)',
-      flexShrink: 0,
-    }} />
-  );
-}
+export default function HomePage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [heroPhase, setHeroPhase] = useState(0);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
 
-function CredentialStatus({ widget }: { widget: WidgetSummary }) {
-  const isRetell = widget.provider === 'retell';
-  const hasKey = isRetell ? widget.hasRetellKey : widget.hasVapiKey;
-  const hasAgent = isRetell ? widget.hasRetellAgentId : widget.hasVapiAssistantId;
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#64748B' }}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <StatusDot ok={hasKey} /> API Key
-      </span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <StatusDot ok={hasAgent} /> {isRetell ? 'Agent' : 'Assistant'}
-      </span>
-    </div>
-  );
-}
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const scrollLeftRef = useRef(0);
+  const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-function EmptyState({ onNew }: { onNew: () => void }) {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      flex: 1, gap: '16px', padding: '64px 24px', textAlign: 'center',
-    }}>
-      <div style={{
-        width: '64px', height: '64px', borderRadius: '16px',
-        background: 'linear-gradient(135deg, #EFF6FF, #F5F3FF)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#6366F1', border: '1px solid #E0E7FF',
-      }}>
-        <Icon d={ICONS.widget} size={28} />
-      </div>
-      <div>
-        <h3 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#111827' }}>
-          No widgets yet
-        </h3>
-        <p style={{ margin: 0, fontSize: '13px', color: '#6B7280', maxWidth: '280px' }}>
-          Create your first widget to embed an AI voice agent on any website.
-        </p>
-      </div>
-      <button onClick={onNew} style={btn.primary}>
-        <Icon d={ICONS.plus} size={14} />
-        New Widget
-      </button>
-    </div>
-  );
-}
+  // Hero cycle animation
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHeroPhase((prev) => (prev + 1) % 4);
+    }, 3800);
+    return () => clearInterval(timer);
+  }, []);
 
-function DeleteConfirmModal({ name, onCancel, onConfirm, isDeleting }: {
-  name: string; onCancel: () => void; onConfirm: () => void; isDeleting: boolean;
-}) {
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '16px', padding: '28px 32px',
-        maxWidth: '380px', width: '90%', boxShadow: '0 24px 48px rgba(0,0,0,0.16)',
-      }}>
-        <div style={{
-          width: '48px', height: '48px', borderRadius: '12px',
-          background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#DC2626', marginBottom: '16px',
-        }}>
-          <Icon d={ICONS.trash} size={22} />
-        </div>
-        <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: 700, color: '#111827' }}>
-          Delete Widget
-        </h3>
-        <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#6B7280', lineHeight: 1.5 }}>
-          Are you sure you want to delete <strong style={{ color: '#111827' }}>"{name}"</strong>?
-          This action cannot be undone.
-        </p>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={onCancel} style={{ ...btn.secondary, flex: 1 }}>Cancel</button>
-          <button
-            onClick={onConfirm}
-            disabled={isDeleting}
-            style={{
-              ...btn.danger, flex: 1,
-              opacity: isDeleting ? 0.6 : 1,
-              cursor: isDeleting ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {isDeleting ? 'Deleting…' : 'Delete'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
-  widget: WidgetSummary;
-  onDelete: (id: string, name: string) => void;
-  onCopySnippet: (id: string) => void;
-  copiedId: string | null;
-  origin: string;
-}) {
-  const isCopied = copiedId === widget.id;
-  const agentId = widget.config?.provider?.agentId ?? '';
-  const launcherColor = widget.config?.theme?.primaryColor ?? '#2F8FE0';
-
-  return (
-    <div style={{
-      background: '#FFFFFF', borderRadius: '14px',
-      border: '1px solid #E5E7EB',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 8px 16px rgba(0,0,0,0.02)',
-      overflow: 'hidden',
-      transition: 'box-shadow 0.2s, transform 0.2s',
-    }}
-      onMouseEnter={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08), 0 16px 32px rgba(0,0,0,0.04)';
-        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-1px)';
-      }}
-      onMouseLeave={e => {
-        (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 3px rgba(0,0,0,0.04), 0 8px 16px rgba(0,0,0,0.02)';
-        (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
-      }}
-    >
-      {/* Color accent bar */}
-      <div style={{ height: '4px', background: `linear-gradient(90deg, ${launcherColor}, ${launcherColor}99)` }} />
-
-      <div style={{ padding: '20px 20px 16px' }}>
-        {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '12px' }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {widget.name}
-            </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <code style={{
-                fontSize: '10px', fontFamily: 'monospace',
-                background: '#F8FAFC', border: '1px solid #E2E8F0',
-                borderRadius: '4px', padding: '1px 5px', color: '#64748B',
-              }}>{widget.id}</code>
-              <ProviderBadge provider={widget.provider} />
-            </div>
-          </div>
-          {/* Widget mini preview dot */}
-          <div style={{
-            width: '36px', height: '36px', borderRadius: '50%',
-            background: launcherColor,
-            flexShrink: 0,
-            boxShadow: `0 2px 8px ${launcherColor}60`,
-          }} />
-        </div>
-
-        {/* Agent ID */}
-        {agentId && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-            <Icon d={ICONS.key[0] ?? ICONS.key} size={12} />
-            <code style={{ fontSize: '10px', color: '#9CA3AF', fontFamily: 'monospace' }}>
-              {agentId.length > 24 ? `${agentId.slice(0, 24)}…` : agentId}
-            </code>
-          </div>
-        )}
-
-        {/* Credential status */}
-        <CredentialStatus widget={widget} />
-      </div>
-
-      {/* Footer actions */}
-      <div style={{
-        borderTop: '1px solid #F1F5F9', padding: '12px 16px',
-        display: 'flex', alignItems: 'center', gap: '8px',
-        background: '#FAFBFC',
-        flexWrap: 'wrap',
-      }} className="card-actions">
-        {/* Edit */}
-        <Link
-          href={`/widget-customizer?id=${encodeURIComponent(widget.id)}`}
-          style={{
-            ...btn.icon, color: '#374151', textDecoration: 'none', display: 'flex',
-            alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 500,
-          }}
-        >
-          <Icon d={ICONS.edit} size={13} /> Edit
-        </Link>
-
-        {/* Sandbox */}
-        <a
-          href={`/embed/${widget.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            ...btn.icon, color: '#374151', textDecoration: 'none', display: 'flex',
-            alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 500,
-          }}
-        >
-          <Icon d={ICONS.external} size={13} /> Preview
-        </a>
-
-        {/* Copy snippet */}
-        <button
-          onClick={() => onCopySnippet(widget.id)}
-          style={{
-            ...btn.icon, color: isCopied ? '#059669' : '#374151',
-            display: 'flex', alignItems: 'center', gap: '5px',
-            fontSize: '12px', fontWeight: 500,
-          }}
-        >
-          <Icon d={isCopied ? ICONS.check : ICONS.copy} size={13} />
-          {isCopied ? 'Copied!' : 'Copy Snippet'}
-        </button>
-
-        <div style={{ flex: '1 1 0' }} className="flex-divider" />
-
-        {/* Delete */}
-        <button
-          onClick={() => onDelete(widget.id, widget.name)}
-          style={{ ...btn.icon, color: '#DC2626' }}
-          title="Delete widget"
-        >
-          <Icon d={ICONS.trash} size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export default function WidgetsPage() {
-  const [widgets, setWidgets] = useState<WidgetSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [origin, setOrigin] = useState(() => {
-    if (process.env.BASE_URL) {
-      return process.env.BASE_URL;
-    }
-    if (process.env.NEXT_PUBLIC_BASE_URL) {
-      return process.env.NEXT_PUBLIC_BASE_URL;
-    }
-    return 'https://your-domain.vercel.app';
-  });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [user, setUser] = useState<{ fullName: string; email: string } | null>(null);
+  // Carousel autoplay
+  const startCarouselAutoPlay = useCallback(() => {
+    if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
+    autoPlayTimerRef.current = setInterval(() => {
+      setCarouselIndex((prev) => {
+        const next = (prev + 1) % 5;
+        if (carouselRef.current) {
+          const cards = carouselRef.current.children;
+          if (cards[next]) {
+            (cards[next] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+          }
+        }
+        return next;
+      });
+    }, 4500);
+  }, []);
 
   useEffect(() => {
-    if (process.env.BASE_URL) {
-      setOrigin(process.env.BASE_URL);
-    } else if (process.env.NEXT_PUBLIC_BASE_URL) {
-      setOrigin(process.env.NEXT_PUBLIC_BASE_URL);
-    } else if (typeof window !== 'undefined') {
-      setOrigin(window.location.origin);
-    }
+    startCarouselAutoPlay();
+    return () => {
+      if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
+    };
+  }, [startCarouselAutoPlay]);
 
-    async function loadUser() {
-      try {
-        const res = await fetch('/api/auth/me');
-        if (res.ok) {
-          const data = await res.json();
-          setUser(data);
-        }
-      } catch (err) {
-        console.error('Failed to load user info:', err);
+  const scrollToCard = (index: number) => {
+    if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
+    setCarouselIndex(index);
+    if (carouselRef.current) {
+      const cards = carouselRef.current.children;
+      if (cards[index]) {
+        (cards[index] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
       }
     }
-    loadUser();
-  }, []);
+    setTimeout(startCarouselAutoPlay, 5000);
+  };
 
-  const handleLogout = useCallback(async () => {
-    const toastId = toast.loading('Logging out...');
-    try {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (res.ok) {
-        toast.success('Logged out successfully', { id: toastId });
-        window.location.href = '/login';
-      } else {
-        toast.error('Logout failed', { id: toastId });
-      }
-    } catch (err) {
-      toast.error('Logout error occurred', { id: toastId });
-    }
-  }, []);
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (!carouselRef.current) return;
+    isDraggingRef.current = true;
+    startXRef.current = e.pageX - carouselRef.current.offsetLeft;
+    scrollLeftRef.current = carouselRef.current.scrollLeft;
+    if (autoPlayTimerRef.current) clearInterval(autoPlayTimerRef.current);
+  };
 
-  const fetchWidgets = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/widgets');
-      if (!res.ok) throw new Error('Failed to load widgets');
-      const data = await res.json();
-      setWidgets(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load widget list');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingRef.current || !carouselRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - carouselRef.current.offsetLeft;
+    const walk = (x - startXRef.current) * 1.5;
+    carouselRef.current.scrollLeft = scrollLeftRef.current - walk;
+  };
 
-  useEffect(() => { fetchWidgets(); }, [fetchWidgets]);
+  const handlePointerUp = () => {
+    isDraggingRef.current = false;
+  };
 
-  const handleDelete = useCallback(async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    const toastId = toast.loading(`Deleting widget "${deleteTarget.name}"...`);
-    try {
-      const res = await fetch(`/api/widgets?id=${encodeURIComponent(deleteTarget.id)}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || 'Failed to delete widget');
-      }
-      setWidgets(prev => prev.filter(w => w.id !== deleteTarget.id));
-      setDeleteTarget(null);
-      toast.success('Widget deleted successfully!', { id: toastId });
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete widget', { id: toastId });
-    } finally {
-      setIsDeleting(false);
-    }
-  }, [deleteTarget]);
+  // Features Data
+  const features = [
+    {
+      title: 'Ultra-Low Latency Voice & Chat',
+      icon: <SvgIcon paths={PATHS.phone} size={22} color="#FFFDF8" />,
+      detail: 'Natural, human-like voice conversations powered by Retell AI & Vapi WebRTC with instant text chat fallback.',
+      tooltip: 'Real-time WebRTC audio streaming with active speech interruption and emotion conditioning.',
+    },
+    {
+      title: 'Dynamic Website Intelligence RAG',
+      icon: <SvgIcon paths={PATHS.globe} size={22} color="#FFFDF8" />,
+      detail: 'Deep recursive crawler and connectors ingest your live inventory, services, and FAQs into pgvector embeddings.',
+      tooltip: 'Automated 12-hour sync schedules and real-time product feed ingestion.',
+    },
+    {
+      title: 'Agent-Initiated Browser Navigation',
+      icon: <SvgIcon paths={PATHS.compass} size={22} color="#FFFDF8" />,
+      detail: 'When visitors ask to see a specific product or listing, the agent navigates the host page directly while speaking.',
+      tooltip: 'Realtime session broadcast channel with conversation resume-on-navigate.',
+    },
+    {
+      title: 'Pixel-Perfect Visual Customizer',
+      icon: <SvgIcon paths={PATHS.layout} size={22} color="#FFFDF8" />,
+      detail: 'Live preview across mobile, tablet, and desktop viewports with customizable themes, fonts, and launcher variants.',
+      tooltip: 'WCAG contrast validation, draggable splitter canvas, and quick preset switches.',
+    },
+    {
+      title: 'Enterprise Security & Sync',
+      icon: <SvgIcon paths={PATHS.shield} size={22} color="#FFFDF8" />,
+      detail: 'Private server-side API keys, per-IP rate limiting, Shopify & WooCommerce HMAC cryptographic validation.',
+      tooltip: 'No credentials exposed to browser clients with clean sandboxed iframes.',
+    },
+  ];
 
-  const handleCopySnippet = useCallback((id: string) => {
-    const snippet = `<!-- Voice Agent Widget -->\n<script\n  src="${origin}/widget.js"\n  data-widget-id="${id}"\n  defer\n></script>`;
-    navigator.clipboard.writeText(snippet)
-      .then(() => {
-        toast.success('Widget script code copied!');
-        setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2500);
-      })
-      .catch(() => {
-        toast.error('Failed to copy widget code.');
-      });
-  }, [origin]);
+  // Integrations Marquee
+  const integrations = [
+    { name: 'Shopify Storefront', icon: <SvgIcon paths={PATHS.globe} size={18} /> },
+    { name: 'WooCommerce API', icon: <SvgIcon paths={PATHS.refresh} size={18} /> },
+    { name: 'Retell AI WebRTC', icon: <SvgIcon paths={PATHS.phone} size={18} /> },
+    { name: 'Vapi AI Assistant', icon: <SvgIcon paths={PATHS.sparkles} size={18} /> },
+    { name: 'Crawl4AI Spider', icon: <SvgIcon paths={PATHS.globe} size={18} /> },
+    { name: 'Google Calendar & Booking', icon: <SvgIcon paths={PATHS.calendar} size={18} /> },
+    { name: 'Supabase pgvector', icon: <SvgIcon paths={PATHS.shield} size={18} /> },
+  ];
 
-  const filteredWidgets = widgets.filter(w =>
-    w.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    w.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Hero interactive state simulations
+  const heroStates = [
+    {
+      icon: <SvgIcon paths={PATHS.phone} size={32} color="#FFFDF8" />,
+      label: 'Incoming Visitor Call...',
+      sub: 'Customer: "Do you have the 2024 Ram 1500 in stock?"',
+      badge: '🎙️ Live Audio Connected',
+      badgeColor: '#16A34A',
+      chipText: 'Searching live vehicle database...',
+    },
+    {
+      icon: <SvgIcon paths={PATHS.globe} size={32} color="#FFFDF8" />,
+      label: 'Website Intelligence Lookup',
+      sub: 'Agent: "Yes! We have 3 available starting at $49,995."',
+      badge: '⚡ pgvector Semantic Match',
+      badgeColor: '#2563EB',
+      chipText: '3 in-stock matching records retrieved',
+    },
+    {
+      icon: <SvgIcon paths={PATHS.compass} size={32} color="#FFFDF8" />,
+      label: 'Autonomous Page Navigation',
+      sub: 'Agent: "I\'ve opened the full listing on your screen now."',
+      badge: '🧭 Realtime Host Navigation',
+      badgeColor: '#9333EA',
+      chipText: 'Navigating to /inventory/ram-1500',
+    },
+    {
+      icon: <SvgIcon paths={PATHS.calendar} size={32} color="#FFFDF8" />,
+      label: 'Test Drive Scheduled',
+      sub: 'Agent: "Your test drive is confirmed for Thursday at 2:30 PM!"',
+      badge: '✓ Booking Synchronized',
+      badgeColor: '#D9714B',
+      chipText: 'Calendar confirmation sent via SMS',
+    },
+  ];
+
+  const currentHero = heroStates[heroPhase];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: "'Inter', 'Figtree', system-ui, sans-serif" }}>
-      {/* Responsive dashboard header & components style */}
+    <div style={{ position: 'relative', isolation: 'isolate', fontFamily: "'Figtree', 'Inter', system-ui, sans-serif", color: '#0E1B2A', minHeight: '100vh', overflowX: 'hidden' }}>
+      
+      {/* ── Global Styles & Ambient Drift Animations ────────────────────── */}
       <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+        @keyframes blobDriftA {
+          0% { transform: translate(-6%, -4%) scale(1); }
+          50% { transform: translate(4%, 6%) scale(1.08); }
+          100% { transform: translate(-6%, -4%) scale(1); }
         }
-        @media (max-width: 768px) {
-          .dashboard-header {
-            flex-direction: column !important;
-            height: auto !important;
-            padding: 16px !important;
-            gap: 12px !important;
-            align-items: stretch !important;
-            position: relative !important;
-          }
-          .dashboard-header-left {
-            justify-content: space-between !important;
-            width: 100% !important;
-          }
-          .dashboard-header-right {
-            flex-direction: column !important;
-            align-items: stretch !important;
-            width: 100% !important;
-            gap: 10px !important;
-          }
-          .search-input {
-            width: 100% !important;
-          }
-          .user-badge {
-            border-left: none !important;
-            padding-left: 0 !important;
-            padding-top: 10px !important;
-            border-top: 1px solid #E5E7EB !important;
-            width: 100% !important;
-            justify-content: space-between !important;
-          }
-          .card-actions {
-            gap: 12px !important;
-          }
-          .flex-divider {
-            display: none !important;
-          }
+        @keyframes blobDriftB {
+          0% { transform: translate(5%, 4%) scale(1); }
+          50% { transform: translate(-5%, -6%) scale(1.06); }
+          100% { transform: translate(5%, 4%) scale(1); }
+        }
+        @keyframes pulseRing {
+          0% { box-shadow: 0 0 0 0 rgba(47,143,224,0.4); }
+          70% { box-shadow: 0 0 0 20px rgba(47,143,224,0); }
+          100% { box-shadow: 0 0 0 0 rgba(47,143,224,0); }
+        }
+        @keyframes marqueeScroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .mfd-carousel-scroll::-webkit-scrollbar { display: none; }
+        .mfd-carousel-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+        
+        .desktop-nav-items { display: flex; }
+        .mobile-hamburger-btn { display: none; }
+        .hero-grid-layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; }
+
+        @media (max-width: 900px) {
+          .desktop-nav-items { display: none !important; }
+          .mobile-hamburger-btn { display: flex !important; }
+          .hero-grid-layout { grid-template-columns: 1fr !important; gap: 32px !important; }
         }
       `}} />
 
-      {/* Header */}
-      <header style={{
-        height: '60px', background: '#FFFFFF', borderBottom: '1px solid #E5E7EB',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 24px', position: 'sticky', top: 0, zIndex: 20,
-      }} className="dashboard-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }} className="dashboard-header-left">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '28px', height: '28px', borderRadius: '8px',
-              background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
-            }}>
-              <Icon d={ICONS.widget} size={15} />
-            </div>
-            <span style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>Widget Fleet</span>
-            {!loading && (
-              <span style={{
-                background: '#EFF6FF', color: '#1D4ED8',
-                border: '1px solid #BFDBFE',
-                borderRadius: '20px', padding: '1px 8px',
-                fontSize: '11px', fontWeight: 600,
-              }}>
-                {widgets.length}
-              </span>
-            )}
-          </div>
-        </div>
+      {/* ── Ambient Background Layer ────────────────────────────────────── */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: '#E9F2FB', overflow: 'hidden', pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', top: '-10%', left: '-10%', width: '60%', height: '60%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(47,143,224,0.2), transparent 70%)', filter: 'blur(50px)', animation: 'blobDriftA 26s ease-in-out infinite' }} />
+        <div style={{ position: 'absolute', bottom: '-15%', right: '-10%', width: '65%', height: '65%', borderRadius: '50%', background: 'radial-gradient(circle, rgba(217,113,75,0.12), transparent 70%)', filter: 'blur(60px)', animation: 'blobDriftB 32s ease-in-out infinite' }} />
+        <div style={{ position: 'absolute', inset: 0, opacity: 0.08, backgroundImage: "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2744%27 height=%2744%27%3E%3Cpath d=%27M44 0H0V44%27 fill=%27none%27 stroke=%27%236b6656%27 stroke-width=%271%27/%3E%3C/svg%3E')", backgroundSize: '44px 44px' }} />
+      </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }} className="dashboard-header-right">
-          <input
-            type="search"
-            placeholder="Search widgets…"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={{
-              height: '34px', padding: '0 12px',
-              borderRadius: '8px', border: '1px solid #E5E7EB',
-              fontSize: '13px', color: '#374151',
-              background: '#F9FAFB', outline: 'none',
-              width: '200px',
-              fontFamily: 'inherit',
-            }}
-            className="search-input"
-          />
-          <Link
-            href="/widget-customizer"
-            style={{
-              ...btn.primary, textDecoration: 'none', display: 'flex',
-              alignItems: 'center', gap: '6px', justifyContent: 'center',
-            }}
-          >
-            <Icon d={ICONS.plus} size={14} />
-            New Widget
-          </Link>
-          {user && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '8px', borderLeft: '1px solid #E5E7EB', paddingLeft: '12px' }} className="user-badge">
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: '#111827' }}>{user.fullName}</span>
-                <span style={{ fontSize: '10px', color: '#6B7280' }}>{user.email}</span>
-              </div>
-              <button
-                onClick={handleLogout}
-                style={{
-                  ...btn.secondary,
-                  height: '30px',
-                  padding: '0 10px',
-                  fontSize: '12px',
-                  borderColor: '#DC2626',
-                  color: '#DC2626',
-                  background: 'transparent',
-                }}
-              >
-                Logout
-              </button>
+      {/* ── Navigation Bar ──────────────────────────────────────────────── */}
+      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(233,242,251,0.85)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(14,27,42,0.08)' }}>
+        <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '0 32px', height: '68px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px' }}>
+          
+          {/* Logo & Brand */}
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#0E1B2A' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '10px',
+              background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
+              boxShadow: '0 4px 12px rgba(47,143,224,0.35)',
+            }}>
+              <SvgIcon paths={PATHS.widget} size={20} color="#FFFDF8" />
             </div>
-          )}
+            <span style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em', color: '#0E1B2A' }}>Widgetized</span>
+          </Link>
+
+          {/* Desktop Nav Links */}
+          <nav className="desktop-nav-items" style={{ alignItems: 'center', gap: '28px' }}>
+            <a href="#features" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Features</a>
+            <a href="#channels" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Capabilities</a>
+            <a href="#how-it-works" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>How It Works</a>
+            <Link href="/widget-customizer?id=front-desk" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Live Customizer</Link>
+            <Link href="/dashboard" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none' }}>Dashboard</Link>
+          </nav>
+
+          {/* Desktop Auth & Action Buttons */}
+          <div className="desktop-nav-items" style={{ alignItems: 'center', gap: '12px' }}>
+            <Link
+              href="/login"
+              style={{
+                padding: '9px 18px', borderRadius: '10px',
+                border: '1px solid rgba(14,27,42,0.15)', background: 'rgba(255,255,255,0.7)',
+                color: '#0E1B2A', fontSize: '14px', fontWeight: 600,
+                textDecoration: 'none', transition: 'all 0.2s ease',
+              }}
+            >
+              Login
+            </Link>
+            <Link
+              href="/signup"
+              style={{
+                padding: '9px 20px', borderRadius: '10px',
+                background: '#2F8FE0', color: '#FFFDF8',
+                fontSize: '14px', fontWeight: 600,
+                textDecoration: 'none', transition: 'all 0.25s ease',
+                boxShadow: '0 4px 14px rgba(47,143,224,0.3)',
+              }}
+            >
+              Sign Up Free
+            </Link>
+          </div>
+
+          {/* Mobile Hamburger Button */}
+          <button
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+            className="mobile-hamburger-btn"
+            style={{
+              background: 'none', border: '1px solid rgba(14,27,42,0.15)',
+              borderRadius: '8px', padding: '7px', cursor: 'pointer', color: '#0E1B2A',
+            }}
+            aria-label="Toggle navigation menu"
+          >
+            <SvgIcon paths={mobileMenuOpen ? PATHS.close : PATHS.menu} size={20} />
+          </button>
         </div>
       </header>
 
-      {/* Main */}
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px' }}>
-
-        {/* Error */}
-        {error && (
-          <div style={{
-            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px',
-            padding: '14px 18px', marginBottom: '24px', color: '#DC2626', fontSize: '13px',
-            display: 'flex', alignItems: 'center', gap: '10px',
-          }}>
-            <Icon d="M12 8v4M12 16h.01M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0" size={16} />
-            {error}
-            <button onClick={fetchWidgets} style={{ marginLeft: 'auto', ...btn.secondary, fontSize: '12px' }}>Retry</button>
-          </div>
-        )}
-
-        {/* Loading skeleton */}
-        {loading && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
-            {[1, 2, 3].map(i => (
-              <div key={i} style={{
-                background: '#fff', borderRadius: '14px', border: '1px solid #E5E7EB',
-                height: '200px', animation: 'pulse 1.5s infinite',
-              }} />
-            ))}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!loading && !error && filteredWidgets.length === 0 && (
-          searchTerm ? (
-            <div style={{ textAlign: 'center', padding: '64px 24px', color: '#9CA3AF', fontSize: '14px' }}>
-              No widgets matching "<strong style={{ color: '#374151' }}>{searchTerm}</strong>"
+      {/* ── Mobile Navigation Drawer Overlay ────────────────────────────── */}
+      {mobileMenuOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          background: 'rgba(233,242,251,0.98)', backdropFilter: 'blur(16px)',
+          display: 'flex', flexDirection: 'column', padding: '24px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                <SvgIcon paths={PATHS.widget} size={18} color="#FFFDF8" />
+              </div>
+              <span style={{ fontSize: '18px', fontWeight: 700 }}>Widgetized</span>
             </div>
-          ) : (
-            <div style={{ display: 'flex' }}>
-              <EmptyState onNew={() => window.location.href = '/widget-customizer'} />
-            </div>
-          )
-        )}
-
-        {/* Widget grid */}
-        {!loading && filteredWidgets.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
-            {filteredWidgets.map(widget => (
-              <WidgetCard
-                key={widget.id}
-                widget={widget}
-                onDelete={(id, name) => setDeleteTarget({ id, name })}
-                onCopySnippet={handleCopySnippet}
-                copiedId={copiedId}
-                origin={origin}
-              />
-            ))}
+            <button onClick={() => setMobileMenuOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+              <SvgIcon paths={PATHS.close} size={24} />
+            </button>
           </div>
-        )}
-      </main>
 
-      {/* Delete modal */}
-      {deleteTarget && (
-        <DeleteConfirmModal
-          name={deleteTarget.name}
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={handleDelete}
-          isDeleting={isDeleting}
-        />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
+            <a href="#features" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Features</a>
+            <a href="#channels" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Capabilities</a>
+            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
+            <Link href="/widget-customizer?id=front-desk" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Live Customizer</Link>
+            <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Fleet Dashboard</Link>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '280px', marginTop: '24px' }}>
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)} style={{ padding: '12px', borderRadius: '10px', background: '#FFFFFF', border: '1px solid #E5E7EB', color: '#0E1B2A', textAlign: 'center', fontWeight: 600, textDecoration: 'none' }}>
+                Login
+              </Link>
+              <Link href="/signup" onClick={() => setMobileMenuOpen(false)} style={{ padding: '12px', borderRadius: '10px', background: '#2F8FE0', color: '#FFFDF8', textAlign: 'center', fontWeight: 600, textDecoration: 'none', boxShadow: '0 4px 14px rgba(47,143,224,0.3)' }}>
+                Sign Up Free
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* ── Hero Section ────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '64px 32px 56px' }}>
+        <div className="hero-grid-layout" style={{ alignItems: 'center' }}>
+          
+          {/* Left Hero Copy */}
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', borderRadius: '20px', background: 'rgba(47,143,224,0.12)', border: '1px solid rgba(47,143,224,0.25)', marginBottom: '20px' }}>
+              <SvgIcon paths={PATHS.sparkles} size={15} color="#2F8FE0" />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#1D6FB8' }}>Autonomous Voice & Web Intelligence</span>
+            </div>
+
+            <h1 style={{ fontSize: 'clamp(34px, 4.4vw, 54px)', fontWeight: 800, lineHeight: 1.08, letterSpacing: '-0.03em', margin: '0 0 18px', color: '#0E1B2A' }}>
+              The AI Front Desk <br />
+              <span style={{ color: '#2F8FE0' }}>That Knows Your Business.</span>
+            </h1>
+
+            <p style={{ fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.74)', maxWidth: '520px', margin: '0 0 32px' }}>
+              An intelligent voice and text agent trained on your business's hours, live inventory, and service catalogs. It answers customer calls, navigates website pages, and books appointments 24/7.
+            </p>
+
+            {/* CTAs */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '36px' }}>
+              <Link
+                href="/signup"
+                style={{
+                  padding: '14px 32px', borderRadius: '12px',
+                  background: '#2F8FE0', color: '#FFFDF8',
+                  fontSize: '15.5px', fontWeight: 700,
+                  textDecoration: 'none', display: 'inline-block',
+                  boxShadow: '0 8px 24px -4px rgba(47,143,224,0.4)',
+                  transition: 'transform 0.2s ease',
+                }}
+              >
+                Get Started Free
+              </Link>
+              <Link
+                href="/widget-customizer?id=front-desk"
+                style={{
+                  padding: '14px 24px', borderRadius: '12px',
+                  background: '#FFFFFF', color: '#0E1B2A',
+                  fontSize: '15px', fontWeight: 600,
+                  border: '1px solid rgba(14,27,42,0.14)',
+                  textDecoration: 'none', display: 'inline-block',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                }}
+              >
+                Try Live Customizer →
+              </Link>
+            </div>
+
+            {/* Feature Checklist */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[
+                'Zero-latency WebRTC voice calling + instant text chat',
+                'Deep website crawling, Shopify, and WooCommerce synchronization',
+                'Agent-initiated autonomous page navigation during active calls',
+              ].map((cap, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <SvgIcon paths={PATHS.check} size={12} color="#16A34A" stroke={2.5} />
+                  </div>
+                  <span style={{ fontSize: '14.5px', color: 'rgba(14,27,42,0.85)', fontWeight: 500 }}>{cap}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right Interactive Simulation Card */}
+          <div>
+            <div style={{
+              position: 'relative', padding: '36px 30px', borderRadius: '24px',
+              background: 'rgba(255,255,255,0.94)', border: '1px solid rgba(14,27,42,0.12)',
+              boxShadow: '0 20px 48px -12px rgba(14,27,42,0.14), 0 2px 6px rgba(0,0,0,0.04)',
+              minHeight: '380px', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: '20px',
+            }}>
+              {/* Pulsing Icon */}
+              <div style={{
+                width: '76px', height: '76px', borderRadius: '50%',
+                background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'pulseRing 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              }}>
+                {currentHero.icon}
+              </div>
+
+              {/* Status Badge */}
+              <span style={{
+                fontSize: '12px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px',
+                background: `${currentHero.badgeColor}15`, color: currentHero.badgeColor,
+                border: `1px solid ${currentHero.badgeColor}35`,
+              }}>
+                {currentHero.badge}
+              </span>
+
+              {/* Dynamic Sub-dialogue */}
+              <div style={{ textAlign: 'center', maxWidth: '380px' }}>
+                <div style={{ fontSize: '17px', fontWeight: 700, color: '#0E1B2A', marginBottom: '6px' }}>
+                  {currentHero.label}
+                </div>
+                <div style={{ fontSize: '14px', color: 'rgba(14,27,42,0.7)', lineHeight: 1.5, fontStyle: 'italic' }}>
+                  {currentHero.sub}
+                </div>
+              </div>
+
+              {/* Action Pill */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '12px 18px', borderRadius: '12px',
+                background: 'rgba(47,143,224,0.1)', border: '1px solid rgba(47,143,224,0.25)',
+              }}>
+                <SvgIcon paths={PATHS.sparkles} size={16} color="#2F8FE0" />
+                <span style={{ fontSize: '13px', fontWeight: 600, color: '#1D6FB8' }}>
+                  {currentHero.chipText}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Integrations Marquee ────────────────────────────────────────── */}
+      <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 32px' }}>
+        <div style={{ height: '1px', background: 'rgba(14,27,42,0.1)', marginBottom: '20px' }} />
+        <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(217,113,75,0.9)', marginBottom: '18px' }}>
+          Works with your existing stack
+        </div>
+        <div style={{ overflow: 'hidden', maskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)', WebkitMaskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)' }}>
+          <div style={{ display: 'flex', width: 'max-content', gap: '56px', animation: 'marqueeScroll 28s linear infinite' }}>
+            {[...integrations, ...integrations].map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'rgba(14,27,42,0.5)', fontWeight: 600, fontSize: '14.5px' }}>
+                {item.icon}
+                <span>{item.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ height: '1px', background: 'rgba(14,27,42,0.1)', marginTop: '20px' }} />
+      </section>
+
+      {/* ── Feature Carousel Grid ───────────────────────────────────────── */}
+      <section id="features" style={{ maxWidth: '1240px', margin: '0 auto', padding: '64px 32px 56px' }}>
+        <div style={{ maxWidth: '620px', margin: '0 auto 40px', textAlign: 'center' }}>
+          <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+            Engineered for Real-World Front Desks
+          </h2>
+          <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
+            Every capability required to answer, inform, navigate, and convert visitors automatically.
+          </p>
+        </div>
+
+        {/* Horizontal Carousel */}
+        <div
+          ref={carouselRef}
+          className="mfd-carousel-scroll"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          style={{
+            display: 'flex', gap: '20px', overflowX: 'auto',
+            scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
+            cursor: 'grab', padding: '8px 4px 16px', userSelect: 'none',
+          }}
+        >
+          {features.map((feat, i) => (
+            <div
+              key={i}
+              style={{
+                flex: '0 0 320px', minWidth: '320px', scrollSnapAlign: 'start',
+                padding: '28px', borderRadius: '20px', background: 'rgba(255,255,255,0.92)',
+                border: '1px solid rgba(14,27,42,0.12)',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 16px 32px -16px rgba(14,27,42,0.12)',
+                display: 'flex', flexDirection: 'column', position: 'relative',
+              }}
+            >
+              <div
+                onMouseEnter={() => setActiveTooltip(i)}
+                onMouseLeave={() => setActiveTooltip(null)}
+                style={{
+                  width: '48px', height: '48px', borderRadius: '14px',
+                  background: '#2F8FE0', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', marginBottom: '18px', position: 'relative',
+                }}
+              >
+                {feat.icon}
+                {activeTooltip === i && (
+                  <div style={{
+                    position: 'absolute', top: '56px', left: 0, zIndex: 10,
+                    width: '240px', padding: '10px 14px', borderRadius: '10px',
+                    background: '#0E1B2A', color: '#FFFDF8', fontSize: '12px',
+                    lineHeight: 1.5, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                  }}>
+                    {feat.tooltip}
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: '#0E1B2A' }}>
+                {feat.title}
+              </div>
+              <div style={{ fontSize: '14px', lineHeight: 1.6, color: 'rgba(14,27,42,0.65)' }}>
+                {feat.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Carousel Dots */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
+          {features.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => scrollToCard(i)}
+              aria-label={`Scroll to feature ${i + 1}`}
+              style={{
+                width: carouselIndex === i ? '24px' : '8px', height: '8px',
+                borderRadius: '4px', background: carouselIndex === i ? '#2F8FE0' : 'rgba(14,27,42,0.2)',
+                border: 'none', padding: 0, cursor: 'pointer', transition: 'all 0.3s ease',
+              }}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Capabilities Channels Section ───────────────────────────────── */}
+      <section id="channels" style={{ maxWidth: '1240px', margin: '0 auto', padding: '48px 32px' }}>
+        <div style={{ maxWidth: '580px', margin: '0 auto 40px', textAlign: 'center' }}>
+          <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+            Unified Omnichannel Intelligence
+          </h2>
+          <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
+            Embed anywhere with a single script tag or connect directly with existing phone lines.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '18px' }}>
+          {[
+            { name: 'Floating Web Widget', detail: 'Embed on any site via public/widget.js', icon: <SvgIcon paths={PATHS.widget} size={20} color="#2F8FE0" /> },
+            { name: 'Direct Inbound Phone Lines', detail: 'Connect custom SIP & Twilio telephony', icon: <SvgIcon paths={PATHS.phone} size={20} color="#2F8FE0" /> },
+            { name: 'Inventory & Catalog Sync', detail: 'Shopify, WooCommerce & RSS feeds', icon: <SvgIcon paths={PATHS.refresh} size={20} color="#2F8FE0" /> },
+            { name: 'Host Page Navigation', detail: 'Autonomous browser tab navigation', icon: <SvgIcon paths={PATHS.compass} size={20} color="#2F8FE0" /> },
+          ].map((ch, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '20px', borderRadius: '16px', background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(14,27,42,0.12)', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(47,143,224,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {ch.icon}
+              </div>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#0E1B2A' }}>{ch.name}</div>
+                <div style={{ fontSize: '12.5px', color: 'rgba(14,27,42,0.6)' }}>{ch.detail}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How It Works (3 Stages) ─────────────────────────────────────── */}
+      <section id="how-it-works" style={{ maxWidth: '1100px', margin: '0 auto', padding: '56px 32px 64px' }}>
+        <div style={{ maxWidth: '580px', margin: '0 auto 48px', textAlign: 'center' }}>
+          <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+            What Happens on a Live Call
+          </h2>
+          <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
+            From initial greeting to booking and host navigation — handled completely automatically.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+          {[
+            {
+              step: '1',
+              title: 'Visitor Asks by Voice or Text',
+              detail: 'Ultra-low latency speech recognition captures the visitor\'s intent with zero lag.',
+            },
+            {
+              step: '2',
+              title: 'Agent Checks Live Intelligence',
+              detail: 'Grounded RAG retrieval queries crawled website data, vehicle inventory, and service packages.',
+            },
+            {
+              step: '3',
+              title: 'Actions & Navigation Triggered',
+              detail: 'The agent answers questions, opens requested product pages on screen, and schedules appointments.',
+            },
+          ].map((st, i) => (
+            <div key={i} style={{ padding: '32px 24px', borderRadius: '20px', background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(14,27,42,0.12)', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#2F8FE0', color: '#FFFDF8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: 800, marginBottom: '20px' }}>
+                {st.step}
+              </div>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: '#0E1B2A', marginBottom: '8px' }}>
+                {st.title}
+              </div>
+              <div style={{ fontSize: '14px', lineHeight: 1.6, color: 'rgba(14,27,42,0.65)' }}>
+                {st.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Final Call to Action ────────────────────────────────────────── */}
+      <section style={{ maxWidth: '960px', margin: '0 auto', padding: '48px 32px 96px' }}>
+        <div style={{ textAlign: 'center', padding: '64px 36px', borderRadius: '28px', background: '#0E1B2A', color: '#FFFDF8', boxShadow: '0 24px 64px -12px rgba(14,27,42,0.35)' }}>
+          <h2 style={{ fontSize: 'clamp(28px, 3.6vw, 42px)', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 16px' }}>
+            Elevate Your Business Front Desk
+          </h2>
+          <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.72)', maxWidth: '520px', margin: '0 auto 36px' }}>
+            Deploy your AI voice and text agent widget in minutes. Answer inquiries, navigate visitors, and book appointments 24/7.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <Link
+              href="/signup"
+              style={{
+                padding: '14px 32px', borderRadius: '12px',
+                background: '#2F8FE0', color: '#FFFDF8',
+                fontSize: '15px', fontWeight: 700,
+                textDecoration: 'none', display: 'inline-block',
+                boxShadow: '0 6px 20px rgba(47,143,224,0.4)',
+              }}
+            >
+              Get Started Free
+            </Link>
+            <Link
+              href="/widget-customizer?id=front-desk"
+              style={{
+                padding: '14px 28px', borderRadius: '12px',
+                background: 'rgba(255,255,255,0.12)', color: '#FFFDF8',
+                border: '1px solid rgba(255,255,255,0.2)',
+                fontSize: '15px', fontWeight: 600,
+                textDecoration: 'none', display: 'inline-block',
+              }}
+            >
+              Open Live Customizer
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ──────────────────────────────────────────────────────── */}
+      <footer style={{ borderTop: '1px solid rgba(14,27,42,0.1)', background: 'rgba(233,242,251,0.6)', padding: '48px 32px 36px' }}>
+        <div style={{ maxWidth: '1240px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '32px', marginBottom: '32px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                <SvgIcon paths={PATHS.widget} size={16} color="#FFFDF8" />
+              </div>
+              <span style={{ fontSize: '18px', fontWeight: 700, color: '#0E1B2A' }}>Widgetized</span>
+            </div>
+            <p style={{ fontSize: '13.5px', color: 'rgba(14,27,42,0.7)', lineHeight: 1.6, maxWidth: '280px', margin: 0 }}>
+              The complete autonomous AI voice, text, and knowledge front-desk platform for modern businesses.
+            </p>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(217,113,75,0.85)', marginBottom: '12px' }}>
+              Product
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <Link href="/widget-customizer?id=front-desk" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Widget Customizer</Link>
+              <Link href="/dashboard" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Fleet Dashboard</Link>
+              <a href="#features" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Features & Tools</a>
+              <a href="#how-it-works" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(217,113,75,0.85)', marginBottom: '12px' }}>
+              Account & Access
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <Link href="/login" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Login</Link>
+              <Link href="/signup" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Sign Up</Link>
+              <Link href="/forgot-password" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Reset Password</Link>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '24px', borderTop: '1px solid rgba(14,27,42,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
+            © 2026 Widgetized. All rights reserved.
+          </span>
+          <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
+            Autonomous AI Front Desk Platform
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
-
-// ── Button style tokens ────────────────────────────────────────────────────
-
-const btn: Record<string, React.CSSProperties> = {
-  primary: {
-    height: '34px', padding: '0 14px', borderRadius: '8px',
-    border: 'none', background: '#2563EB', color: '#fff',
-    fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-    display: 'inline-flex', alignItems: 'center', gap: '6px',
-    fontFamily: 'inherit',
-  },
-  secondary: {
-    height: '34px', padding: '0 14px', borderRadius: '8px',
-    border: '1px solid #E5E7EB', background: '#fff', color: '#374151',
-    fontSize: '13px', fontWeight: 500, cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  danger: {
-    height: '34px', padding: '0 14px', borderRadius: '8px',
-    border: 'none', background: '#DC2626', color: '#fff',
-    fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  icon: {
-    height: '30px', padding: '0 10px', borderRadius: '7px',
-    border: '1px solid #E5E7EB', background: 'transparent',
-    fontSize: '12px', fontWeight: 500, cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-};
