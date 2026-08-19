@@ -26,7 +26,8 @@ const PUBLIC_API_PREFIXES = [
   '/api/auth/signup',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
-  '/api/widgets/create-call',
+  '/api/widgets',
+  '/api/widget',
   '/api/retell/',
   '/api/webhooks/',
   '/api/agent/',
@@ -36,7 +37,7 @@ const PUBLIC_API_PREFIXES = [
 
 // Static/asset routes
 const PUBLIC_PREFIXES = [
-  '/embed/',
+  '/embed',
   '/_next/',
   '/favicon',
   '/logo',
@@ -47,10 +48,6 @@ function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_ROUTES.includes(pathname)) return true;
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return true;
   if (PUBLIC_API_PREFIXES.some(p => pathname.startsWith(p))) return true;
-  // Embed data route
-  if (pathname.startsWith('/api/widgets') && !pathname.includes('/configuration') && !pathname.endsWith('/widgets')) {
-    return true;
-  }
   return false;
 }
 
