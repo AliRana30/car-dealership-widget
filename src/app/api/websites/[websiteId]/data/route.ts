@@ -45,9 +45,7 @@ function formatReadableContent(raw: string): string {
     .replace(/\s*([✓•·])\s*/g, '\n• ')
     .replace(/\s*(\b\d{1,2}\s*\/\s*[A-Z][a-z]+)/g, '\n\n### $1')
     .replace(/\s*(\b0[1-9]\s+[A-Z][a-z]+)/g, '\n\n**$1**\n')
-    .replace(/\s*(Questions clinics actually ask\.|Frequently Asked Questions)/gi, '\n\n### $1\n')
-    .replace(/\s*(Is MedEaz HIPAA compliant\?|Does it support Urdu prescriptions\?|Can I switch from my current EMR system\?|Is there a per-patient fee\?|How does voice recognition work|What happens if my internet goes down)/gi, '\n\n**Q: $1**\n')
-    .replace(/\s*(Built for Every Role|One Platform\. Three Portals|Ambient Audio Doctor Portal|Patient Portal|Admin Intelligence|Real-time Metrics|THE WORKFLOW)/gi, '\n\n### $1\n')
+    .replace(/\s*(Frequently Asked Questions|General FAQs|Course Overview|Program Details)/gi, '\n\n### $1\n')
     .replace(/([.!?])\s+([A-Z][a-zA-Z\s]{3,30}:)/g, '$1\n\n**$2**\n')
     .replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2');
 
@@ -96,10 +94,10 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
     const { data: website } = await supabase
       .from('websites')
       .select('id, name, allowed_domains, detected_platform')
-      .eq('id', websiteId)
+      .or(`id.eq.${websiteId},name.ilike.%${websiteId}%`)
       .maybeSingle();
 
-    const siteName = website?.name || 'Website Intelligence';
+    const siteName = website?.name || (websiteId ? `${websiteId} Knowledge` : 'Website Intelligence');
     const allowedDomains = (website?.allowed_domains || []).map((d: string) =>
       d.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
     );
@@ -108,7 +106,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
     const { data: latestJob } = await supabase
       .from('crawl_jobs')
       .select('id, status, pages_visited, entities_found, blocked_pages, error_message, created_at')
-      .eq('website_id', websiteId)
+      .or(`website_id.eq.${websiteId},website_id.eq.${website?.id || 'none'}`)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -116,22 +114,25 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
     const blockedPagesCount = latestJob?.blocked_pages || 0;
     const isJobBlocked = latestJob?.status === 'blocked' || blockedPagesCount > 0;
 
-    // 3. Resolve widget IDs
+    // 3. Resolve widget IDs strictly matching this website or widget ID
     const { data: widgets } = await supabase
       .from('widgets')
       .select('id')
-      .eq('website_id', websiteId);
+      .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
 
-    const widgetIds = widgets?.map(w => w.id) || [];
-    if (widgetIds.length === 0) {
-      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    const widgetIds = new Set<string>();
+    if (websiteId) widgetIds.add(websiteId);
+    if (website?.id) widgetIds.add(website.id);
+    if (widgets) {
+      widgets.forEach(w => widgetIds.add(w.id));
     }
+    const filterWidgetIds = Array.from(widgetIds);
 
-    // 4. Fetch website data records
+    // 4. Fetch website data records matching strictly this website or widget ID
     const { data: rawRecords, error: dataError } = await supabase
       .from('website_data')
       .select('id, source_url, title, entity_type, content, metadata, short_description, image_urls, data_type, category_path, created_at')
-      .in('widget_id', widgetIds)
+      .or(`website_id.in.(${filterWidgetIds.join(',')}),widget_id.in.(${filterWidgetIds.join(',')})`)
       .order('created_at', { ascending: false });
 
     if (dataError) {

@@ -88,6 +88,8 @@
 
       case 'voice-agent-navigate':
       case 'WIDGET_NAVIGATE':
+      case 'widget-navigate':
+      case 'navigate':
         // Top-level host navigation bridge (Phase 9.4)
         if (data.url && typeof data.url === 'string') {
           console.log('[Widgetized] Agent requested host page navigation to:', data.url);
