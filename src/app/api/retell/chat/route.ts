@@ -94,14 +94,43 @@ async function generateChatFallbackResponse(
   relevantData: string | null,
   businessName: string
 ): Promise<string> {
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
   const systemPrompt = generateBaseSystemPrompt({
     businessName,
     websiteContext: relevantData || undefined,
   });
 
+  // 1. Try Gemini API if key is present
+  if (geminiKey) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${systemPrompt}\n\nUser Question: ${content.trim()}` }],
+            },
+          ],
+          generationConfig: { maxOutputTokens: 400, temperature: 0.7 },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) return text;
+      }
+    } catch (err) {
+      console.warn('[retell/chat] Gemini fallback failed:', err);
+    }
+  }
+
+  // 2. Try OpenAI API if key is present
   if (openaiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -117,7 +146,7 @@ async function generateChatFallbackResponse(
             { role: 'user', content: content.trim() },
           ],
           temperature: 0.7,
-          max_tokens: 300,
+          max_tokens: 400,
         }),
       });
       if (res.ok) {
@@ -130,6 +159,7 @@ async function generateChatFallbackResponse(
     }
   }
 
+  // 3. Try Groq API if key is present
   if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -145,7 +175,7 @@ async function generateChatFallbackResponse(
             { role: 'user', content: content.trim() },
           ],
           temperature: 0.7,
-          max_tokens: 300,
+          max_tokens: 400,
         }),
       });
       if (res.ok) {
@@ -158,7 +188,45 @@ async function generateChatFallbackResponse(
     }
   }
 
-  return `Hello! Thank you for reaching out to ${businessName}. How can I assist you with our services today?`;
+  // 4. Try Anthropic API if key is present
+  if (anthropicKey) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 400,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: content.trim() }],
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.content?.[0]?.text?.trim();
+        if (text) return text;
+      }
+    } catch (err) {
+      console.warn('[retell/chat] Anthropic fallback failed:', err);
+    }
+  }
+
+  // 5. Zero-LLM-Key Knowledge Base Synthesis Fallback
+  if (relevantData && relevantData.trim().length > 0) {
+    const formattedData = relevantData
+      .split('\n\n')
+      .map(block => block.replace(/^Title:\s*/gi, '• ').replace(/Content:\s*/gi, '\n  '))
+      .join('\n\n');
+
+    return `Here is what I found regarding your query at ${businessName}:\n\n${formattedData}\n\nHow else can I assist you with this?`;
+  }
+
+  // 6. Query-Aware Fallback Response (Prevents repeating static greeting)
+  return `I searched our knowledge base at ${businessName} for "${content.trim()}", but didn't find specific details. Would you like assistance with course registration, pricing, or support?`;
 }
 
 // ─── Preflight handler ──────────────────────────────────────────────────────
