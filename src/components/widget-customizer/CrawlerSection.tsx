@@ -13,10 +13,23 @@ import {
   Edit2,
   X,
   ChevronDown,
+  AlertCircle,
 } from 'lucide-react';
 import { QUICK_SCAN_PAGE_CAP, MASTER_SCAN_PAGE_CAP } from '@/lib/crawler';
 
 type ScanMode = 'quick' | 'master';
+
+export interface CrawlJobStatusInfo {
+  status: string;
+  scanMode?: ScanMode;
+  pagesVisited: number;
+  entitiesFound: number;
+  blockedPages?: number;
+  indexedRecords: number;
+  jobId?: string;
+  completedAt?: string;
+  error?: string | null;
+}
 
 interface CrawlerSectionProps {
   websiteId?: string;
@@ -887,26 +900,8 @@ interface WebsiteConnectedPanelProps {
   websiteName?: string;
   setWebsiteId?: (val: string) => void;
   setWebsiteName?: (val: string) => void;
-  crawlStatus: {
-    status: string;
-    scanMode?: ScanMode;
-    pagesVisited: number;
-    entitiesFound: number;
-    blockedPages?: number;
-    indexedRecords: number;
-    jobId?: string;
-    completedAt?: string;
-  } | null;
-  setCrawlStatus: React.Dispatch<React.SetStateAction<{
-    status: string;
-    scanMode?: ScanMode;
-    pagesVisited: number;
-    entitiesFound: number;
-    blockedPages?: number;
-    indexedRecords: number;
-    jobId?: string;
-    completedAt?: string;
-  } | null>>;
+  crawlStatus: CrawlJobStatusInfo | null;
+  setCrawlStatus: React.Dispatch<React.SetStateAction<CrawlJobStatusInfo | null>>;
   handleReCrawl: (mode: ScanMode) => void;
 }
 
@@ -1261,17 +1256,7 @@ export default function CrawlerSection({
     linkSelector: '',
     entityType: 'product',
   });
-  const [crawlStatus, setCrawlStatus] = useState<{
-    status: string;
-    scanMode?: ScanMode;
-    pagesVisited: number;
-    entitiesFound: number;
-    blockedPages?: number;
-    indexedRecords: number;
-    jobId?: string;
-    completedAt?: string;
-    error?: string | null;
-  } | null>(null);
+  const [crawlStatus, setCrawlStatus] = useState<CrawlJobStatusInfo | null>(null);
   const crawlPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Poll crawl job status when websiteId is present
