@@ -39,9 +39,16 @@
 
   Object.assign(container.style, defaultStyles);
 
-  // 3. Create the iframe
+  // 3. Create the iframe with optional session resumption (Phase 9.4)
+  const hostUrlParams = new URLSearchParams(window.location.search);
+  const resumeToken = hostUrlParams.get('widget_resume');
+  const embedUrl = new URL(`${baseUrl}/embed/${widgetId}`);
+  if (resumeToken) {
+    embedUrl.searchParams.set('widget_resume', resumeToken);
+  }
+
   const iframe = document.createElement('iframe');
-  iframe.src = `${baseUrl}/embed/${widgetId}`;
+  iframe.src = embedUrl.toString();
   iframe.style.width = '100%';
   iframe.style.height = '100%';
   iframe.style.border = 'none';
@@ -77,6 +84,15 @@
       case 'widget-close':
         // Reset container to the launcher button dimensions
         resizeWidget(false);
+        break;
+
+      case 'voice-agent-navigate':
+      case 'WIDGET_NAVIGATE':
+        // Top-level host navigation bridge (Phase 9.4)
+        if (data.url && typeof data.url === 'string') {
+          console.log('[Widgetized] Agent requested host page navigation to:', data.url);
+          window.location.href = data.url;
+        }
         break;
 
       default:

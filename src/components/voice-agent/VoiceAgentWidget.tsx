@@ -181,7 +181,77 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       };
     }, []);
 
-    // ── Phase 9.2: Realtime Session Channel Subscription & Clean Teardown ───
+    // ── Phase 9.4: Resume Conversation on Load if widget_resume Param Present ─
+    useEffect(() => {
+      if (typeof window === 'undefined') return;
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const resumeToken = urlParams.get('widget_resume');
+
+      if (resumeToken) {
+        sessionIdRef.current = resumeToken;
+        setActiveSessionId(resumeToken);
+        setIsOpen(true);
+
+        // 1. Try local storage cache
+        try {
+          const cached =
+            sessionStorage.getItem(`widget_session_${resumeToken}`) ||
+            localStorage.getItem(`widget_session_${resumeToken}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.chatMessages && Array.isArray(parsed.chatMessages) && parsed.chatMessages.length > 0) {
+              setChatMessages(parsed.chatMessages);
+            }
+            if (parsed.transcript && Array.isArray(parsed.transcript) && parsed.transcript.length > 0) {
+              setTranscript(parsed.transcript);
+            }
+          }
+        } catch {}
+
+        // 2. Fetch from backend session history API
+        fetch(`/api/session/${encodeURIComponent(resumeToken)}/history`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data && data.found) {
+              if (Array.isArray(data.messages) && data.messages.length > 0) {
+                setChatMessages(data.messages);
+              }
+              if (Array.isArray(data.transcript) && data.transcript.length > 0) {
+                setTranscript(data.transcript);
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    }, []);
+
+    // ── Phase 9.4: Auto-persist conversation history for session resumption ─
+    useEffect(() => {
+      const sid = activeSessionId || sessionIdRef.current;
+      if (!sid || (chatMessages.length <= 1 && transcript.length === 0)) return;
+
+      const sessionData = {
+        sessionId: sid,
+        chatMessages,
+        transcript,
+        updatedAt: Date.now(),
+      };
+
+      try {
+        sessionStorage.setItem(`widget_session_${sid}`, JSON.stringify(sessionData));
+        localStorage.setItem(`widget_session_${sid}`, JSON.stringify(sessionData));
+      } catch {}
+
+      // Async sync to backend history endpoint
+      fetch(`/api/session/${encodeURIComponent(sid)}/history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sessionData),
+      }).catch(() => {});
+    }, [chatMessages, transcript, activeSessionId]);
+
+    // ── Phase 9.2 & 9.4: Realtime Session Channel Subscription & Navigation Bridge ───
     useEffect(() => {
       const targetSessionId = activeSessionId || sessionIdRef.current;
       const isSessionActive =
@@ -198,16 +268,28 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           if (mergedConfig.behavior.allowAgentNavigation) {
             const targetUrl = payload?.url;
             if (targetUrl) {
-              // PostMessage to parent frame if running inside an iframe
-              if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
-                window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url: targetUrl, payload }, '*');
-              }
-              // Direct browser navigation if top-level window
+              // Persist current session transcript before navigation
               try {
-                if (typeof window !== 'undefined') {
-                  window.location.href = targetUrl;
-                }
+                const sessionData = {
+                  sessionId: targetSessionId,
+                  chatMessages,
+                  transcript,
+                  updatedAt: Date.now(),
+                };
+                sessionStorage.setItem(`widget_session_${targetSessionId}`, JSON.stringify(sessionData));
+                localStorage.setItem(`widget_session_${targetSessionId}`, JSON.stringify(sessionData));
               } catch {}
+
+              // Phase 9.4: PostMessage to parent frame (loader) for host page navigation
+              if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'voice-agent-navigate', url: targetUrl, payload }, '*');
+                window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url: targetUrl, payload }, '*');
+              } else if (typeof window !== 'undefined') {
+                // Direct navigation if standalone (non-iframe)
+                try {
+                  window.location.href = targetUrl;
+                } catch {}
+              }
             }
           } else {
             console.log('[Widget Navigation] Agent requested navigation, but allowAgentNavigation is disabled in widget settings.');
@@ -222,7 +304,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       return () => {
         unsubscribe();
       };
-    }, [activeSessionId, callState, isOpen, activeTab, mergedConfig.behavior.allowAgentNavigation]);
+    }, [activeSessionId, callState, isOpen, activeTab, mergedConfig.behavior.allowAgentNavigation, chatMessages, transcript]);
 
     // Iframe postMessage communications
     useEffect(() => {
