@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords } from '@/config/widgetsDb';
+import { generateBaseSystemPrompt } from '@/lib/agents/prompts';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -86,6 +87,78 @@ function corsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
   };
+}
+
+async function generateChatFallbackResponse(
+  content: string,
+  relevantData: string | null,
+  businessName: string
+): Promise<string> {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+
+  const systemPrompt = generateBaseSystemPrompt({
+    businessName,
+    websiteContext: relevantData || undefined,
+  });
+
+  if (openaiKey) {
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: content.trim() },
+          ],
+          temperature: 0.7,
+          max_tokens: 300,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) return text;
+      }
+    } catch (err) {
+      console.warn('[retell/chat] OpenAI fallback failed:', err);
+    }
+  }
+
+  if (groqKey) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: content.trim() },
+          ],
+          temperature: 0.7,
+          max_tokens: 300,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) return text;
+      }
+    } catch (err) {
+      console.warn('[retell/chat] Groq fallback failed:', err);
+    }
+  }
+
+  return `Hello! Thank you for reaching out to ${businessName}. How can I assist you with our services today?`;
 }
 
 // ─── Preflight handler ──────────────────────────────────────────────────────
@@ -297,11 +370,30 @@ export async function POST(req: NextRequest) {
 
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.error('[retell/chat] Retell API error:', errMsg);
+    console.warn('[retell/chat] Retell API error, falling back to intelligent knowledge chat:', errMsg);
+
+    const fallbackResponseText = await generateChatFallbackResponse(
+      content,
+      relevantData,
+      widget.name || widget.branding?.companyName || 'our business'
+    );
+
+    const fallbackMessages = [
+      { role: 'user', content: content.trim() },
+      {
+        role: 'agent',
+        content: fallbackResponseText,
+        ...(relevantRecords.length > 0 ? { results: relevantRecords } : {}),
+      },
+    ];
 
     return NextResponse.json(
-      { error: 'upstream_error', message: 'Could not send message to agent. Please try again.' },
-      { status: 502, headers }
+      {
+        chatId: chatId || `chat_${Date.now()}`,
+        messages: fallbackMessages,
+        sessionId,
+      },
+      { status: 200, headers }
     );
   }
 }
