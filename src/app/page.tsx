@@ -375,119 +375,116 @@ export default function HomePage() {
       )}
 
       {/* ── Hero Section ────────────────────────────────────────────────── */}
-      <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '64px 32px 56px' }}>
+      <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '56px 32px 56px' }}>
         <div className="hero-grid-layout" style={{ alignItems: 'center' }}>
           
           {/* Left Hero Copy */}
           <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', borderRadius: '20px', background: 'rgba(47,143,224,0.12)', border: '1px solid rgba(47,143,224,0.25)', marginBottom: '20px' }}>
-              <SvgIcon paths={PATHS.sparkles} size={15} color="#2F8FE0" />
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#1D6FB8' }}>Autonomous Voice & Web Intelligence</span>
-            </div>
-
-            <h1 style={{ fontSize: 'clamp(34px, 4.4vw, 54px)', fontWeight: 800, lineHeight: 1.08, letterSpacing: '-0.03em', margin: '0 0 18px', color: '#0E1B2A' }}>
-              The AI Front Desk <br />
-              <span style={{ color: '#2F8FE0' }}>That Knows Your Business.</span>
+            <h1 style={{ fontFamily: "'Figtree', sans-serif", letterSpacing: '-0.025em', margin: '0 0 14px' }}>
+              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 0.98, color: '#0E1B2A' }}>
+                Every call answered.
+              </div>
+              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 1.05, marginTop: '4px', color: '#2F8FE0' }}>
+                Every appointment booked.
+              </div>
             </h1>
 
-            <p style={{ fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.74)', maxWidth: '520px', margin: '0 0 32px' }}>
-              An intelligent voice and text agent trained on your business's hours, live inventory, and service catalogs. It answers customer calls, navigates website pages, and books appointments 24/7.
+            <p style={{ fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.72)', maxWidth: '460px', margin: '0 0 30px' }}>
+              An agent trained on your business's own hours, services, and calendar answers the call, books the appointment, and lets you review exactly what happened afterward.
             </p>
 
             {/* CTAs */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '36px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '22px', flexWrap: 'wrap', marginBottom: '32px' }}>
               <Link
                 href="/signup"
                 style={{
-                  padding: '14px 32px', borderRadius: '12px',
+                  padding: '14px 28px', borderRadius: '12px',
                   background: '#2F8FE0', color: '#FFFDF8',
-                  fontSize: '15.5px', fontWeight: 700,
-                  textDecoration: 'none', display: 'inline-block',
-                  boxShadow: '0 8px 24px -4px rgba(47,143,224,0.4)',
-                  transition: 'transform 0.2s ease',
-                }}
-              >
-                Get Started Free
-              </Link>
-              <Link
-                href="/widget-customizer?id=front-desk"
-                style={{
-                  padding: '14px 24px', borderRadius: '12px',
-                  background: '#FFFFFF', color: '#0E1B2A',
                   fontSize: '15px', fontWeight: 600,
-                  border: '1px solid rgba(14,27,42,0.14)',
                   textDecoration: 'none', display: 'inline-block',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                  boxShadow: '0 10px 24px -8px rgba(14,27,42,0.32)',
+                  transition: 'transform 0.25s ease, box-shadow 0.25s ease',
                 }}
               >
-                Try Live Customizer →
+                Sign Up Free
               </Link>
+              <a
+                href="#how-it-works"
+                style={{
+                  fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0',
+                  textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                }}
+              >
+                See a call become a booking ↓
+              </a>
             </div>
 
             {/* Feature Checklist */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {[
-                'Zero-latency WebRTC voice calling + instant text chat',
-                'Deep website crawling, Shopify, and WooCommerce synchronization',
-                'Agent-initiated autonomous page navigation during active calls',
-              ].map((cap, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <SvgIcon paths={PATHS.check} size={12} color="#16A34A" stroke={2.5} />
-                  </div>
-                  <span style={{ fontSize: '14.5px', color: 'rgba(14,27,42,0.85)', fontWeight: 500 }}>{cap}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                  <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
                 </div>
-              ))}
+                <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
+                  Answers in under a second — no hold music, no voicemail tree
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                  <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
+                </div>
+                <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
+                  Checks your live calendar and books directly into it
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                  <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
+                </div>
+                <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
+                  Transcribes the call, notes preferences, and texts the client a confirmation
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Right Interactive Simulation Card */}
           <div>
             <div style={{
-              position: 'relative', padding: '36px 30px', borderRadius: '24px',
-              background: 'rgba(255,255,255,0.94)', border: '1px solid rgba(14,27,42,0.12)',
-              boxShadow: '0 20px 48px -12px rgba(14,27,42,0.14), 0 2px 6px rgba(0,0,0,0.04)',
-              minHeight: '380px', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: '20px',
+              position: 'relative', padding: '40px 32px', borderRadius: '24px',
+              background: 'rgba(251,253,255,0.92)', border: '1px solid rgba(14,27,42,0.12)',
+              boxShadow: '0 1px 2px rgba(14,27,42,0.06), 0 30px 60px -30px rgba(14,27,42,0.22)',
+              minHeight: '340px', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: '22px', overflow: 'hidden',
             }}>
               {/* Pulsing Icon */}
               <div style={{
-                width: '76px', height: '76px', borderRadius: '50%',
-                background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                animation: 'pulseRing 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                width: '72px', height: '72px', borderRadius: '50%',
+                background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 0 0 rgba(47,143,224,0.4)',
+                animation: 'pulseRing 2.4s infinite',
               }}>
-                {currentHero.icon}
+                <SvgIcon paths={PATHS.phone} size={30} color="#FFFDF8" />
               </div>
 
-              {/* Status Badge */}
-              <span style={{
-                fontSize: '12px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px',
-                background: `${currentHero.badgeColor}15`, color: currentHero.badgeColor,
-                border: `1px solid ${currentHero.badgeColor}35`,
-              }}>
-                {currentHero.badge}
-              </span>
-
-              {/* Dynamic Sub-dialogue */}
-              <div style={{ textAlign: 'center', maxWidth: '380px' }}>
-                <div style={{ fontSize: '17px', fontWeight: 700, color: '#0E1B2A', marginBottom: '6px' }}>
-                  {currentHero.label}
-                </div>
-                <div style={{ fontSize: '14px', color: 'rgba(14,27,42,0.7)', lineHeight: 1.5, fontStyle: 'italic' }}>
-                  {currentHero.sub}
-                </div>
+              {/* Status Label */}
+              <div style={{ fontSize: '14.5px', fontWeight: 600, color: '#0E1B2A', textAlign: 'center' }}>
+                {heroPhase === 0 && 'Inbound call answered'}
+                {heroPhase === 1 && 'Searching live availability'}
+                {heroPhase === 2 && 'Appointment confirmed'}
+                {heroPhase === 3 && 'Confirmation SMS dispatched'}
               </div>
 
-              {/* Action Pill */}
+              {/* Calendar Action Pill */}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '12px 18px', borderRadius: '12px',
-                background: 'rgba(47,143,224,0.1)', border: '1px solid rgba(47,143,224,0.25)',
+                padding: '14px 18px', borderRadius: '14px',
+                background: 'rgba(47,143,224,0.14)', border: '1px solid rgba(47,143,224,0.3)',
               }}>
-                <SvgIcon paths={PATHS.sparkles} size={16} color="#2F8FE0" />
-                <span style={{ fontSize: '13px', fontWeight: 600, color: '#1D6FB8' }}>
-                  {currentHero.chipText}
+                <SvgIcon paths={PATHS.calendar} size={18} color="#2F8FE0" />
+                <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#2F8FE0' }}>
+                  Thu 2:30 PM — booked
                 </span>
               </div>
             </div>

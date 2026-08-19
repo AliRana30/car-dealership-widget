@@ -122,6 +122,160 @@ function EmptyState({ onNew }: { onNew: () => void }) {
   );
 }
 
+function CreateWidgetModal({ onCancel, onCreate, isCreating }: {
+  onCancel: () => void;
+  onCreate: (name: string, slug: string, provider: 'retell' | 'vapi') => void;
+  isCreating: boolean;
+}) {
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [provider, setProvider] = useState<'retell' | 'vapi'>('retell');
+  const [customSlug, setCustomSlug] = useState(false);
+
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!customSlug) {
+      const generated = val.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      setSlug(generated || '');
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      toast.error('Please enter a widget name');
+      return;
+    }
+    const finalSlug = (slug || name).toLowerCase().trim().replace(/[^a-z0-9-_]/g, '-');
+    onCreate(name.trim(), finalSlug, provider);
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: '16px', padding: '28px 32px',
+        maxWidth: '440px', width: '90%', boxShadow: '0 24px 48px rgba(0,0,0,0.16)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          <div style={{
+            width: '38px', height: '38px', borderRadius: '10px',
+            background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+          }}>
+            <Icon d={ICONS.widget} size={20} />
+          </div>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#111827' }}>
+              Create New Voice Widget
+            </h3>
+            <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6B7280' }}>
+              Set up a dedicated agent for your website or practice.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
+              Widget Name *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. MedEaz Healthcare Assistant"
+              value={name}
+              onChange={e => handleNameChange(e.target.value)}
+              style={{
+                width: '100%', height: '38px', padding: '0 12px',
+                borderRadius: '8px', border: '1px solid #D1D5DB',
+                fontSize: '13.5px', color: '#111827', outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
+              Widget Identifier (Slug) *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. medeaz-healthcare-assistant"
+              value={slug}
+              onChange={e => {
+                setCustomSlug(true);
+                setSlug(e.target.value);
+              }}
+              style={{
+                width: '100%', height: '38px', padding: '0 12px',
+                borderRadius: '8px', border: '1px solid #D1D5DB',
+                fontSize: '13px', fontFamily: 'monospace', color: '#374151',
+                background: '#F9FAFB', outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+              Voice AI Engine
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setProvider('retell')}
+                style={{
+                  padding: '10px 12px', borderRadius: '8px',
+                  border: provider === 'retell' ? '2px solid #2F8FE0' : '1px solid #E5E7EB',
+                  background: provider === 'retell' ? '#EFF6FF' : '#FFFFFF',
+                  color: provider === 'retell' ? '#1D4ED8' : '#374151',
+                  fontWeight: 600, fontSize: '13px', cursor: 'pointer', textAlign: 'center',
+                }}
+              >
+                Retell AI
+              </button>
+              <button
+                type="button"
+                onClick={() => setProvider('vapi')}
+                style={{
+                  padding: '10px 12px', borderRadius: '8px',
+                  border: provider === 'vapi' ? '2px solid #6366F1' : '1px solid #E5E7EB',
+                  background: provider === 'vapi' ? '#F5F3FF' : '#FFFFFF',
+                  color: provider === 'vapi' ? '#6D28D9' : '#374151',
+                  fontWeight: 600, fontSize: '13px', cursor: 'pointer', textAlign: 'center',
+                }}
+              >
+                Vapi AI
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+            <button type="button" onClick={onCancel} style={{ ...btn.secondary, flex: 1 }}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isCreating}
+              style={{
+                ...btn.primary, flex: 1, justifyContent: 'center',
+                opacity: isCreating ? 0.7 : 1,
+              }}
+            >
+              {isCreating ? 'Creating…' : 'Create & Customize'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function DeleteConfirmModal({ name, onCancel, onConfirm, isDeleting }: {
   name: string; onCancel: () => void; onConfirm: () => void; isDeleting: boolean;
 }) {
@@ -316,6 +470,8 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<{ fullName: string; email: string } | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     if (process.env.BASE_URL) {
@@ -338,6 +494,42 @@ export default function DashboardPage() {
       }
     }
     loadUser();
+  }, []);
+
+  const handleCreateWidget = useCallback(async (name: string, slug: string, provider: 'retell' | 'vapi') => {
+    setIsCreating(true);
+    const toastId = toast.loading('Creating new widget...');
+    try {
+      const res = await fetch('/api/widgets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: slug,
+          name: name,
+          provider,
+          config: {
+            branding: {
+              companyName: name,
+              agentName: `${name} Agent`,
+            },
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.message || 'Failed to create widget');
+      }
+
+      const data = await res.json();
+      toast.success('Widget created successfully!', { id: toastId });
+      setShowCreateModal(false);
+      window.location.href = `/widget-customizer?id=${encodeURIComponent(data.widget.id)}`;
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create widget', { id: toastId });
+    } finally {
+      setIsCreating(false);
+    }
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -503,16 +695,16 @@ export default function DashboardPage() {
               fontFamily: 'inherit',
             }}
           />
-          <Link
-            href="/widget-customizer"
+          <button
+            onClick={() => setShowCreateModal(true)}
             style={{
-              ...btn.primary, textDecoration: 'none', display: 'inline-flex',
+              ...btn.primary, display: 'inline-flex',
               alignItems: 'center', gap: '6px', justifyContent: 'center',
             }}
           >
             <Icon d={ICONS.plus} size={14} />
             New Widget
-          </Link>
+          </button>
           <Link
             href="/"
             style={{
@@ -582,17 +774,20 @@ export default function DashboardPage() {
               fontFamily: 'inherit',
             }}
           />
-          <Link
-            href="/widget-customizer"
-            onClick={() => setMobileMenuOpen(false)}
+          <button
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setShowCreateModal(true);
+            }}
             style={{
-              ...btn.primary, textDecoration: 'none', display: 'flex',
+              ...btn.primary, display: 'flex',
               alignItems: 'center', gap: '8px', justifyContent: 'center', height: '40px',
+              width: '100%',
             }}
           >
             <Icon d={ICONS.plus} size={15} />
             Create New Widget
-          </Link>
+          </button>
           <Link
             href="/"
             onClick={() => setMobileMenuOpen(false)}
@@ -676,7 +871,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div style={{ display: 'flex' }}>
-              <EmptyState onNew={() => window.location.href = '/widget-customizer'} />
+              <EmptyState onNew={() => setShowCreateModal(true)} />
             </div>
           )
         )}
@@ -697,6 +892,15 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {/* Create Widget Modal */}
+      {showCreateModal && (
+        <CreateWidgetModal
+          onCancel={() => setShowCreateModal(false)}
+          onCreate={handleCreateWidget}
+          isCreating={isCreating}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (

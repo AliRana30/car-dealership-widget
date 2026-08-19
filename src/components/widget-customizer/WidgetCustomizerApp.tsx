@@ -212,8 +212,27 @@ export default function WidgetCustomizerApp() {
   }, [isResizingEditor, handleEditorMouseMove, handleEditorMouseUp]);
 
   // Deploy-specific metadata (not part of visual config)
-  const [widgetId, setWidgetId] = useState('default');
-  const [widgetName, setWidgetName] = useState('Default Widget');
+  const [widgetId, setWidgetId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const id = p.get('id');
+      if (id) return id;
+      return `widget-${Math.random().toString(36).substring(2, 8)}`;
+    }
+    return 'front-desk';
+  });
+  const [widgetName, setWidgetName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const name = p.get('name');
+      if (name) return name;
+      const id = p.get('id');
+      if (id && id !== 'default') {
+        return id.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
+      }
+    }
+    return 'Voice Agent';
+  });
   const [retellApiKey, setRetellApiKey] = useState('');
   const [vapiApiKey, setVapiApiKey] = useState('');
   const [isSavedOnServer, setIsSavedOnServer] = useState(false);
@@ -291,15 +310,7 @@ export default function WidgetCustomizerApp() {
 
   const handleReset = () => {
     setDraft(deepMerge(defaultVoiceWidgetConfig, {}));
-    setWidgetId('default');
-    setWidgetName('Default Widget');
-    setRetellApiKey('');
-    setVapiApiKey('');
     setIsSavedOnServer(false);
-    setAllowedDomains([]);
-    setWebsiteId('');
-    setWebsiteName('Default Website');
-    setWidgetStatus('active');
     setOpenColorTokenId(null);
     setSaved(false);
     toast.success('Configurations reset to default values.');
