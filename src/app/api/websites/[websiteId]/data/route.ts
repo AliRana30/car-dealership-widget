@@ -114,17 +114,21 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
     const blockedPagesCount = latestJob?.blocked_pages || 0;
     const isJobBlocked = latestJob?.status === 'blocked' || blockedPagesCount > 0;
 
-    // 3. Resolve widget IDs strictly matching this website or widget ID
+    // 3. Resolve widget IDs strictly matching this website or widget ID (UUID and slug)
     const { data: widgets } = await supabase
       .from('widgets')
-      .select('id')
+      .select('id, widget_id, website_id')
       .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
 
     const widgetIds = new Set<string>();
     if (websiteId) widgetIds.add(websiteId);
     if (website?.id) widgetIds.add(website.id);
     if (widgets) {
-      widgets.forEach(w => widgetIds.add(w.id));
+      widgets.forEach(w => {
+        if (w.id) widgetIds.add(w.id);
+        if (w.widget_id) widgetIds.add(w.widget_id);
+        if (w.website_id) widgetIds.add(w.website_id);
+      });
     }
     const filterWidgetIds = Array.from(widgetIds);
 

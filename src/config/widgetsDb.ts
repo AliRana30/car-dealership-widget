@@ -506,7 +506,7 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
   try {
     const { data: widgets } = await supabase
       .from('widgets')
-      .select('id, website_id')
+      .select('id, widget_id, website_id')
       .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
 
     const widgetIds = new Set<string>();
@@ -514,6 +514,7 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
     if (widgets) {
       widgets.forEach(w => {
         if (w.id) widgetIds.add(w.id);
+        if (w.widget_id) widgetIds.add(w.widget_id);
         if (w.website_id) widgetIds.add(w.website_id);
       });
     }
@@ -609,7 +610,7 @@ export async function getRelevantWebsiteRecords(
   try {
     const { data: widgets } = await supabase
       .from('widgets')
-      .select('id, website_id')
+      .select('id, widget_id, website_id')
       .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
 
     const widgetIds = new Set<string>();
@@ -617,6 +618,7 @@ export async function getRelevantWebsiteRecords(
     if (widgets) {
       widgets.forEach(w => {
         if (w.id) widgetIds.add(w.id);
+        if (w.widget_id) widgetIds.add(w.widget_id);
         if (w.website_id) widgetIds.add(w.website_id);
       });
     }
