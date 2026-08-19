@@ -36,6 +36,21 @@ export async function POST(req: NextRequest) {
     const widget = await getWidget(rawWidgetId);
     const resolvedWidgetId = widget?.id || rawWidgetId;
 
+    // Resolve session ID for realtime navigation dispatch
+    const sessionId =
+      body.sessionId ||
+      body.session_id ||
+      body.call?.metadata?.sessionId ||
+      body.call?.metadata?.session_id ||
+      body.call?.retell_llm_dynamic_variables?.session_id ||
+      body.message?.call?.variableValues?.session_id ||
+      body.args?.sessionId ||
+      body.parameters?.sessionId ||
+      '';
+
+    const allowAgentNavigation = widget?.config?.behavior?.allowAgentNavigation ?? false;
+    const context = { sessionId, allowAgentNavigation };
+
     // 2. Handle Vapi AI tool-calls format
     if (body.message?.type === 'tool-calls' && Array.isArray(body.message.toolCalls)) {
       const toolCallResults = [];
@@ -46,7 +61,7 @@ export async function POST(req: NextRequest) {
           try { args = JSON.parse(args); } catch {}
         }
         console.log(`[agent-tools/vapi] Executing tool '${toolName}' for widget ${resolvedWidgetId}`);
-        const result = await executeAgentTool(resolvedWidgetId, toolName, args);
+        const result = await executeAgentTool(resolvedWidgetId, toolName, args, context);
         toolCallResults.push({
           toolCallId: call.id,
           result: JSON.stringify(result.data || { error: result.error }),
@@ -60,7 +75,7 @@ export async function POST(req: NextRequest) {
       const toolName = body.message.functionCall.name || '';
       const args = body.message.functionCall.parameters || {};
       console.log(`[agent-tools/vapi-legacy] Executing '${toolName}' for widget ${resolvedWidgetId}`);
-      const result = await executeAgentTool(resolvedWidgetId, toolName, args);
+      const result = await executeAgentTool(resolvedWidgetId, toolName, args, context);
       return NextResponse.json({ result: JSON.stringify(result.data || { error: result.error }) });
     }
 
@@ -69,7 +84,7 @@ export async function POST(req: NextRequest) {
     const args = body.args || body.parameters || body.arguments || body;
 
     console.log(`[agent-tools/retell] Executing tool '${toolName}' for widget ${resolvedWidgetId}`);
-    const result = await executeAgentTool(resolvedWidgetId, toolName, args);
+    const result = await executeAgentTool(resolvedWidgetId, toolName, args, context);
 
     if (!result.success) {
       return NextResponse.json({

@@ -1,18 +1,27 @@
-/**
- * Agent Tool Definitions & Search Implementation (Phase 6.1)
- *
- * Provides real-time knowledge lookup and entity retrieval for live Retell AI
- * and Vapi AI voice calls. All queries are strictly scoped by widget_id.
- */
-
 import { createClient } from '@supabase/supabase-js';
 import { embedText } from '@/lib/embeddings';
 import { Entity } from '@/lib/crawler/types';
+import { broadcastToSession } from '@/lib/realtime/session';
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
   return createClient(url, key);
+}
+
+/**
+ * Appends the widget_resume session token query parameter to a target URL
+ */
+export function appendResumeParam(rawUrl: string, sessionId?: string): string {
+  if (!sessionId) return rawUrl;
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.searchParams.set('widget_resume', sessionId);
+    return parsed.toString();
+  } catch {
+    const separator = rawUrl.includes('?') ? '&' : '?';
+    return `${rawUrl}${separator}widget_resume=${encodeURIComponent(sessionId)}`;
+  }
 }
 
 /**
@@ -177,13 +186,30 @@ export const AGENT_TOOL_DEFINITIONS = {
       required: ['entityId'],
     },
   },
+  navigate_to_entity: {
+    name: 'navigate_to_entity',
+    description: 'Navigate the visitor\'s browser directly to the full web page or listing for a specific entity. Only call this when the visitor explicitly asks to see/open the full page, or when the inline card details are insufficient.',
+    parameters: {
+      type: 'object',
+      properties: {
+        entityId: {
+          type: 'string',
+          description: 'The UUID of the entity whose page should be opened in the visitor\'s browser.',
+        },
+      },
+      required: ['entityId'],
+    },
+  },
 };
 
 /**
- * Retell AI Tool Format
+ * Retell AI Tool Format (Conditionally registers navigate_to_entity based on allowAgentNavigation)
  */
-export function getRetellToolsConfig(webhookBaseUrl: string) {
-  return [
+export function getRetellToolsConfig(
+  webhookBaseUrl: string,
+  options?: { allowAgentNavigation?: boolean }
+) {
+  const tools = [
     {
       name: 'search_entities',
       description: AGENT_TOOL_DEFINITIONS.search_entities.description,
@@ -197,13 +223,24 @@ export function getRetellToolsConfig(webhookBaseUrl: string) {
       parameters: AGENT_TOOL_DEFINITIONS.get_entity_details.parameters,
     },
   ];
+
+  if (options?.allowAgentNavigation) {
+    tools.push({
+      name: 'navigate_to_entity',
+      description: AGENT_TOOL_DEFINITIONS.navigate_to_entity.description,
+      url: `${webhookBaseUrl}/api/agent/tools`,
+      parameters: AGENT_TOOL_DEFINITIONS.navigate_to_entity.parameters,
+    });
+  }
+
+  return tools;
 }
 
 /**
- * Vapi AI Tool / Function Format
+ * Vapi AI Tool / Function Format (Conditionally registers navigate_to_entity based on allowAgentNavigation)
  */
-export function getVapiToolsConfig() {
-  return [
+export function getVapiToolsConfig(options?: { allowAgentNavigation?: boolean }) {
+  const tools: any[] = [
     {
       type: 'function',
       function: {
@@ -221,6 +258,24 @@ export function getVapiToolsConfig() {
       },
     },
   ];
+
+  if (options?.allowAgentNavigation) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'navigate_to_entity',
+        description: AGENT_TOOL_DEFINITIONS.navigate_to_entity.description,
+        parameters: AGENT_TOOL_DEFINITIONS.navigate_to_entity.parameters,
+      },
+    });
+  }
+
+  return tools;
+}
+
+export interface ToolExecutionContext {
+  sessionId?: string;
+  allowAgentNavigation?: boolean;
 }
 
 /**
@@ -229,7 +284,8 @@ export function getVapiToolsConfig() {
 export async function executeAgentTool(
   widgetId: string,
   toolName: string,
-  args: Record<string, any>
+  args: Record<string, any>,
+  context?: ToolExecutionContext
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
     if (toolName === 'search_entities') {
@@ -276,6 +332,53 @@ export async function executeAgentTool(
           sourceUrl: entity.sourceUrl,
           categoryPath: entity.categoryPath,
           metadata: entity.metadata,
+        },
+      };
+    }
+
+    if (toolName === 'navigate_to_entity') {
+      const entityId = String(args.entityId || '');
+      if (!entityId) {
+        return { success: false, error: 'Missing required argument: entityId' };
+      }
+
+      if (context?.allowAgentNavigation === false) {
+        return {
+          success: false,
+          error: 'Agent navigation is disabled in this widget\'s configuration. Please describe the item using inline card information instead.',
+        };
+      }
+
+      const entity = await getEntityDetails(widgetId, entityId);
+      if (!entity) {
+        return { success: false, error: `Entity '${entityId}' not found for this widget.` };
+      }
+
+      if (!entity.sourceUrl || !entity.sourceUrl.trim()) {
+        return {
+          success: false,
+          error: 'Entity does not have a valid web page URL. Please describe the item to the visitor using the inline card information instead of navigating.',
+        };
+      }
+
+      const sessionId = context?.sessionId || args.sessionId || '';
+      const finalUrl = appendResumeParam(entity.sourceUrl, sessionId);
+
+      if (sessionId) {
+        await broadcastToSession(sessionId, 'navigate', {
+          url: finalUrl,
+          entityId: entity.id,
+          title: entity.title,
+        });
+      }
+
+      return {
+        success: true,
+        data: {
+          message: `Navigated to ${entity.title}.`,
+          url: finalUrl,
+          entityId: entity.id,
+          title: entity.title,
         },
       };
     }
