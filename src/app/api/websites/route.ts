@@ -122,50 +122,121 @@ export async function POST(req: NextRequest) {
     // Platform auto-detection (Shopify, WooCommerce, unknown)
     const detectedPlatform = await detectPlatform(validatedUrl).catch(() => 'unknown');
 
-    // Create the website record with resilient fallback for un-migrated columns
-    let website: any = null;
-    let wsError: any = null;
-
-    const fullPayload: Record<string, any> = {
-      organization_id: orgId,
-      user_id: userId,
-      name: name.trim(),
-      allowed_domains: [new URL(validatedUrl).hostname],
-      css_selector_schema: cssSelectorSchema,
-      detected_platform: detectedPlatform,
-      sync_frequency: finalSyncFreq,
-    };
-
-    const fullResult = await supabase
-      .from('websites')
-      .insert(fullPayload)
-      .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
-      .single();
-
-    website = fullResult.data;
-    wsError = fullResult.error;
-
-    // Fallback if remote schema cache is missing newer columns
-    if (wsError && (wsError.code === 'PGRST204' || wsError.message?.includes('schema cache') || wsError.message?.includes('column'))) {
-      console.warn('[api/websites] Retrying website creation with base columns due to missing DB columns:', wsError.message);
-      const fallbackResult = await supabase
-        .from('websites')
-        .insert({
-          organization_id: orgId,
-          user_id: userId,
-          name: name.trim(),
-          allowed_domains: [new URL(validatedUrl).hostname],
-        })
-        .select('id, name, allowed_domains, created_at')
-        .single();
-
-      website = fallbackResult.data;
-      wsError = fallbackResult.error;
-    }
-
+    const targetHost = new URL(validatedUrl).hostname.toLowerCase();
     const targetWidgetId = body?.widgetId || body?.widget_id || null;
 
-    // Immediately link newly created website to the owning widget
+    // ── Deduplication: Check if website already exists for this widget or user domain ──
+    let existingWebsite: any = null;
+
+    // 1. Check if the target widget already has a linked website with the same domain
+    if (targetWidgetId) {
+      const { data: currentWidget } = await supabase
+        .from('widgets')
+        .select('id, website_id')
+        .or(`id.eq.${targetWidgetId},widget_id.eq.${targetWidgetId}`)
+        .maybeSingle();
+
+      if (currentWidget?.website_id && currentWidget.website_id !== '00000000-0000-0000-0000-000000000000') {
+        const { data: currentWs } = await supabase
+          .from('websites')
+          .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
+          .eq('id', currentWidget.website_id)
+          .maybeSingle();
+
+        if (currentWs) {
+          const currentDomains = (currentWs.allowed_domains || []).map((d: string) => d.toLowerCase());
+          if (currentDomains.includes(targetHost)) {
+            existingWebsite = currentWs;
+          }
+        }
+      }
+    }
+
+    // 2. If not found on widget, check if this user already has a website row with this domain
+    if (!existingWebsite) {
+      const { data: userWebsites } = await supabase
+        .from('websites')
+        .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (userWebsites && userWebsites.length > 0) {
+        existingWebsite = userWebsites.find(site => {
+          const domains = (site.allowed_domains || []).map((d: string) => d.toLowerCase());
+          return domains.includes(targetHost);
+        }) || null;
+      }
+    }
+
+    let website: any = null;
+
+    if (existingWebsite) {
+      // ── REUSE & UPDATE EXISTING ROW (Prevent duplicate creation on reconnect) ──
+      console.log(`[api/websites] Reusing existing website record ${existingWebsite.id} for domain ${targetHost}`);
+      const updatePayload: Record<string, any> = {
+        name: name.trim(),
+        css_selector_schema: cssSelectorSchema ?? existingWebsite.css_selector_schema,
+        detected_platform: detectedPlatform !== 'unknown' ? detectedPlatform : existingWebsite.detected_platform,
+        sync_frequency: finalSyncFreq !== 'off' ? finalSyncFreq : existingWebsite.sync_frequency,
+      };
+
+      const { data: updatedWs } = await supabase
+        .from('websites')
+        .update(updatePayload)
+        .eq('id', existingWebsite.id)
+        .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
+        .single();
+
+      website = updatedWs || existingWebsite;
+    } else {
+      // ── INSERT NEW ROW (Brand-new domain) ──
+      // Product Design Decision: When a widget is switched to a completely new domain,
+      // previous website rows and their historical website_data records are retained
+      // (unreferenced by this widget) rather than auto-deleted, preserving historical audit
+      // trails while cleanly shifting the widget's active pointer to the new website.
+      const fullPayload: Record<string, any> = {
+        organization_id: orgId,
+        user_id: userId,
+        name: name.trim(),
+        allowed_domains: [targetHost],
+        css_selector_schema: cssSelectorSchema,
+        detected_platform: detectedPlatform,
+        sync_frequency: finalSyncFreq,
+      };
+
+      const fullResult = await supabase
+        .from('websites')
+        .insert(fullPayload)
+        .select('id, name, allowed_domains, css_selector_schema, detected_platform, sync_frequency, created_at')
+        .single();
+
+      website = fullResult.data;
+      let wsError = fullResult.error;
+
+      // Fallback if remote schema cache is missing newer columns
+      if (wsError && (wsError.code === 'PGRST204' || wsError.message?.includes('schema cache') || wsError.message?.includes('column'))) {
+        console.warn('[api/websites] Retrying website creation with base columns due to missing DB columns:', wsError.message);
+        const fallbackResult = await supabase
+          .from('websites')
+          .insert({
+            organization_id: orgId,
+            user_id: userId,
+            name: name.trim(),
+            allowed_domains: [targetHost],
+          })
+          .select('id, name, allowed_domains, created_at')
+          .single();
+
+        website = fallbackResult.data;
+        wsError = fallbackResult.error;
+      }
+
+      if (wsError || !website) {
+        throw new Error(wsError?.message || 'Failed to create website');
+      }
+    }
+
+    // Immediately link website to the owning widget
     if (targetWidgetId) {
       const { data: linkedWidget, error: widgetLinkError } = await supabase
         .from('widgets')
