@@ -227,6 +227,37 @@ export function BehaviorSection({ draft, onChange }: Props) {
           <option value="text">Text</option>
         </select>
       </div>
+
+      {/* Agent-Initiated Navigation (Phase 9.1) */}
+      <div style={{
+        marginTop: '6px',
+        padding: '12px',
+        borderRadius: '8px',
+        border: '1px solid #E2E8F0',
+        background: '#F8FAFC',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '6px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>
+              Allow Agent-Initiated Navigation
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px', lineHeight: '1.4' }}>
+              Let the agent open pages on your site during a conversation (e.g. inventory details, booking forms, financing). Optional &amp; off by default.
+            </div>
+          </div>
+          <label className="cust-toggle" style={{ flexShrink: 0 }}>
+            <input
+              type="checkbox"
+              checked={!!draft.behavior.allowAgentNavigation}
+              onChange={(e) => set('allowAgentNavigation', e.target.checked)}
+            />
+            <span />
+          </label>
+        </div>
+      </div>
     </div>
   );
 }

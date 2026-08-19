@@ -305,6 +305,7 @@ export interface VoiceWidgetBehaviorConfig {
   showWaveform: boolean;
   allowTextChat: boolean;
   allowVoiceChat: boolean;
+  allowAgentNavigation?: boolean;
   defaultTab: 'voice' | 'text';
   /** ms before auto-resetting ended state to idle */
   autoResetEndedTimeout: number;
