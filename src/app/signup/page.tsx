@@ -129,9 +129,8 @@ export default function SignupPage() {
       }
 
       toast.success('Account created successfully!', { id: toastId });
-      // Redirect to main dashboard
-      router.push('/dashboard');
-      router.refresh();
+      // Use window.location.href to guarantee set-cookie header is sent to dashboard
+      window.location.href = '/dashboard';
     } catch (err: any) {
       toast.error('An unexpected error occurred. Please try again.', { id: toastId });
       setLoading(false);

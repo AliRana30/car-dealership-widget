@@ -68,9 +68,8 @@ export default function LoginPage() {
       }
 
       toast.success('Login successful!', { id: toastId });
-      // Successful login, refresh router state and push to dashboard
-      router.push('/dashboard');
-      router.refresh();
+      // Use window.location.href to guarantee set-cookie header is sent to dashboard
+      window.location.href = '/dashboard';
     } catch (err: any) {
       toast.error('An unexpected error occurred. Please check your connection.', { id: toastId });
       setLoading(false);
