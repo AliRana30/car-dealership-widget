@@ -635,26 +635,37 @@ export async function extractPageEntities(html: string, pageUrl: string): Promis
     extractMeta(html, 'og:description') ||
     extractMeta(html, 'twitter:description') || '';
   const bodyText = extractAllText(html, 8000);
-
   let fullContent = [description, bodyText].filter(Boolean).join('\n\n').trim();
 
-  // If structured entities were extracted, append their catalog text to the page-level record
+  // If structured entities were extracted, only append to catalog/home landing pages, not policy/legal/about pages
+  const isExcludedPage = /policy|terms|privacy|refund|cookie|legal|about|faq|contact/i.test(pageUrl);
   const structuredItems = [...dynamicApiEntities, ...spaEntities];
-  if (structuredItems.length > 0) {
+  if (structuredItems.length > 0 && !isExcludedPage) {
     const catalogSummary = structuredItems.map(e => `• ${e.title}: ${e.metadata?.description || ''} ${e.metadata?.price ? `(${e.metadata.price})` : ''}`).join('\n');
     fullContent += `\n\nCatalog Items / Offerings:\n${catalogSummary}`;
   }
 
   const decodedContent = decodeHtmlEntities(fullContent.trim());
   if (title || decodedContent) {
+    const lowerUrl = pageUrl.toLowerCase();
     const lower = (pageUrl + ' ' + title + ' ' + decodedContent).toLowerCase();
     let dataType: CrawledEntity['dataType'] = 'text';
-    if (/course|learn|curriculum|syllabus|lesson|class|tutorial/.test(lower)) dataType = 'service';
-    else if (/faq|frequently asked questions|question|answer/.test(lower)) dataType = 'faq';
-    else if (/policy|terms|privacy|refund|cookie|compliance/.test(lower)) dataType = 'text';
-    else if (/contact|support|phone|email|location|address/.test(lower)) dataType = 'contact';
-    else if (/pricing|price|cost|tier|subscription/.test(lower)) dataType = 'pricing';
-    else if (/product|item|cart|shop|store/.test(lower)) dataType = 'product';
+
+    if (/policy|terms|privacy|refund|cookie|compliance|legal|disclaimer/.test(lowerUrl)) {
+      dataType = 'text';
+    } else if (/faq|frequently-asked|questions|help/.test(lowerUrl)) {
+      dataType = 'faq';
+    } else if (/about|team|mission|contact|support/.test(lowerUrl)) {
+      dataType = 'text';
+    } else if (/course|curriculum|syllabus|lesson|class|tutorial/.test(lowerUrl)) {
+      dataType = 'service';
+    } else if (/pricing|price|tier|subscription/.test(lowerUrl)) {
+      dataType = 'pricing';
+    } else if (/product|item|cart|shop|store|inventory/.test(lowerUrl)) {
+      dataType = 'product';
+    } else if (/faq|frequently asked questions/.test(lower)) {
+      dataType = 'faq';
+    }
 
     const entity: CrawledEntity = {
       url: pageUrl,

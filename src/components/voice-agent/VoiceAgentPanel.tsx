@@ -109,12 +109,11 @@ export default function VoiceAgentPanel({
     const { launcher } = config;
     const targetPos = panel.position || launcher.position;
     
-    const lSize = typeof launcher.size === 'number' ? launcher.size : 56;
     const defaultOffset = {
-      bottom: targetPos.startsWith('bottom') ? (launcher.offset.bottom !== undefined ? launcher.offset.bottom + lSize + 12 : 92) : undefined,
-      top: targetPos.startsWith('top') ? (launcher.offset.top !== undefined ? launcher.offset.top + lSize + 12 : 92) : undefined,
-      right: targetPos.endsWith('right') ? (launcher.offset.right !== undefined ? launcher.offset.right : 24) : undefined,
-      left: targetPos.endsWith('left') ? (launcher.offset.left !== undefined ? launcher.offset.left : 24) : undefined,
+      bottom: targetPos.startsWith('bottom') ? (launcher.offset.bottom !== undefined ? launcher.offset.bottom : 20) : undefined,
+      top: targetPos.startsWith('top') ? (launcher.offset.top !== undefined ? launcher.offset.top : 20) : undefined,
+      right: targetPos.endsWith('right') ? (launcher.offset.right !== undefined ? launcher.offset.right : 20) : undefined,
+      left: targetPos.endsWith('left') ? (launcher.offset.left !== undefined ? launcher.offset.left : 20) : undefined,
     };
     
     const offset = panel.offset || defaultOffset;

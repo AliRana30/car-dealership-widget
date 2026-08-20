@@ -553,19 +553,40 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
       filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
     }
 
+    const trimmedQuery = query.trim().toLowerCase();
+    const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
+    if (isGreeting) {
+      return '';
+    }
+
+    const isCatalogQuery = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|program|degrees?|what do you offer/i.test(trimmedQuery);
+    const isPolicyQuery = /policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer/i.test(trimmedQuery);
+
     // Try pgvector similarity search first
     try {
       const queryEmbedding = await embedText(query);
       const { data: matchedRecords, error: matchError } = await supabase
         .rpc('match_website_data', {
           query_embedding: queryEmbedding,
-          match_threshold: 0.1, // low threshold to capture slightly related elements
-          match_count: 3,
+          match_threshold: 0.1,
+          match_count: 5,
           filter_widget_ids: filterWidgetIds
         });
 
       if (!matchError && matchedRecords && matchedRecords.length > 0) {
-        return matchedRecords.map((r: any) => `Title: ${r.title}\nContent: ${r.content}`).join('\n\n');
+        const filtered = matchedRecords.filter((r: any) => {
+          const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price) || Boolean(r.image_urls?.length);
+          if (isCatalogQuery && !isCatalogEntity) return false;
+          if (!isPolicyQuery && /policy|terms|privacy|cookie/i.test(r.title || '')) return false;
+          return true;
+        });
+
+        if (filtered.length > 0) {
+          return filtered.slice(0, 3).map((r: any) => {
+            const price = r.metadata?.price ? ` [Price: ${r.metadata.price}]` : '';
+            return `Title: ${r.title}${price}\nContent: ${r.content}`;
+          }).join('\n\n');
+        }
       }
     } catch (err) {
       console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
@@ -580,23 +601,28 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
     if (error || !records || records.length === 0) {
       return '';
     }
-
-    // Score records based on keyword matches with the query
-    const queryWords = query.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    const queryWords = trimmedQuery.split(/\W+/).filter(w => w.length > 2);
     if (queryWords.length === 0) {
-      // If no good keywords, return first 3 records as fallback
-      return records.slice(0, 3).map(r => `Title: ${r.title}\nContent: ${r.content}`).join('\n\n');
+      return '';
     }
 
     const scored = records.map(record => {
       let score = 0;
       const titleLower = (record.title || '').toLowerCase();
       const contentLower = (record.content || '').toLowerCase();
+      const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(record.entity_type) || Boolean(record.metadata?.price) || Boolean(record.image_urls?.length);
+      const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal/.test(titleLower);
+
+      if (isCatalogQuery && isCatalogEntity) score += 35;
+      if (isCatalogQuery && isPolicyEntity && !isPolicyQuery) score -= 50;
+      if (isPolicyQuery && isPolicyEntity) score += 40;
+
+      if (titleLower.includes(trimmedQuery)) score += 30;
 
       for (const word of queryWords) {
-        if (titleLower.includes(word)) score += 10;
+        if (titleLower.includes(word)) score += 20;
         if (contentLower.includes(word)) {
-          const matches = contentLower.split(word).length - 1;
+          const matches = Math.min(5, contentLower.split(word).length - 1);
           score += matches * 2;
         }
       }
@@ -605,9 +631,12 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
 
     const sorted = scored.sort((a, b) => b.score - a.score);
     const matched = sorted.filter(s => s.score > 0).map(s => s.record);
-    const finalRecords = matched.length > 0 ? matched : records.slice(0, 3);
+    if (matched.length === 0) return '';
 
-    return finalRecords.slice(0, 3).map(r => `Title: ${r.title}\nContent: ${r.content}`).join('\n\n');
+    return matched.slice(0, 3).map(r => {
+      const price = r.metadata?.price ? ` [Price: ${r.metadata.price}]` : '';
+      return `Title: ${r.title}${price}\nContent: ${r.content}`;
+    }).join('\n\n');
   } catch (err) {
     console.error(`[widgetsDb] Error in getRelevantWebsiteData:`, err);
     return '';
@@ -632,8 +661,7 @@ export interface WebsiteDataRecord {
 
 /**
  * Returns scored, structured website data records for frontend card rendering.
- * Only records scoring above 0 are returned (max 3).
- * Falls back to top-3 records when query has no useful keywords.
+ * Only records scoring above 0 and matching catalog intent are returned (max 3).
  */
 export async function getRelevantWebsiteRecords(
   websiteOrWidgetId: string,
@@ -641,6 +669,15 @@ export async function getRelevantWebsiteRecords(
   limit = 3
 ): Promise<WebsiteDataRecord[]> {
   try {
+    const trimmedQuery = query.trim().toLowerCase();
+    const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
+    if (isGreeting) {
+      return [];
+    }
+
+    const isCatalogQuery = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|program|degrees?|show|items?/i.test(trimmedQuery);
+    const isPolicyQuery = /policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer/i.test(trimmedQuery);
+
     const isTargetUuid = isValidUuid(websiteOrWidgetId);
     let widgets: any[] | null = null;
     if (isTargetUuid) {
@@ -683,37 +720,53 @@ export async function getRelevantWebsiteRecords(
         });
 
       if (!matchError && matchedRecords && matchedRecords.length > 0) {
-        return matchedRecords.map((r: any) => {
-          const meta = (r.metadata || {}) as Record<string, any>;
-          const result: WebsiteDataRecord = { entityType: r.entity_type };
-          if (r.title) result.title = r.title;
-          
-          if (r.short_description) {
-            result.description = r.short_description;
-          } else if (r.content) {
-            result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
-          }
-          
-          // images: prefer image_urls column, fallback to metadata
-          if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
-            result.images = r.image_urls;
-          } else if (meta.images && Array.isArray(meta.images)) {
-            result.images = meta.images.filter(Boolean);
-          } else if (meta.image) {
-            result.images = [String(meta.image)];
-          }
+        const filtered = matchedRecords
+          .filter((r: any) => {
+            const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price) || Boolean(r.image_urls?.length);
+            if (isCatalogQuery && !isCatalogEntity) return false;
+            if (!isPolicyQuery && /policy|terms|privacy|cookie/i.test(r.title || '')) return false;
+            return true;
+          })
+          .sort((a: any, b: any) => {
+            const aHasPrice = Boolean(a.metadata?.price || a.image_urls?.length);
+            const bHasPrice = Boolean(b.metadata?.price || b.image_urls?.length);
+            if (aHasPrice && !bHasPrice) return -1;
+            if (!aHasPrice && bHasPrice) return 1;
+            return 0;
+          });
 
-          if (meta.price !== undefined && typeof meta.price !== 'object') result.price = meta.price;
-          if (meta.currency) result.currency = String(meta.currency);
-          if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
-          if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
-          if (meta.reviews !== undefined) {
-            result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
-          }
-          if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
-          if (r.source_url) result.sourceUrl = r.source_url;
-          return result;
-        });
+        if (filtered.length > 0) {
+          return filtered.slice(0, limit).map((r: any) => {
+            const meta = (r.metadata || {}) as Record<string, any>;
+            const result: WebsiteDataRecord = { entityType: r.entity_type };
+            if (r.title) result.title = r.title;
+            
+            if (r.short_description) {
+              result.description = r.short_description;
+            } else if (r.content) {
+              result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
+            }
+            
+            if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
+              result.images = r.image_urls;
+            } else if (meta.images && Array.isArray(meta.images)) {
+              result.images = meta.images.filter(Boolean);
+            } else if (meta.image) {
+              result.images = [String(meta.image)];
+            }
+
+            if (meta.price !== undefined && typeof meta.price !== 'object') result.price = meta.price;
+            if (meta.currency) result.currency = String(meta.currency);
+            if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
+            if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
+            if (meta.reviews !== undefined) {
+              result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
+            }
+            if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
+            if (r.source_url) result.sourceUrl = r.source_url;
+            return result;
+          });
+        }
       }
     } catch (err) {
       console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
@@ -727,31 +780,53 @@ export async function getRelevantWebsiteRecords(
 
     if (error || !records || records.length === 0) return [];
 
-    const queryWords = query.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    const queryWords = trimmedQuery.split(/\W+/).filter(w => w.length > 2);
+    if (queryWords.length === 0) return [];
 
-    let finalRecords = records;
-    if (queryWords.length > 0) {
-      const scored = records.map(record => {
-        let score = 0;
-        const titleLower = (record.title || '').toLowerCase();
-        const contentLower = (record.content || '').toLowerCase();
-        for (const word of queryWords) {
-          if (titleLower.includes(word)) score += 10;
-          const hits = contentLower.split(word).length - 1;
-          score += hits * 2;
+    const scored = records.map(record => {
+      let score = 0;
+      const titleLower = (record.title || '').toLowerCase();
+      const contentLower = (record.content || '').toLowerCase();
+      const hasPricingOrMedia = Boolean(record.metadata?.price) || Boolean(record.image_urls?.length);
+      const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(record.entity_type) || hasPricingOrMedia;
+      const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal/.test(titleLower);
+
+      if (isCatalogQuery && hasPricingOrMedia) score += 60;
+      else if (isCatalogQuery && isCatalogEntity) score += 30;
+
+      if (isCatalogQuery && isPolicyEntity && !isPolicyQuery) score -= 50;
+      if (isPolicyQuery && isPolicyEntity) score += 40;
+
+      if (titleLower.includes(trimmedQuery)) score += 30;
+
+      for (const word of queryWords) {
+        if (titleLower.includes(word)) score += 20;
+        if (contentLower.includes(word)) {
+          const matches = Math.min(5, contentLower.split(word).length - 1);
+          score += matches * 2;
         }
-        return { record, score };
-      });
-      const matched = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).map(s => s.record);
-      finalRecords = matched.length > 0 ? matched : records;
-    }
+      }
+      return { record, score };
+    });
 
-    return finalRecords.slice(0, limit).map(r => {
+    const matched = scored
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(s => s.record)
+      .filter(r => {
+        const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price) || Boolean(r.image_urls?.length);
+        if (isCatalogQuery && !isCatalogEntity) return false;
+        if (!isPolicyQuery && /policy|terms|privacy|cookie/i.test(r.title || '')) return false;
+        return true;
+      });
+
+    if (matched.length === 0) return [];
+
+    return matched.slice(0, limit).map(r => {
       const meta = (r.metadata || {}) as Record<string, any>;
       const result: WebsiteDataRecord = { entityType: r.entity_type };
       if (r.title) result.title = r.title;
       
-      // description: prefer short_description column, fallback to content/meta description
       if (r.short_description) {
         result.description = r.short_description;
       } else if (r.entity_type === 'text' && r.content) {
@@ -762,7 +837,6 @@ export async function getRelevantWebsiteRecords(
         result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
       }
 
-      // images: prefer image_urls column, fallback to metadata
       if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
         result.images = r.image_urls;
       } else if (meta.images && Array.isArray(meta.images)) {
@@ -834,15 +908,29 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
       return '';
     }
 
-    return records.map(r => {
-      const meta = r.metadata || {};
-      const details = [];
-      if (meta.price !== undefined) details.push(`Price: ${meta.price} ${meta.currency || 'USD'}`);
-      if (meta.rating !== undefined) details.push(`Rating: ${meta.rating}/5 stars (${meta.reviews || 0} reviews)`);
-      if (meta.availability) details.push(`Availability: ${meta.availability}`);
-      const detailsStr = details.length > 0 ? ` [${details.join(' | ')}]` : '';
-      return `[Category: ${r.entity_type || 'General'}] ${r.title}${detailsStr}:\n${r.content}`;
-    }).join('\n\n');
+    const catalogItems = records.filter(r => ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price));
+    const generalPages = records.filter(r => !catalogItems.includes(r) && !/policy|privacy|terms|cookie/i.test(r.title || ''));
+
+    const parts: string[] = [];
+    if (catalogItems.length > 0) {
+      parts.push('Catalog Items & Pricing:');
+      catalogItems.forEach(c => {
+        const price = c.metadata?.price ? ` (${c.metadata.price})` : '';
+        const level = c.metadata?.level ? ` [Level: ${c.metadata.level}]` : '';
+        const desc = c.short_description || c.metadata?.description || c.content.substring(0, 100).replace(/\s+/g, ' ');
+        parts.push(`• ${c.title}${price}${level}: ${desc}`);
+      });
+    }
+
+    if (generalPages.length > 0) {
+      parts.push('\nGeneral Information:');
+      generalPages.slice(0, 3).forEach(g => {
+        const desc = g.short_description || g.content.substring(0, 120).replace(/\s+/g, ' ').trim();
+        parts.push(`• ${g.title}: ${desc}`);
+      });
+    }
+
+    return parts.join('\n');
   } catch (err) {
     console.error(`[widgetsDb] Error in getWebsiteContextSummary:`, err);
     return '';

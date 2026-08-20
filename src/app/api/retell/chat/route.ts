@@ -99,10 +99,15 @@ async function generateChatFallbackResponse(
   const groqKey = process.env.GROQ_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
-  const systemPrompt = generateBaseSystemPrompt({
+  const systemPrompt = `${generateBaseSystemPrompt({
     businessName,
     websiteContext: relevantData || undefined,
-  });
+  })}
+
+CRITICAL CONVERSATIONAL RULES:
+- Keep all answers concise, friendly, and natural (1 to 3 short sentences maximum).
+- Never dump large raw text blocks, terms of service, or cookie policies.
+- When asked about courses, products, or services, list their names, prices, and a brief 1-sentence description.`;
 
   // 1. Try Gemini API if key is present
   if (geminiKey) {
@@ -117,7 +122,7 @@ async function generateChatFallbackResponse(
               parts: [{ text: `${systemPrompt}\n\nUser Question: ${content.trim()}` }],
             },
           ],
-          generationConfig: { maxOutputTokens: 400, temperature: 0.7 },
+          generationConfig: { maxOutputTokens: 250, temperature: 0.7 },
         }),
       });
       if (res.ok) {
@@ -146,7 +151,7 @@ async function generateChatFallbackResponse(
             { role: 'user', content: content.trim() },
           ],
           temperature: 0.7,
-          max_tokens: 400,
+          max_tokens: 250,
         }),
       });
       if (res.ok) {
@@ -175,7 +180,7 @@ async function generateChatFallbackResponse(
             { role: 'user', content: content.trim() },
           ],
           temperature: 0.7,
-          max_tokens: 400,
+          max_tokens: 250,
         }),
       });
       if (res.ok) {
@@ -200,7 +205,7 @@ async function generateChatFallbackResponse(
         },
         body: JSON.stringify({
           model: 'claude-3-haiku-20240307',
-          max_tokens: 400,
+          max_tokens: 250,
           system: systemPrompt,
           messages: [{ role: 'user', content: content.trim() }],
         }),
@@ -215,18 +220,70 @@ async function generateChatFallbackResponse(
     }
   }
 
-  // 5. Zero-LLM-Key Knowledge Base Synthesis Fallback
-  if (relevantData && relevantData.trim().length > 0) {
-    const formattedData = relevantData
-      .split('\n\n')
-      .map(block => block.replace(/^Title:\s*/gi, '• ').replace(/Content:\s*/gi, '\n  '))
-      .join('\n\n');
-
-    return `Here is what I found regarding your query at ${businessName}:\n\n${formattedData}\n\nHow else can I assist you with this?`;
+  // 5. Zero-LLM-Key Knowledge Base Synthesis Fallback (Clean, concise & natural)
+  const trimmed = content.trim().toLowerCase();
+  const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmed);
+  if (isGreeting) {
+    return `Hello! I'm your AI front desk receptionist for ${businessName}. How can I help you today? Feel free to ask about our courses, pricing, or services.`;
   }
 
-  // 6. Query-Aware Fallback Response (Prevents repeating static greeting)
-  return `I searched our knowledge base at ${businessName} for "${content.trim()}", but didn't find specific details. Would you like assistance with course registration, pricing, or support?`;
+  if (relevantData && relevantData.trim().length > 0) {
+    const parsedItems: { title: string; price?: string; desc?: string }[] = [];
+
+    // Check if catalog block is present
+    if (relevantData.includes('Catalog Items / Offerings:')) {
+      const catalogSection = relevantData.split('Catalog Items / Offerings:')[1];
+      const lines = catalogSection.split('\n').filter(l => l.trim().startsWith('•'));
+      for (const line of lines) {
+        const match = line.match(/^•\s*([^:(]+)(?::\s*([^($]+))?(?:\(([^)]+)\))?/i);
+        if (match) {
+          const itemTitle = match[1].trim();
+          let itemDesc = (match[2] || '').trim();
+          let itemPrice = (match[3] || '').trim();
+          if (itemDesc.includes('$') && !itemPrice) {
+            const priceM = itemDesc.match(/\$\d+/);
+            if (priceM) itemPrice = priceM[0];
+          }
+          if (itemTitle && !itemTitle.toLowerCase().includes('campus core') && itemTitle.toLowerCase() !== businessName.toLowerCase()) {
+            parsedItems.push({
+              title: itemTitle,
+              price: itemPrice || undefined,
+              desc: itemDesc.substring(0, 80) || undefined,
+            });
+          }
+        }
+      }
+    }
+
+    if (parsedItems.length === 0) {
+      const blocks = relevantData.split('\n\n').filter(b => b.trim().length > 0);
+      for (const b of blocks) {
+        const titleMatch = b.match(/Title:\s*([^\n\[]+)(?:\s*\[Price:\s*([^\]]+)\])?/i);
+        const contentMatch = b.match(/Content:\s*([\s\S]+)/i);
+        if (titleMatch) {
+          const title = titleMatch[1].trim();
+          const price = titleMatch[2]?.trim();
+          let desc = contentMatch ? contentMatch[1].trim() : '';
+          desc = desc.replace(/^Title:[^\n]+/i, '').replace(/Price:[^\n]+/i, '').trim();
+          desc = desc.substring(0, 80).replace(/\s+/g, ' ');
+          if (!title.toLowerCase().includes('policy') && !title.toLowerCase().includes('terms')) {
+            parsedItems.push({ title, price, desc });
+          }
+        }
+      }
+    }
+
+    if (parsedItems.length > 0) {
+      const itemsList = parsedItems
+        .map(item => `• **${item.title}**${item.price ? ` (${item.price})` : ''}${item.desc ? `: ${item.desc}` : ''}`)
+        .join('\n');
+
+      return `At ${businessName}, here is what we offer:\n\n${itemsList}\n\nWhich one would you like to know more about or get started with?`;
+    }
+  }
+
+  // 6. Query-Aware Fallback Response
+  return `I'm happy to help you with ${businessName}. We have courses, services, and live support available. What specific details can I provide for you?`;
 }
 
 // ─── Preflight handler ──────────────────────────────────────────────────────
@@ -409,11 +466,13 @@ export async function POST(req: NextRequest) {
         }
       }
       const cleaned: any = { ...m, content: textContent };
-      // Attach structured result cards to the last agent message only
+      // Attach structured result cards to the last agent message only if user asked about offerings / catalog
+      const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you/i.test(content.trim());
       const isLastAgentMsg =
         m.role === 'agent' &&
         idx === rawMessages.length - 1 &&
-        relevantRecords.length > 0;
+        relevantRecords.length > 0 &&
+        isCatalogIntent;
       if (isLastAgentMsg) {
         cleaned.results = relevantRecords;
       }
@@ -446,12 +505,14 @@ export async function POST(req: NextRequest) {
       widget.name || widget.config?.branding?.companyName || 'our business'
     );
 
+    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you/i.test(content.trim());
+
     const fallbackMessages = [
       { role: 'user', content: content.trim() },
       {
         role: 'agent',
         content: fallbackResponseText,
-        ...(relevantRecords.length > 0 ? { results: relevantRecords } : {}),
+        ...(relevantRecords.length > 0 && isCatalogIntent ? { results: relevantRecords } : {}),
       },
     ];
 

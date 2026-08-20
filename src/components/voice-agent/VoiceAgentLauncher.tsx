@@ -94,11 +94,14 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
     const styles: React.CSSProperties = {
       position: 'fixed',
       zIndex: launcher.zIndex ?? 1000,
-      display: 'flex',
+      display: isOpen ? 'none' : 'flex',
       alignItems: 'center',
       gap: '10px',
-      pointerEvents: 'none',
+      pointerEvents: isOpen ? 'none' : 'auto',
       fontFamily: config.typography.fontFamily,
+      opacity: isOpen ? 0 : 1,
+      transform: isOpen ? 'scale(0.8)' : 'scale(1)',
+      transition: 'opacity 0.2s ease, transform 0.2s ease',
     };
 
     // Label position offsets (only if showing external label)
