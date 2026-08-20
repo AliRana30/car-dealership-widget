@@ -39,6 +39,71 @@ function getIframeSnippet(origin: string, widgetId: string) {
 ></iframe>`;
 }
 
+function getAIAgentPrompt(origin: string, widgetId: string, widgetName?: string) {
+  return `### Task: Integrate Autonomous AI Voice & Text Front Desk Widget
+
+Please integrate the Front Desk AI Voice & Text Widget into this web application.
+
+**Widget Configuration Details:**
+- **Widget ID**: \`${widgetId || 'your-widget-id'}\`
+- **Widget Script URL**: \`${origin}/widget.js\`
+- **Widget Name**: \`${widgetName || 'Front Desk Widget'}\`
+
+---
+
+### Implementation Instructions:
+
+1. **Next.js (App Router - \`app/layout.tsx\`):**
+   Import \`Script\` from \`next/script\` and place this in your root layout:
+   \`\`\`tsx
+   import Script from 'next/script';
+
+   export default function RootLayout({ children }: { children: React.ReactNode }) {
+     return (
+       <html lang="en">
+         <body>
+           {children}
+           <Script
+             src="${origin}/widget.js"
+             data-widget-id="${widgetId || 'your-widget-id'}"
+             strategy="afterInteractive"
+           />
+         </body>
+       </html>
+     );
+   }
+   \`\`\`
+
+2. **React / Vite / Vue / Nuxt / Static HTML (\`index.html\`):**
+   Add the script tag right before the closing \`</body>\` tag:
+   \`\`\`html
+   <script
+     src="${origin}/widget.js"
+     data-widget-id="${widgetId || 'your-widget-id'}"
+     defer
+   ></script>
+   \`\`\`
+
+3. **Shopify (Liquid - \`layout/theme.liquid\`):**
+   Paste immediately before \`</body>\`:
+   \`\`\`liquid
+   <script src="${origin}/widget.js" data-widget-id="${widgetId || 'your-widget-id'}" defer></script>
+   \`\`\`
+
+4. **WordPress (\`functions.php\` or Header/Footer Plugin):**
+   \`\`\`php
+   add_action('wp_footer', function() {
+       echo '<script src="${origin}/widget.js" data-widget-id="${widgetId || 'your-widget-id'}" defer></script>';
+   });
+   \`\`\`
+
+5. **Permissions & CSP:**
+   Ensure Content-Security-Policy (CSP) allows scripts from \`${origin}\` and microphone access for voice calls.
+
+6. **Verification:**
+   Verify that the floating AI launcher button appears in the bottom right corner of the website and clicking it opens the chat and voice call interface.`;
+}
+
 const WHERE_TO_PASTE = [
   { platform: 'WordPress', icon: '⬜', tip: 'Install the free "Insert Headers and Footers" plugin → Settings → paste in Footer section.' },
   { platform: 'Shopify', icon: '🛍️', tip: 'Online Store → Themes → Edit Code → layout/theme.liquid → paste before </body>.' },
@@ -67,16 +132,19 @@ function highlightHtml(code: string) {
 interface UniversalEmbedSectionProps {
   origin: string;
   widgetId: string;
+  widgetName?: string;
   copied: boolean;
   setCopied: (v: boolean) => void;
 }
 
-function UniversalEmbedSection({ origin, widgetId, copied, setCopied }: UniversalEmbedSectionProps) {
-  const [tab, setTab] = React.useState<'script' | 'iframe'>('script');
+function UniversalEmbedSection({ origin, widgetId, widgetName, copied, setCopied }: UniversalEmbedSectionProps) {
+  const [tab, setTab] = React.useState<'script' | 'ai' | 'iframe'>('script');
   const [openTip, setOpenTip] = React.useState<string | null>(null);
 
   const code = tab === 'script'
     ? getUniversalSnippet(origin, widgetId)
+    : tab === 'ai'
+    ? getAIAgentPrompt(origin, widgetId, widgetName)
     : getIframeSnippet(origin, widgetId);
 
   const handleCopy = () => {
@@ -94,31 +162,35 @@ function UniversalEmbedSection({ origin, widgetId, copied, setCopied }: Universa
   };
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
-    flex: 1, padding: '6px 10px', fontSize: '11px', fontWeight: 600,
+    flex: 1, padding: '7px 10px', fontSize: '11px', fontWeight: 600,
     borderRadius: '6px', border: 'none', cursor: 'pointer',
     background: active ? '#2563EB' : 'transparent',
     color: active ? '#fff' : '#64748B',
-    transition: 'background 0.15s',
+    transition: 'all 0.15s ease',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
   });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {/* Intro */}
-      <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.6' }}>
-        One snippet — works on <strong>every</strong> website platform. Copy, paste once, done.
+      <p style={{ fontSize: '11.5px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
+        One universal snippet or AI prompt — integrate into <strong>any</strong> modern codebase in seconds.
       </p>
 
-      {/* Tab switch: Script / iframe */}
+      {/* Tab switch: Script / AI Agent / iframe */}
       <div style={{
         display: 'flex', gap: '4px', background: '#F1F5F9',
         borderRadius: '8px', padding: '3px',
       }}>
         <button style={tabStyle(tab === 'script')} onClick={() => setTab('script')}>
           📜 Script Tag
-          <span style={{ fontSize: '9px', marginLeft: '4px', opacity: 0.8 }}>(recommended)</span>
+        </button>
+        <button style={tabStyle(tab === 'ai')} onClick={() => setTab('ai')}>
+          🤖 AI Prompt
+          <span style={{ fontSize: '9px', background: 'rgba(255,255,255,0.2)', padding: '1px 5px', borderRadius: '4px' }}>Cursor / Claude</span>
         </button>
         <button style={tabStyle(tab === 'iframe')} onClick={() => setTab('iframe')}>
-          🖼️ Inline iframe
+          🖼️ Iframe
         </button>
       </div>
 
@@ -135,15 +207,16 @@ function UniversalEmbedSection({ origin, widgetId, copied, setCopied }: Universa
             ))}
           </div>
           <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#94A3B8', fontWeight: 500 }}>
-            {tab === 'script' ? 'widget.js — Universal Embed' : 'Inline iframe Embed'}
+            {tab === 'script' ? 'widget.js — Universal Script' : tab === 'ai' ? 'AI Coding Assistant Prompt' : 'Inline iframe Embed'}
           </span>
         </div>
-        <div style={{ padding: '14px' }}>
+        <div style={{ padding: '14px', maxHeight: tab === 'ai' ? '280px' : 'none', overflowY: 'auto' }}>
           <pre style={{
             margin: 0, overflowX: 'auto', fontSize: '11px',
             fontFamily: 'monospace', lineHeight: '1.6', color: '#E2E8F0',
+            whiteSpace: 'pre-wrap',
           }}>
-            {highlightHtml(code)}
+            {tab === 'script' ? highlightHtml(code) : code}
           </pre>
         </div>
       </div>
@@ -559,10 +632,11 @@ export default function DeploySection({
       <section>
         <h4 style={sectionTitle}>Embed on Your Website</h4>
 
-        {/* Tab switcher: Script vs iframe */}
+        {/* Tab switcher: Script vs AI vs iframe */}
         <UniversalEmbedSection
           origin={origin}
           widgetId={widgetId}
+          widgetName={widgetName}
           copied={copied}
           setCopied={setCopied}
         />

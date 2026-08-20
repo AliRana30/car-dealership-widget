@@ -66,7 +66,7 @@ const TOGGLE_CSS = `
       flex-shrink: 0;
     }
     .customizer-body {
-      flex-direction: column !important;
+      flex-direction: row !important;
     }
     
     /* Hide columns based on active tab */
@@ -78,50 +78,15 @@ const TOGGLE_CSS = `
       display: none !important;
     }
 
-    /* Horizontal sidebar on mobile */
     .customizer-sidebar {
-      width: 100% !important;
-      min-width: 100% !important;
-      height: auto !important;
-      flex-direction: row !important;
-      border-right: none !important;
-      border-bottom: 1px solid #e5e7eb !important;
+      height: 100% !important;
+      border-right: 1px solid #e5e7eb !important;
       background: #fafafa !important;
-    }
-    .sidebar-header, .sidebar-footer {
-      display: none !important;
-    }
-    .sidebar-nav {
-      flex-direction: row !important;
-      padding: 6px 12px !important;
-      overflow-x: auto !important;
-      width: 100% !important;
-      flex-wrap: nowrap !important;
-      -webkit-overflow-scrolling: touch;
-      gap: 8px !important;
-    }
-    .sidebar-nav-item {
-      width: auto !important;
       flex-shrink: 0 !important;
-      white-space: nowrap !important;
-      padding: 6px 12px !important;
-      border-radius: 8px !important;
-    }
-    .sidebar-nav-label {
-      font-size: 12px !important;
-    }
-    .sidebar-active-bar {
-      bottom: 0 !important;
-      left: 6px !important;
-      right: 6px !important;
-      height: 3px !important;
-      width: auto !important;
-      top: auto !important;
-      border-radius: 2px 2px 0 0 !important;
     }
     .customizer-editor-col {
       width: 100% !important;
-      min-width: 100% !important;
+      min-width: 0 !important;
       border-right: none !important;
       flex: 1 !important;
     }
@@ -241,6 +206,13 @@ export default function WidgetCustomizerApp() {
   const [websiteName, setWebsiteName] = useState('Default Website');
   const [widgetStatus, setWidgetStatus] = useState<'active' | 'inactive' | 'paused'>('active');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 860) {
+      setIsSidebarCollapsed(true);
+    }
+  }, []);
 
   // Fetch on mount if id is in query params
   useEffect(() => {
@@ -396,9 +368,24 @@ export default function WidgetCustomizerApp() {
             ← Dashboard
           </Link>
           <div style={styles.headerDivider} />
-          <div style={styles.headerTitle}>Widget Customizer</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src="/logo.png" alt="Logo" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+            <div style={styles.headerTitle}>Widget Customizer</div>
+          </div>
         </div>
         <div style={styles.headerActions} className="customizer-header-actions">
+          <Link
+            href="/prompts"
+            style={{
+              ...styles.btnSecondary,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+            }}
+          >
+            Prompt Library
+          </Link>
           <button onClick={handleReset} style={styles.btnSecondary}>Reset</button>
           <button onClick={handleSave} style={{
             ...styles.btnPrimary,
@@ -499,6 +486,24 @@ export default function WidgetCustomizerApp() {
               ← Dashboard
             </Link>
             <Link
+              href="/prompts"
+              onClick={() => setMobileMenuOpen(false)}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #bfdbfe',
+                background: '#eff6ff',
+                color: '#2563eb',
+                fontSize: '12px',
+                fontWeight: 600,
+                textAlign: 'center',
+                textDecoration: 'none',
+              }}
+            >
+              Prompt Library
+            </Link>
+            <Link
               href="/"
               onClick={() => setMobileMenuOpen(false)}
               style={{
@@ -546,7 +551,12 @@ export default function WidgetCustomizerApp() {
       <div style={styles.body} className={`customizer-body ${mobileTab === 'editor' ? 'tab-editor-active' : 'tab-preview-active'}`}>
 
         {/* LEFT: Section nav */}
-        <SettingsSidebar active={activeSection} onSelect={handleSectionChange} />
+        <SettingsSidebar
+          active={activeSection}
+          onSelect={handleSectionChange}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+        />
 
         {/* CENTER-LEFT: Section editor */}
         <div

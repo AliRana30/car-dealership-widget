@@ -3,6 +3,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import PromptLibrary from '@/components/prompts/PromptLibrary';
+import { Sparkles, BookOpen } from 'lucide-react';
 
 interface WidgetSummary {
   id: string;
@@ -468,6 +470,7 @@ export default function DashboardPage() {
     return 'https://your-domain.vercel.app';
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'widgets' | 'prompts'>('widgets');
   const [user, setUser] = useState<{ fullName: string; email: string } | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -496,7 +499,7 @@ export default function DashboardPage() {
     loadUser();
   }, []);
 
-  const handleCreateWidget = useCallback(async (name: string, slug: string, provider: 'retell' | 'vapi') => {
+  const handleCreate = useCallback(async (name: string, slug: string, provider: 'retell' | 'vapi') => {
     setIsCreating(true);
     const toastId = toast.loading('Creating new widget...');
     try {
@@ -603,7 +606,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: "'Figtree', 'Inter', system-ui, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: "'Figtree', system-ui, sans-serif" }}>
       {/* Responsive Dashboard Styles */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes pulse {
@@ -650,15 +653,8 @@ export default function DashboardPage() {
       }}>
         {/* Left branding */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none', color: '#111827' }}>
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '9px',
-              background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
-              boxShadow: '0 2px 8px rgba(47,143,224,0.3)',
-            }}>
-              <Icon d={ICONS.widget} size={18} />
-            </div>
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#111827' }}>
+            <img src="/logo.png" alt="Widgetized Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
             <span style={{ fontSize: '17px', fontWeight: 700, letterSpacing: '-0.01em' }}>Widgetized</span>
           </Link>
 
@@ -691,10 +687,28 @@ export default function DashboardPage() {
               borderRadius: '8px', border: '1px solid #E5E7EB',
               fontSize: '13px', color: '#374151',
               background: '#F9FAFB', outline: 'none',
-              width: '200px',
+              width: '180px',
               fontFamily: 'inherit',
             }}
           />
+
+          <button
+            onClick={() => setActiveTab(prev => prev === 'prompts' ? 'widgets' : 'prompts')}
+            style={{
+              ...btn.secondary,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              background: activeTab === 'prompts' ? '#EFF6FF' : '#FFFFFF',
+              borderColor: activeTab === 'prompts' ? '#2563EB' : '#E5E7EB',
+              color: activeTab === 'prompts' ? '#2563EB' : '#374151',
+            }}
+          >
+            <BookOpen size={14} />
+            Prompt Library
+          </button>
+
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
@@ -774,8 +788,32 @@ export default function DashboardPage() {
               fontFamily: 'inherit',
             }}
           />
+
           <button
             onClick={() => {
+              setActiveTab('prompts');
+              setMobileMenuOpen(false);
+            }}
+            style={{
+              ...btn.secondary,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              justifyContent: 'center',
+              height: '38px',
+              background: '#EFF6FF',
+              color: '#2563EB',
+              borderColor: '#BFDBFE',
+              fontWeight: 600,
+            }}
+          >
+            <BookOpen size={16} />
+            Open Prompt Library (10 Agents)
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('widgets');
               setMobileMenuOpen(false);
               setShowCreateModal(true);
             }}
@@ -788,6 +826,7 @@ export default function DashboardPage() {
             <Icon d={ICONS.plus} size={15} />
             Create New Widget
           </button>
+
           <Link
             href="/"
             onClick={() => setMobileMenuOpen(false)}
@@ -836,60 +875,123 @@ export default function DashboardPage() {
       )}
 
       {/* Main Container */}
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px' }}>
+      <main style={{ maxWidth: '1180px', margin: '0 auto', padding: '24px 24px 48px' }}>
+        {/* Navigation Tabs (Widgets vs Prompts) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: '#EEF2F6',
+          padding: '4px',
+          borderRadius: '12px',
+          width: 'fit-content',
+          marginBottom: '24px',
+        }}>
+          <button
+            onClick={() => setActiveTab('widgets')}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '9px',
+              border: 'none',
+              background: activeTab === 'widgets' ? '#FFFFFF' : 'transparent',
+              color: activeTab === 'widgets' ? '#0F172A' : '#64748B',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: activeTab === 'widgets' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Icon d={ICONS.widget} size={15} />
+            My Voice Widgets ({widgets.length})
+          </button>
 
-        {/* Error Notification */}
-        {error && (
-          <div style={{
-            background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px',
-            padding: '14px 18px', marginBottom: '24px', color: '#DC2626', fontSize: '13px',
-            display: 'flex', alignItems: 'center', gap: '10px',
-          }}>
-            <Icon d="M12 8v4M12 16h.01M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0" size={16} />
-            {error}
-            <button onClick={fetchWidgets} style={{ marginLeft: 'auto', ...btn.secondary, fontSize: '12px' }}>Retry</button>
-          </div>
+          <button
+            onClick={() => setActiveTab('prompts')}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '9px',
+              border: 'none',
+              background: activeTab === 'prompts' ? '#FFFFFF' : 'transparent',
+              color: activeTab === 'prompts' ? '#2563EB' : '#64748B',
+              fontSize: '13.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: activeTab === 'prompts' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <BookOpen size={15} />
+            Prompt Library (10 Agents)
+          </button>
+        </div>
+
+        {/* Tab Content: Prompt Library */}
+        {activeTab === 'prompts' && (
+          <PromptLibrary isEmbedded={true} />
         )}
 
-        {/* Loading skeleton */}
-        {loading && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
-            {[1, 2, 3].map(i => (
-              <div key={i} style={{
-                background: '#fff', borderRadius: '14px', border: '1px solid #E5E7EB',
-                height: '200px', animation: 'pulse 1.5s infinite',
-              }} />
-            ))}
-          </div>
-        )}
+        {/* Tab Content: Widgets */}
+        {activeTab === 'widgets' && (
+          <>
+            {/* Error Notification */}
+            {error && (
+              <div style={{
+                background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px',
+                padding: '14px 18px', marginBottom: '24px', color: '#DC2626', fontSize: '13px',
+                display: 'flex', alignItems: 'center', gap: '10px',
+              }}>
+                <Icon d="M12 8v4M12 16h.01M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0" size={16} />
+                {error}
+                <button onClick={fetchWidgets} style={{ marginLeft: 'auto', ...btn.secondary, fontSize: '12px' }}>Retry</button>
+              </div>
+            )}
 
-        {/* Empty state */}
-        {!loading && !error && filteredWidgets.length === 0 && (
-          searchTerm ? (
-            <div style={{ textAlign: 'center', padding: '64px 24px', color: '#9CA3AF', fontSize: '14px' }}>
-              No widgets matching "<strong style={{ color: '#374151' }}>{searchTerm}</strong>"
-            </div>
-          ) : (
-            <div style={{ display: 'flex' }}>
-              <EmptyState onNew={() => setShowCreateModal(true)} />
-            </div>
-          )
-        )}
+            {/* Loading skeleton */}
+            {loading && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
+                {[1, 2, 3].map(i => (
+                  <div key={i} style={{
+                    background: '#fff', borderRadius: '14px', border: '1px solid #E5E7EB',
+                    height: '200px', animation: 'pulse 1.5s infinite',
+                  }} />
+                ))}
+              </div>
+            )}
 
-        {/* Widget grid */}
-        {!loading && filteredWidgets.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
-            {filteredWidgets.map(widget => (
-              <WidgetCard
-                key={widget.id}
-                widget={widget}
-                onDelete={(id, name) => setDeleteTarget({ id, name })}
-                onCopySnippet={handleCopySnippet}
-                copiedId={copiedId}
-                origin={origin}
-              />
-            ))}
-          </div>
+            {/* Empty state */}
+            {!loading && !error && filteredWidgets.length === 0 && (
+              searchTerm ? (
+                <div style={{ textAlign: 'center', padding: '64px 24px', color: '#9CA3AF', fontSize: '14px' }}>
+                  No widgets matching "<strong style={{ color: '#374151' }}>{searchTerm}</strong>"
+                </div>
+              ) : (
+                <div style={{ display: 'flex' }}>
+                  <EmptyState onNew={() => setShowCreateModal(true)} />
+                </div>
+              )
+            )}
+
+            {/* Widget grid */}
+            {!loading && filteredWidgets.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: '16px' }}>
+                {filteredWidgets.map(widget => (
+                  <WidgetCard
+                    key={widget.id}
+                    widget={widget}
+                    onDelete={(id, name) => setDeleteTarget({ id, name })}
+                    onCopySnippet={handleCopySnippet}
+                    copiedId={copiedId}
+                    origin={origin}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
 
@@ -897,7 +999,7 @@ export default function DashboardPage() {
       {showCreateModal && (
         <CreateWidgetModal
           onCancel={() => setShowCreateModal(false)}
-          onCreate={handleCreateWidget}
+          onCreate={handleCreate}
           isCreating={isCreating}
         />
       )}

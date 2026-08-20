@@ -289,14 +289,7 @@ export default function HomePage() {
 
           {/* Logo & Brand */}
           <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#0E1B2A' }}>
-            <div style={{
-              width: '36px', height: '36px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, #16A34A, #15803D)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
-              boxShadow: '0 4px 12px rgba(22,163,74,0.35)',
-            }}>
-              <SvgIcon paths={PATHS.phone} size={20} color="#FFFDF8" />
-            </div>
+            <img src="/logo.png" alt="Widgetized Logo" style={{ width: '34px', height: '34px', objectFit: 'contain' }} />
             <span style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em', color: '#0E1B2A' }}>Widgetized</span>
           </Link>
 
@@ -305,6 +298,7 @@ export default function HomePage() {
             <a href="#features" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Features</a>
             <a href="#channels" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Capabilities</a>
             <a href="#how-it-works" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>How It Works</a>
+            <Link href="/prompts" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Prompt Library</Link>
             <Link href="/dashboard" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Dashboard</Link>
           </nav>
 
@@ -361,21 +355,21 @@ export default function HomePage() {
           display: 'flex', flexDirection: 'column', padding: '24px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #16A34A, #15803D)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                <SvgIcon paths={PATHS.phone} size={18} color="#FFFDF8" />
-              </div>
+            <Link href="/" onClick={() => setMobileMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#0E1B2A' }}>
+              <img src="/logo.png" alt="Widgetized Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
               <span style={{ fontSize: '18px', fontWeight: 700 }}>Widgetized</span>
-            </div>
+            </Link>
             <button onClick={() => setMobileMenuOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
               <SvgIcon paths={PATHS.close} size={24} />
             </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
+            <Link href="/" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Home</Link>
             <a href="#features" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Features</a>
             <a href="#channels" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Capabilities</a>
             <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
+            <Link href="/prompts" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Prompt Library</Link>
             <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Fleet Dashboard</Link>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '280px', marginTop: '24px' }}>
