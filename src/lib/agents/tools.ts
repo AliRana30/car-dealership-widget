@@ -289,7 +289,7 @@ export async function executeAgentTool(
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
     if (toolName === 'search_entities') {
-      const query = String(args.query || '');
+      const query = String(args.query || args.search || args.q || args.keyword || args.input || '');
       const limit = typeof args.limit === 'number' ? Math.min(Math.max(1, args.limit), 10) : 3;
       const entities = await searchEntities(widgetId, query, limit);
       return {
@@ -313,7 +313,7 @@ export async function executeAgentTool(
     }
 
     if (toolName === 'get_entity_details') {
-      const entityId = String(args.entityId || '');
+      const entityId = String(args.entityId || args.entity_id || args.id || '');
       const entity = await getEntityDetails(widgetId, entityId);
       if (!entity) {
         return { success: false, error: `Entity '${entityId}' not found for this widget.` };
@@ -337,7 +337,7 @@ export async function executeAgentTool(
     }
 
     if (toolName === 'navigate_to_entity') {
-      const entityId = String(args.entityId || '');
+      const entityId = String(args.entityId || args.entity_id || args.id || '');
       if (!entityId) {
         return { success: false, error: 'Missing required argument: entityId' };
       }

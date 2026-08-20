@@ -79,23 +79,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ result: JSON.stringify(result.data || { error: result.error }) });
     }
 
-    // 4. Handle Retell AI custom_tool format
-    const toolName = body.name || body.tool_name || body.function_name || body.tool || '';
-    const args = body.args || body.parameters || body.arguments || body;
+    // 4. Handle Retell AI & Frontend Widget custom_tool format
+    let rawTool =
+      body.name ||
+      body.tool_name ||
+      body.function_name ||
+      body.tool ||
+      body.action ||
+      body.function ||
+      '';
 
-    console.log(`[agent-tools/retell] Executing tool '${toolName}' for widget ${resolvedWidgetId}`);
-    const result = await executeAgentTool(resolvedWidgetId, toolName, args, context);
-
-    if (!result.success) {
-      return NextResponse.json({
-        success: false,
-        error: result.error,
-      }, { status: 400 });
+    if (!rawTool && (body.query || body.search || body.q)) {
+      rawTool = 'search_entities';
     }
 
-    return NextResponse.json(result.data);
+    // Normalize tool names (e.g. 'search' -> 'search_entities', 'get_details' -> 'get_entity_details', 'navigate' -> 'navigate_to_entity')
+    let toolName = rawTool;
+    if (rawTool === 'search' || rawTool === 'search_entity' || rawTool === 'search_knowledge_base') {
+      toolName = 'search_entities';
+    } else if (rawTool === 'get_details' || rawTool === 'get_entity' || rawTool === 'details') {
+      toolName = 'get_entity_details';
+    } else if (rawTool === 'navigate' || rawTool === 'navigate_to_page' || rawTool === 'open_page') {
+      toolName = 'navigate_to_entity';
+    }
+
+    let args = body.args || body.arguments || body.parameters || body.input || body;
+    if (typeof args === 'string') {
+      try { args = JSON.parse(args); } catch {}
+    }
+
+    console.log(`[agent-tools] Executing tool '${toolName}' (raw: '${rawTool}') for widget ${resolvedWidgetId}`);
+    const result = await executeAgentTool(resolvedWidgetId, toolName, args, context);
+
+    return NextResponse.json({
+      success: result.success,
+      ...(result.data || {}),
+      ...(result.error ? { error: result.error, message: result.error } : {}),
+    });
   } catch (err: any) {
     console.error('[agent-tools] Webhook error:', err);
-    return NextResponse.json({ error: 'tool_execution_failed', message: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'tool_execution_failed', message: err.message }, { status: 200 });
   }
 }

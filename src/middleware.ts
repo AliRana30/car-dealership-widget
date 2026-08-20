@@ -33,6 +33,8 @@ const PUBLIC_API_PREFIXES = [
   '/api/agent/',
   '/api/cron/',
   '/api/websites/',
+  '/api/session/',
+  '/api/realtime/',
 ];
 
 // Static/asset routes
