@@ -298,7 +298,6 @@ export default function HomePage() {
             <a href="#features" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Features</a>
             <a href="#channels" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Capabilities</a>
             <a href="#how-it-works" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>How It Works</a>
-            <Link href="/prompts" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Prompt Library</Link>
             <Link href="/dashboard" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Dashboard</Link>
           </nav>
 

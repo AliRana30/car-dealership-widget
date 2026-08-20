@@ -308,26 +308,27 @@ export default function DeploySection({
 }: DeploySectionProps) {
   const [copied, setCopied] = useState(false);
   const [origin, setOrigin] = useState(() => {
-    if (process.env.BASE_URL) {
-      return process.env.BASE_URL;
+    if (typeof window !== 'undefined' && window.location.origin) {
+      return window.location.origin;
     }
     if (process.env.NEXT_PUBLIC_BASE_URL) {
       return process.env.NEXT_PUBLIC_BASE_URL;
     }
-    return 'https://your-domain.vercel.app';
+    if (process.env.BASE_URL) {
+      return process.env.BASE_URL;
+    }
+    return 'https://front-desk-seven.vercel.app';
   });
   const [showSandbox, setShowSandbox] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-
-
   useEffect(() => {
-    if (process.env.BASE_URL) {
-      setOrigin(process.env.BASE_URL);
+    if (typeof window !== 'undefined' && window.location.origin) {
+      setOrigin(window.location.origin);
     } else if (process.env.NEXT_PUBLIC_BASE_URL) {
       setOrigin(process.env.NEXT_PUBLIC_BASE_URL);
-    } else if (typeof window !== 'undefined') {
-      setOrigin(window.location.origin);
+    } else if (process.env.BASE_URL) {
+      setOrigin(process.env.BASE_URL);
     }
   }, []);
 

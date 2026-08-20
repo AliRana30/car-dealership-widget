@@ -374,18 +374,6 @@ export default function WidgetCustomizerApp() {
           </div>
         </div>
         <div style={styles.headerActions} className="customizer-header-actions">
-          <Link
-            href="/prompts"
-            style={{
-              ...styles.btnSecondary,
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-            }}
-          >
-            Prompt Library
-          </Link>
           <button onClick={handleReset} style={styles.btnSecondary}>Reset</button>
           <button onClick={handleSave} style={{
             ...styles.btnPrimary,

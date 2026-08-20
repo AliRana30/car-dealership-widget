@@ -693,23 +693,6 @@ export default function DashboardPage() {
           />
 
           <button
-            onClick={() => setActiveTab(prev => prev === 'prompts' ? 'widgets' : 'prompts')}
-            style={{
-              ...btn.secondary,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '13px',
-              background: activeTab === 'prompts' ? '#EFF6FF' : '#FFFFFF',
-              borderColor: activeTab === 'prompts' ? '#2563EB' : '#E5E7EB',
-              color: activeTab === 'prompts' ? '#2563EB' : '#374151',
-            }}
-          >
-            <BookOpen size={14} />
-            Prompt Library
-          </button>
-
-          <button
             onClick={() => setShowCreateModal(true)}
             style={{
               ...btn.primary, display: 'inline-flex',
@@ -719,16 +702,6 @@ export default function DashboardPage() {
             <Icon d={ICONS.plus} size={14} />
             New Widget
           </button>
-          <Link
-            href="/"
-            style={{
-              ...btn.secondary, textDecoration: 'none', display: 'inline-flex',
-              alignItems: 'center', gap: '6px', fontSize: '13px',
-            }}
-          >
-            <Icon d={ICONS.home} size={14} />
-            Homepage
-          </Link>
           {user && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: '8px', borderLeft: '1px solid #E5E7EB', paddingLeft: '12px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>

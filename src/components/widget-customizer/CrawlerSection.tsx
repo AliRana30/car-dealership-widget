@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Zap,
   Globe2,
@@ -1259,16 +1259,70 @@ export default function CrawlerSection({
   const [crawlStatus, setCrawlStatus] = useState<CrawlJobStatusInfo | null>(null);
   const crawlPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Poll crawl job status when websiteId is present
-  useEffect(() => {
-    if (!websiteId) return;
-    const poll = async () => {
+  // Helper to determine terminal crawl job status
+  const isTerminalStatus = useCallback((status: string | undefined): boolean => {
+    return status === 'completed' || status === 'failed' || status === 'blocked' || status === 'never_crawled';
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (crawlPollRef.current) {
+      clearInterval(crawlPollRef.current);
+      crawlPollRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback((targetWebsiteId: string, expectedScanMode?: ScanMode) => {
+    stopPolling();
+    if (!targetWebsiteId) return;
+
+    crawlPollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/websites/${websiteId}/crawl`);
+        const res = await fetch(`/api/websites/${targetWebsiteId}/crawl`);
         if (!res.ok) return;
         const data = await res.json();
+        const currentStatus = data.status || 'never_crawled';
+
         setCrawlStatus({
-          status: data.status || 'never_crawled',
+          status: currentStatus,
+          scanMode: data.scanMode || expectedScanMode || 'master',
+          pagesVisited: data.pagesVisited || 0,
+          entitiesFound: data.entitiesFound || 0,
+          blockedPages: data.blockedPages || data.blocked_pages || 0,
+          indexedRecords: data.indexedRecords || 0,
+          jobId: data.jobId,
+          completedAt: data.completedAt,
+          error: data.error || data.error_message || null,
+        });
+
+        // Stop polling immediately once job reaches terminal status
+        if (currentStatus === 'completed' || currentStatus === 'failed' || currentStatus === 'blocked' || currentStatus === 'never_crawled') {
+          if (crawlPollRef.current) {
+            clearInterval(crawlPollRef.current);
+            crawlPollRef.current = null;
+          }
+        }
+      } catch { }
+    }, 4000);
+  }, [stopPolling]);
+
+  // Initial fetch on mount or websiteId change — only poll if active
+  useEffect(() => {
+    if (!websiteId) {
+      stopPolling();
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchInitialStatus = async () => {
+      try {
+        const res = await fetch(`/api/websites/${websiteId}/crawl`);
+        if (!res.ok || !isMounted) return;
+        const data = await res.json();
+        const currentStatus = data.status || 'never_crawled';
+
+        setCrawlStatus({
+          status: currentStatus,
           scanMode: data.scanMode || 'master',
           pagesVisited: data.pagesVisited || 0,
           entitiesFound: data.entitiesFound || 0,
@@ -1278,15 +1332,26 @@ export default function CrawlerSection({
           completedAt: data.completedAt,
           error: data.error || data.error_message || null,
         });
-        if (data.status === 'completed' || data.status === 'failed' || data.status === 'blocked' || data.status === 'never_crawled') {
-          if (crawlPollRef.current) clearInterval(crawlPollRef.current);
+
+        // ONLY start polling if the job is actively pending or running
+        if (!isTerminalStatus(currentStatus) && isMounted) {
+          startPolling(websiteId, data.scanMode);
+        } else {
+          stopPolling();
         }
-      } catch { }
+      } catch {
+        stopPolling();
+      }
     };
-    poll();
-    crawlPollRef.current = setInterval(poll, 4000);
-    return () => { if (crawlPollRef.current) clearInterval(crawlPollRef.current); };
-  }, [websiteId]);
+
+    fetchInitialStatus();
+
+    // Clean teardown on unmount or websiteId change
+    return () => {
+      isMounted = false;
+      stopPolling();
+    };
+  }, [websiteId, isTerminalStatus, startPolling, stopPolling]);
 
   const handleConnectWebsite = async () => {
     const url = wsSiteUrl.trim();
@@ -1314,17 +1379,18 @@ export default function CrawlerSection({
         if (setWebsiteId) setWebsiteId(data.website.id);
         if (setWebsiteName) setWebsiteName(data.website.name);
 
-        setCrawlStatus({ status: 'pending', scanMode, pagesVisited: 0, entitiesFound: 0, blockedPages: 0, indexedRecords: 0, jobId: data.crawlJobId });
-        if (crawlPollRef.current) clearInterval(crawlPollRef.current);
-        crawlPollRef.current = setInterval(async () => {
-          try {
-            const r = await fetch(`/api/websites/${data.website.id}/crawl`);
-            if (!r.ok) return;
-            const d = await r.json();
-            setCrawlStatus({ status: d.status || 'pending', scanMode: d.scanMode || scanMode, pagesVisited: d.pagesVisited || 0, entitiesFound: d.entitiesFound || 0, blockedPages: d.blockedPages || d.blocked_pages || 0, indexedRecords: d.indexedRecords || 0, jobId: d.jobId, completedAt: d.completedAt });
-            if (d.status === 'completed' || d.status === 'failed' || d.status === 'blocked') { if (crawlPollRef.current) clearInterval(crawlPollRef.current); }
-          } catch { }
-        }, 4000);
+        setCrawlStatus({
+          status: 'pending',
+          scanMode,
+          pagesVisited: 0,
+          entitiesFound: 0,
+          blockedPages: 0,
+          indexedRecords: 0,
+          jobId: data.crawlJobId,
+        });
+
+        // Start active polling for newly triggered crawl
+        startPolling(data.website.id, scanMode);
       }
       setWsSiteUrl('');
       setWsSiteName('');
@@ -1347,16 +1413,8 @@ export default function CrawlerSection({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scanMode: mode }),
       });
-      if (crawlPollRef.current) clearInterval(crawlPollRef.current);
-      crawlPollRef.current = setInterval(async () => {
-        try {
-          const r = await fetch(`/api/websites/${websiteId}/crawl`);
-          if (!r.ok) return;
-          const d = await r.json();
-          setCrawlStatus({ status: d.status || 'pending', scanMode: d.scanMode || mode, pagesVisited: d.pagesVisited || 0, entitiesFound: d.entitiesFound || 0, blockedPages: d.blockedPages || d.blocked_pages || 0, indexedRecords: d.indexedRecords || 0, jobId: d.jobId, completedAt: d.completedAt });
-          if (d.status === 'completed' || d.status === 'failed' || d.status === 'blocked') { if (crawlPollRef.current) clearInterval(crawlPollRef.current); }
-        } catch { }
-      }, 4000);
+      // Start active polling for newly triggered recrawl
+      startPolling(websiteId, mode);
     } catch { }
   };
 
