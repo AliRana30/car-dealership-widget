@@ -368,7 +368,6 @@ export default function HomePage() {
             <a href="#features" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Features</a>
             <a href="#channels" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Capabilities</a>
             <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
-            <Link href="/prompts" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Prompt Library</Link>
             <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Fleet Dashboard</Link>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '280px', marginTop: '24px' }}>

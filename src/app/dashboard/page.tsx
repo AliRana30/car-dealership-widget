@@ -658,25 +658,14 @@ export default function DashboardPage() {
             <span style={{ fontSize: '17px', fontWeight: 700, letterSpacing: '-0.01em' }}>Widgetized</span>
           </Link>
 
-          <span style={{ color: '#D1D5DB', fontSize: '18px' }}>/</span>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '14.5px', fontWeight: 600, color: '#374151' }}>Fleet Dashboard</span>
-            {!loading && (
-              <span style={{
-                background: '#EFF6FF', color: '#1D4ED8',
-                border: '1px solid #BFDBFE',
-                borderRadius: '20px', padding: '1px 8px',
-                fontSize: '11px', fontWeight: 600,
-              }}>
-                {widgets.length}
-              </span>
-            )}
-          </div>
+          <span className="flex-divider" style={{ width: '1px', height: '20px', background: '#E5E7EB' }} />
+          <span className="flex-divider" style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>
+            Fleet Command
+          </span>
         </div>
 
         {/* Desktop Navigation & Actions */}
-        <div className="dashboard-desktop-nav">
+        <div className="dashboard-desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <input
             type="search"
             placeholder="Search widgets…"
@@ -736,114 +725,142 @@ export default function DashboardPage() {
         </button>
       </header>
 
-      {/* Mobile Drawer / Dropdown Menu */}
+      {/* Modern Slide-over Hamburger Drawer Overlay */}
       {mobileMenuOpen && (
-        <div style={{
-          background: '#FFFFFF',
-          borderBottom: '1px solid #E5E7EB',
-          padding: '16px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.06)',
-        }}>
-          <input
-            type="search"
-            placeholder="Search widgets…"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.45)',
+            backdropFilter: 'blur(5px)',
+            zIndex: 1000,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            animation: 'fadeInOverlay 0.2s ease-out',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
             style={{
-              height: '38px', padding: '0 12px',
-              borderRadius: '8px', border: '1px solid #E5E7EB',
-              fontSize: '13px', color: '#374151',
-              background: '#F9FAFB', outline: 'none',
               width: '100%',
-              fontFamily: 'inherit',
-            }}
-          />
-
-          <button
-            onClick={() => {
-              setActiveTab('prompts');
-              setMobileMenuOpen(false);
-            }}
-            style={{
-              ...btn.secondary,
+              maxWidth: '310px',
+              height: '100%',
+              background: '#FFFFFF',
+              boxShadow: '-8px 0 30px rgba(0,0,0,0.18)',
               display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              justifyContent: 'center',
-              height: '38px',
-              background: '#EFF6FF',
-              color: '#2563EB',
-              borderColor: '#BFDBFE',
-              fontWeight: 600,
+              flexDirection: 'column',
+              padding: '20px 22px',
+              boxSizing: 'border-box',
+              animation: 'drawerSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           >
-            <BookOpen size={16} />
-            Open Prompt Library (10 Agents)
-          </button>
-
-          <button
-            onClick={() => {
-              setActiveTab('widgets');
-              setMobileMenuOpen(false);
-              setShowCreateModal(true);
-            }}
-            style={{
-              ...btn.primary, display: 'flex',
-              alignItems: 'center', gap: '8px', justifyContent: 'center', height: '40px',
-              width: '100%',
-            }}
-          >
-            <Icon d={ICONS.plus} size={15} />
-            Create New Widget
-          </button>
-
-          <Link
-            href="/"
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              ...btn.secondary, textDecoration: 'none', display: 'flex',
-              alignItems: 'center', gap: '8px', justifyContent: 'center', height: '38px',
-            }}
-          >
-            <Icon d={ICONS.home} size={15} />
-            Back to Homepage
-          </Link>
-          {user ? (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              paddingTop: '12px', borderTop: '1px solid #F1F5F9', marginTop: '4px',
-            }}>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827' }}>{user.fullName}</div>
-                <div style={{ fontSize: '11px', color: '#6B7280' }}>{user.email}</div>
+            {/* Drawer Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #F1F5F9' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img src="/logo.png" alt="Widgetized Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+                <span style={{ fontSize: '16px', fontWeight: 700, color: '#111827', letterSpacing: '-0.01em' }}>Widgetized</span>
               </div>
               <button
-                onClick={handleLogout}
+                onClick={() => setMobileMenuOpen(false)}
                 style={{
-                  ...btn.secondary,
-                  borderColor: '#DC2626',
-                  color: '#DC2626',
-                  fontSize: '12px',
-                  height: '32px',
-                  padding: '0 12px',
+                  background: '#F1F5F9',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#475569',
+                  cursor: 'pointer',
+                  padding: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
+                aria-label="Close menu"
               >
-                Logout
+                <Icon d={ICONS.close} size={18} />
               </button>
             </div>
-          ) : (
-            <div style={{ display: 'flex', gap: '8px', paddingTop: '8px', borderTop: '1px solid #F1F5F9' }}>
-              <Link href="/login" onClick={() => setMobileMenuOpen(false)} style={{ ...btn.secondary, flex: 1, textAlign: 'center', textDecoration: 'none' }}>
-                Login
-              </Link>
-              <Link href="/signup" onClick={() => setMobileMenuOpen(false)} style={{ ...btn.primary, flex: 1, textAlign: 'center', textDecoration: 'none' }}>
-                Sign Up
-              </Link>
+
+            {/* Search Input in Drawer */}
+            <div style={{ marginBottom: '16px' }}>
+              <input
+                type="search"
+                placeholder="Search widgets…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                style={{
+                  height: '40px', padding: '0 12px',
+                  borderRadius: '9px', border: '1px solid #E2E8F0',
+                  fontSize: '13px', color: '#374151',
+                  background: '#F8FAFC', outline: 'none',
+                  width: '100%',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
+              />
             </div>
-          )}
+
+            {/* Actions in Drawer */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+              <button
+                onClick={() => {
+                  setActiveTab('widgets');
+                  setMobileMenuOpen(false);
+                  setShowCreateModal(true);
+                }}
+                style={{
+                  ...btn.primary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  justifyContent: 'center',
+                  height: '42px',
+                  width: '100%',
+                  borderRadius: '9px',
+                  fontSize: '13.5px',
+                }}
+              >
+                <Icon d={ICONS.plus} size={15} />
+                Create New Widget
+              </button>
+            </div>
+
+            {/* User profile & Logout at bottom */}
+            {user ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                paddingTop: '16px', borderTop: '1px solid #F1F5F9', marginTop: 'auto',
+              }}>
+                <div style={{ overflow: 'hidden', paddingRight: '8px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{user.fullName}</div>
+                  <div style={{ fontSize: '11px', color: '#6B7280', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{user.email}</div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    ...btn.secondary,
+                    borderColor: '#DC2626',
+                    color: '#DC2626',
+                    fontSize: '12px',
+                    height: '32px',
+                    padding: '0 12px',
+                    borderRadius: '8px',
+                    flexShrink: 0,
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px', paddingTop: '16px', borderTop: '1px solid #F1F5F9', marginTop: 'auto' }}>
+                <Link href="/login" onClick={() => setMobileMenuOpen(false)} style={{ ...btn.secondary, flex: 1, textAlign: 'center', textDecoration: 'none', borderRadius: '8px' }}>
+                  Login
+                </Link>
+                <Link href="/signup" onClick={() => setMobileMenuOpen(false)} style={{ ...btn.primary, flex: 1, textAlign: 'center', textDecoration: 'none', borderRadius: '8px' }}>
+                  Sign Up
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

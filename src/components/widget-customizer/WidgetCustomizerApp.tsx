@@ -51,6 +51,15 @@ const TOGGLE_CSS = `
   /* iro picker overrides */
   .IroColorPicker { user-select: none; }
 
+  @keyframes drawerSlideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes fadeInOverlay {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   /* Responsive Mobile Customizer */
   .mobile-tabs-container {
     display: none;
@@ -416,99 +425,108 @@ export default function WidgetCustomizerApp() {
 
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
-        <div style={{
-          background: '#ffffff',
-          borderBottom: '1px solid #e5e7eb',
-          padding: '16px 20px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          boxShadow: '0 10px 25px rgba(0,0,0,0.08)',
-          zIndex: 45,
-        }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.08em', marginBottom: '4px' }}>
-            Sections & Navigation
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '6px' }}>
-            {(Object.keys(SECTION_TITLES) as CustomizerSection[]).map((sec) => (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.45)',
+            backdropFilter: 'blur(5px)',
+            zIndex: 1000,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            animation: 'fadeInOverlay 0.2s ease-out',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '320px',
+              height: '100%',
+              background: '#FFFFFF',
+              boxShadow: '-8px 0 30px rgba(0,0,0,0.18)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '20px',
+              boxSizing: 'border-box',
+              animation: 'drawerSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
+            {/* Drawer Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #F1F5F9' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <img src="/logo.png" alt="Logo" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+                <span style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>Widget Customizer</span>
+              </div>
               <button
-                key={sec}
-                onClick={() => {
-                  handleSectionChange(sec);
-                  setMobileTab('editor');
-                  setMobileMenuOpen(false);
-                }}
+                onClick={() => setMobileMenuOpen(false)}
                 style={{
-                  padding: '8px 12px',
+                  background: '#F1F5F9',
+                  border: 'none',
                   borderRadius: '8px',
-                  border: activeSection === sec ? '1px solid #2563eb' : '1px solid #e5e7eb',
-                  background: activeSection === sec ? '#eff6ff' : '#f9fafb',
-                  color: activeSection === sec ? '#1d4ed8' : '#374151',
-                  fontSize: '12px',
-                  fontWeight: activeSection === sec ? 600 : 500,
-                  textAlign: 'left',
+                  color: '#475569',
                   cursor: 'pointer',
+                  padding: '6px 8px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                }}
+                aria-label="Close menu"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748B', letterSpacing: '0.08em', marginBottom: '10px' }}>
+              Customizer Sections
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
+              {(Object.keys(SECTION_TITLES) as CustomizerSection[]).map((sec) => (
+                <button
+                  key={sec}
+                  onClick={() => {
+                    handleSectionChange(sec);
+                    setMobileTab('editor');
+                    setMobileMenuOpen(false);
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: activeSection === sec ? '1px solid #2563EB' : '1px solid #E2E8F0',
+                    background: activeSection === sec ? '#EFF6FF' : '#F8FAFC',
+                    color: activeSection === sec ? '#1D4ED8' : '#334155',
+                    fontSize: '13px',
+                    fontWeight: activeSection === sec ? 600 : 500,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {SECTION_TITLES[sec]}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ paddingTop: '16px', borderTop: '1px solid #F1F5F9', marginTop: 'auto' }}>
+              <Link
+                href="/dashboard"
+                onClick={() => setMobileMenuOpen(false)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #E2E8F0',
+                  background: '#FFFFFF',
+                  color: '#334155',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  textDecoration: 'none',
                 }}
               >
-                {SECTION_TITLES[sec]}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: '8px', paddingTop: '10px', borderTop: '1px solid #f1f5f9', marginTop: '6px' }}>
-            <Link
-              href="/dashboard"
-              onClick={() => setMobileMenuOpen(false)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: '1px solid #e5e7eb',
-                background: '#ffffff',
-                color: '#374151',
-                fontSize: '12px',
-                fontWeight: 600,
-                textAlign: 'center',
-                textDecoration: 'none',
-              }}
-            >
-              ← Dashboard
-            </Link>
-            <Link
-              href="/prompts"
-              onClick={() => setMobileMenuOpen(false)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: '1px solid #bfdbfe',
-                background: '#eff6ff',
-                color: '#2563eb',
-                fontSize: '12px',
-                fontWeight: 600,
-                textAlign: 'center',
-                textDecoration: 'none',
-              }}
-            >
-              Prompt Library
-            </Link>
-            <Link
-              href="/"
-              onClick={() => setMobileMenuOpen(false)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: '1px solid #e5e7eb',
-                background: '#ffffff',
-                color: '#374151',
-                fontSize: '12px',
-                fontWeight: 600,
-                textAlign: 'center',
-                textDecoration: 'none',
-              }}
-            >
-              Homepage
-            </Link>
+                ← Return to Fleet Dashboard
+              </Link>
+            </div>
           </div>
         </div>
       )}
