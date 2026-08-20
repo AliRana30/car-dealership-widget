@@ -30,33 +30,30 @@ export interface WidgetRecord {
   vapiApiKey?: string;
 }
 
-let supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+export function getDbClient() {
+  let url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
-if (!process.env.SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  console.warn(
-    '[Supabase] Warning: SUPABASE_URL is not defined in env. ' +
-    'Please set this environment variable to connect to PostgreSQL.'
-  );
-}
-
-// Self-healing: if a PostgreSQL connection string is mistakenly provided, parse it and extract the HTTP API URL
-if (supabaseUrl.startsWith('postgresql://') || supabaseUrl.startsWith('postgres://')) {
-  try {
-    const urlParts = supabaseUrl.split('@');
-    const hostAndPort = urlParts[urlParts.length - 1];
-    const host = hostAndPort.split(':')[0]; // e.g. db.oygkvdituwljqpfdxwaf.supabase.co
-    
-    if (host.includes('.supabase.co')) {
-      const projectRef = host.split('.')[1]; // e.g. oygkvdituwljqpfdxwaf
-      supabaseUrl = `https://${projectRef}.supabase.co`;
-    }
-  } catch (e) {
-    console.error('[Supabase] Failed to auto-convert postgresql url to HTTP API url:', e);
+  if (url.startsWith('postgresql://') || url.startsWith('postgres://')) {
+    try {
+      const urlParts = url.split('@');
+      const hostAndPort = urlParts[urlParts.length - 1];
+      const host = hostAndPort.split(':')[0];
+      if (host.includes('.supabase.co')) {
+        const projectRef = host.split('.')[1];
+        url = `https://${projectRef}.supabase.co`;
+      }
+    } catch {}
   }
+
+  return {
+    client: createClient(url, key),
+    url,
+    key,
+  };
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = getDbClient().client;
 
 function fromDbRow(widgetRow: any, agentRow?: any, secretRow?: any): WidgetRecord {
   const provider = (agentRow?.provider || 'retell') as 'retell' | 'vapi';
@@ -847,7 +844,8 @@ export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void
   }));
 
   // 4. Perform batch insert or upsert in chunks of 50
-  if (supabaseUrl.includes('placeholder-project-url')) {
+  const { client: dbClient, url: activeUrl } = getDbClient();
+  if (activeUrl.includes('placeholder-project-url')) {
     console.warn('[widgetsDb] Placeholder Supabase URL detected; skipping actual PostgreSQL write in test/mock environment.');
     return;
   }
@@ -857,8 +855,8 @@ export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void
     const chunk = enrichedRows.slice(i, i + DB_CHUNK_SIZE);
     const hasIds = chunk.some(row => row.id);
     const { error } = hasIds
-      ? await supabase.from('website_data').upsert(chunk)
-      : await supabase.from('website_data').insert(chunk);
+      ? await dbClient.from('website_data').upsert(chunk)
+      : await dbClient.from('website_data').insert(chunk);
 
     if (error) {
       console.error('[widgetsDb] Error inserting/upserting website data batch chunk:', error);
