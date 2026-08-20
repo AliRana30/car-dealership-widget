@@ -6,6 +6,14 @@
  * automatic retries with exponential backoff on transient failures.
  */
 
+export interface NetworkResponseLog {
+  url: string;
+  status: number;
+  headers?: Record<string, string>;
+  body?: any;
+  contentType?: string;
+}
+
 export interface CrawlRequest {
   urls: string[];
   priority?: number;
@@ -23,6 +31,9 @@ export interface CrawlResult {
   metadata?: Record<string, any>;
   cleaned_html?: string;
   extracted_content?: string | any;
+  network_responses?: NetworkResponseLog[];
+  captured_requests?: any[];
+  xhr_responses?: any[];
   is_blocked?: boolean;
   blocked_reason?: string;
 }

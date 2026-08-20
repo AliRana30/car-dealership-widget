@@ -42,6 +42,8 @@ export interface CrawledEntity {
     email?: string;
     address?: string;
     hours?: string;
+    discoveryMethod?: 'json-ld' | 'api' | 'css' | 'llm' | 'spa_chunk' | 'html_fallback';
+    apiEndpoint?: string;
     [key: string]: unknown;
   };
 }

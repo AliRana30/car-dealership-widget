@@ -197,6 +197,24 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       }
     };
 
+    const getDiscoveryMethodBadge = (method: string) => {
+      switch (method?.toLowerCase()) {
+        case 'api':
+          return { bg: '#ECFDF5', color: '#047857', border: '#A7F3D0', label: 'Network API' };
+        case 'json-ld':
+          return { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE', label: 'JSON-LD' };
+        case 'css':
+          return { bg: '#FFFBEB', color: '#B45309', border: '#FDE68A', label: 'CSS Selector' };
+        case 'llm':
+          return { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE', label: 'LLM Strategy' };
+        case 'spa_chunk':
+          return { bg: '#ECFEFF', color: '#0E7490', border: '#A5F3FC', label: 'SPA Bundle' };
+        case 'html_fallback':
+        default:
+          return { bg: '#F8FAFC', color: '#475569', border: '#E2E8F0', label: 'HTML DOM' };
+      }
+    };
+
     const formatAttributeLabel = (key: string): string => {
       const labels: Record<string, string> = {
         price: 'Price',
@@ -208,6 +226,13 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
         specialty: 'Specialty',
         brand: 'Brand',
         sku: 'SKU',
+        vin: 'VIN',
+        mileage: 'Mileage',
+        year: 'Year',
+        make: 'Make',
+        model: 'Model',
+        apiEndpoint: 'Observed API Endpoint',
+        discoveryMethod: 'Discovery Tier',
         category: 'Category',
       };
       return labels[key] || key.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
@@ -452,10 +477,10 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             </div>
           ` : ''}
 
-          <!-- Filter Toolbar -->
+          <!-- Filters -->
           <div class="toolbar">
             <div class="filter-group">
-              <span class="filter-label">Filter Source:</span>
+              <span class="filter-label">Source:</span>
               <select id="sourceFilter" onchange="applyFilters()">
                 <option value="all">All Sources (${dataList.length})</option>
                 <option value="shopify">Shopify</option>
@@ -465,9 +490,21 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 <option value="manual">Manual Upload</option>
               </select>
             </div>
-            <div class="filter-group" style="flex: 1; max-width: 400px;">
+            <div class="filter-group">
+              <span class="filter-label">Discovery Tier:</span>
+              <select id="tierFilter" onchange="applyFilters()">
+                <option value="all">All Tiers</option>
+                <option value="api">Network API</option>
+                <option value="json-ld">JSON-LD</option>
+                <option value="css">CSS Selector</option>
+                <option value="llm">LLM Strategy</option>
+                <option value="spa_chunk">SPA Bundle</option>
+                <option value="html_fallback">HTML DOM</option>
+              </select>
+            </div>
+            <div class="filter-group" style="flex: 1; max-width: 320px;">
               <span class="filter-label">Search:</span>
-              <input type="text" id="searchInput" style="width: 100%;" placeholder="Search keywords, titles, or content..." oninput="applyFilters()" />
+              <input type="text" id="searchInput" style="width: 100%;" placeholder="Search keywords, titles, VIN..." oninput="applyFilters()" />
             </div>
             <span class="counter-badge" id="visibleCounter">Showing ${dataList.length} items</span>
           </div>
@@ -477,6 +514,8 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             ${dataList.map(r => {
               const badge = getBadgeStyle(r.data_type || 'crawl');
               const meta = (r.metadata || {}) as Record<string, any>;
+              const discoveryMethod = (meta.discoveryMethod || (r.data_type === 'shopify' || r.data_type === 'woocommerce' || r.data_type === 'feed' ? 'api' : 'html_fallback')) as string;
+              const tierBadge = getDiscoveryMethodBadge(discoveryMethod);
               
               const categoryHtml = Array.isArray(r.category_path) && r.category_path.length > 0
                 ? `<div class="breadcrumbs">&#128193; ${r.category_path.map((c: string) => `<span>${c}</span>`).join(' <span class="crumb-sep">&rsaquo;</span> ')}</div>`
@@ -503,13 +542,16 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
               const formattedContentHtml = formatReadableContent(contentText);
 
               return `
-                <div class="card" data-source="${(r.data_type || 'crawl').toLowerCase()}" data-text="${(r.title + ' ' + contentText).toLowerCase()}">
+                <div class="card" data-source="${(r.data_type || 'crawl').toLowerCase()}" data-tier="${discoveryMethod.toLowerCase()}" data-text="${(r.title + ' ' + contentText).toLowerCase()}">
                   <div class="card-top">
                     <div>
                       <a href="${r.source_url || '#'}" target="_blank" class="card-title">${r.title || 'Untitled'}</a>
                       ${r.source_url ? `<br/><a href="${r.source_url}" target="_blank" class="source-link">&#128279; ${r.source_url}</a>` : ''}
                     </div>
                     <div class="badges">
+                      <span class="badge" style="background: ${tierBadge.bg}; color: ${tierBadge.color}; border: 1px solid ${tierBadge.border};" title="Extraction Tier">
+                        ${tierBadge.label}
+                      </span>
                       <span class="badge" style="background: ${badge.bg}; color: ${badge.color}; border: 1px solid ${badge.border};">
                         ${badge.label}
                       </span>
@@ -558,18 +600,21 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
         <script>
           function applyFilters() {
             const selectedSource = document.getElementById('sourceFilter').value.toLowerCase();
+            const selectedTier = document.getElementById('tierFilter').value.toLowerCase();
             const searchText = document.getElementById('searchInput').value.toLowerCase().trim();
             const cards = document.querySelectorAll('.card');
             let visibleCount = 0;
 
             cards.forEach(card => {
               const source = card.getAttribute('data-source') || '';
+              const tier = card.getAttribute('data-tier') || '';
               const text = card.getAttribute('data-text') || '';
 
               const matchesSource = selectedSource === 'all' || source === selectedSource;
+              const matchesTier = selectedTier === 'all' || tier === selectedTier;
               const matchesSearch = !searchText || text.includes(searchText);
 
-              if (matchesSource && matchesSearch) {
+              if (matchesSource && matchesTier && matchesSearch) {
                 card.style.display = 'block';
                 visibleCount++;
               } else {

@@ -226,7 +226,7 @@ function resolveUrl(href: string, base: string): string {
 
 // ─── JSON-LD extractor ────────────────────────────────────────────────────────
 
-function extractJsonLd(html: string): Record<string, any>[] {
+export function extractJsonLd(html: string): Record<string, any>[] {
   const results: Record<string, any>[] = [];
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m;
@@ -240,9 +240,11 @@ function extractJsonLd(html: string): Record<string, any>[] {
   return results;
 }
 
+import { discoverAndFetchPageApis } from './networkExtractor';
+
 // ─── JSON-LD → CrawledEntity mappers ─────────────────────────────────────────
 
-function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: string): CrawledEntity[] {
+export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: string): CrawledEntity[] {
   const entities: CrawledEntity[] = [];
 
   for (const ld of jsonLdList) {
@@ -256,7 +258,7 @@ function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: string)
         title: ld.name || ld.headline || '',
         content: ld.description || ld.name || '',
         dataType: 'product',
-        metadata: {},
+        metadata: { discoveryMethod: 'json-ld' },
       };
       if (ld.description) entity.metadata.description = ld.description;
       if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
@@ -278,7 +280,7 @@ function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: string)
         title: ld.name || '',
         content: ld.description || ld.name || '',
         dataType: 'service',
-        metadata: {},
+        metadata: { discoveryMethod: 'json-ld' },
       };
       if (ld.description) entity.metadata.description = ld.description;
       if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
@@ -293,7 +295,7 @@ function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: string)
         title: ld.name || '',
         content: ld.description || `${ld.name || ''} — ${ld.address?.streetAddress || ''}`.trim(),
         dataType: 'contact',
-        metadata: {},
+        metadata: { discoveryMethod: 'json-ld' },
       };
       if (ld.description) entity.metadata.description = ld.description;
       if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
@@ -315,7 +317,7 @@ function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: string)
           title: q.name || '',
           content: answer || q.name || '',
           dataType: 'faq',
-          metadata: { description: answer },
+          metadata: { discoveryMethod: 'json-ld', description: answer },
         };
         if (entity.title || entity.content) entities.push(entity);
       }
@@ -328,7 +330,7 @@ function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: string)
         title: ld.name || '',
         content: ld.description || ld.name || '',
         dataType: 'event',
-        metadata: {},
+        metadata: { discoveryMethod: 'json-ld' },
       };
       if (ld.description) entity.metadata.description = ld.description;
       if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
@@ -355,7 +357,6 @@ function simplifyAvailability(val: string): string {
 
 function extractInlineJson(html: string, pageUrl: string): CrawledEntity[] {
   const entities: CrawledEntity[] = [];
-  // Look for common patterns like window.__NEXT_DATA__, window.__INITIAL_STATE__
   const patterns = [
     /window\.__NEXT_DATA__\s*=\s*(\{[\s\S]*?\});\s*(?:window|<\/script>)/,
     /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/,
@@ -381,7 +382,7 @@ function extractInlineJson(html: string, pageUrl: string): CrawledEntity[] {
           title,
           content: desc || title,
           dataType: guessDataType(item),
-          metadata: {},
+          metadata: { discoveryMethod: 'json-ld' },
         };
         if (desc) entity.metadata.description = desc;
         const imgs = item.images || item.photos || (item.image ? [item.image] : []);
@@ -455,6 +456,7 @@ export async function extractSpaChunkEntities(html: string, pageUrl: string): Pr
     for (const scriptUrl of scriptUrls.slice(0, 12)) {
       try {
         const res = await fetch(scriptUrl, {
+          signal: AbortSignal.timeout(3000),
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
           },
@@ -541,6 +543,7 @@ function parseAndPushEntity(
   if (rating) formattedContent += `\nRating: ${rating}★${reviews ? ` (${reviews} reviews)` : ''}`;
 
   const metadata: Record<string, any> = {
+    discoveryMethod: 'spa_chunk',
     source: 'spa_chunk_extract',
     description: description || cleanTitle,
     ...(price ? { price } : {}),
@@ -562,7 +565,7 @@ function parseAndPushEntity(
 export async function extractPageEntities(html: string, pageUrl: string): Promise<CrawledEntity[]> {
   const entities: CrawledEntity[] = [];
 
-  // 1. JSON-LD (highest fidelity)
+  // 1. JSON-LD (Tier 1 - highest fidelity)
   const jsonLd = extractJsonLd(html);
   if (jsonLd.length) {
     entities.push(...mapJsonLdToEntities(jsonLd, pageUrl));
@@ -572,13 +575,19 @@ export async function extractPageEntities(html: string, pageUrl: string): Promis
   const inlineEntities = extractInlineJson(html, pageUrl);
   entities.push(...inlineEntities);
 
-  // 3. Client-rendered SPA JS chunk extraction
+  // 3. Dynamic AJAX / API Discovery (Tier 2)
+  const dynamicApiEntities = await discoverAndFetchPageApis(html, pageUrl);
+  if (dynamicApiEntities.length > 0) {
+    entities.push(...dynamicApiEntities);
+  }
+
+  // 4. Client-rendered SPA JS chunk extraction (Tier 5 SPA)
   const spaEntities = await extractSpaChunkEntities(html, pageUrl);
   if (spaEntities.length > 0) {
     entities.push(...spaEntities);
   }
 
-  // 4. Page-level text entity
+  // 5. Page-level text entity (Tier 5 Fallback)
   const h1 = extractTag(html, 'h1');
   const siteTitle = extractTag(html, 'title') ||
     extractMeta(html, 'og:title') ||
@@ -596,9 +605,10 @@ export async function extractPageEntities(html: string, pageUrl: string): Promis
 
   let fullContent = [description, bodyText].filter(Boolean).join('\n\n').trim();
 
-  // If SPA entities were extracted, append their catalog text to the page-level record
-  if (spaEntities.length > 0) {
-    const catalogSummary = spaEntities.map(e => `• ${e.title}: ${e.metadata?.description || ''} ${e.metadata?.price ? `(${e.metadata.price})` : ''}`).join('\n');
+  // If structured entities were extracted, append their catalog text to the page-level record
+  const structuredItems = [...dynamicApiEntities, ...spaEntities];
+  if (structuredItems.length > 0) {
+    const catalogSummary = structuredItems.map(e => `• ${e.title}: ${e.metadata?.description || ''} ${e.metadata?.price ? `(${e.metadata.price})` : ''}`).join('\n');
     fullContent += `\n\nCatalog Items / Offerings:\n${catalogSummary}`;
   }
 
@@ -618,7 +628,9 @@ export async function extractPageEntities(html: string, pageUrl: string): Promis
       title: decodeHtmlEntities(title.trim()),
       content: decodedContent || title,
       dataType,
-      metadata: {},
+      metadata: {
+        discoveryMethod: 'html_fallback',
+      },
     };
     if (description) entity.metadata.description = decodeHtmlEntities(description);
     const images = extractImages(html, pageUrl);

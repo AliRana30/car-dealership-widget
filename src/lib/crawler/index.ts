@@ -27,9 +27,15 @@ import {
   safeFetch,
   extractPageEntities,
   extractSpaChunkEntities,
+  extractJsonLd,
+  mapJsonLdToEntities,
   extractSameDomainLinks,
   extractSitemapUrls,
 } from './extractor';
+import {
+  extractEntitiesFromNetworkResponses,
+  discoverAndFetchPageApis,
+} from './networkExtractor';
 import { createClient } from '@supabase/supabase-js';
 import { saveWebsiteDataBatch, WebsiteDataRow } from '@/config/widgetsDb';
 import crypto from 'crypto';
@@ -235,6 +241,9 @@ export async function crawlWebsite(
             anti_bot_detection: true,
             delay_before_return_html: 2.0,
             scan_full_page: true,
+            capture_network: true,
+            capture_xhr: true,
+            log_network: true,
             magic: true,
             extraction_strategy: extractionStrategy,
           },
@@ -503,7 +512,48 @@ async function discoverUrlsViaSeeder(
 async function extractEntitiesFromCrawlResult(
   result: import('@/lib/crawl4ai/client').CrawlResult
 ): Promise<CrawledEntity[]> {
-  // 1. Check for structured output from Crawl4AI (LLM or CSS extraction strategy)
+  // ── TIER 1: Explicit JSON-LD (Highest Preference) ──────────────────────────
+  if (result.html) {
+    try {
+      const jsonLd = extractJsonLd(result.html);
+      if (jsonLd.length > 0) {
+        const jsonLdEntities = mapJsonLdToEntities(jsonLd, result.url);
+        if (jsonLdEntities.length > 0) {
+          jsonLdEntities.forEach(e => {
+            e.metadata = { ...e.metadata, discoveryMethod: 'json-ld' };
+          });
+          return jsonLdEntities;
+        }
+      }
+    } catch {}
+  }
+
+  // ── TIER 2: Observed Network API JSON (XHR / Fetch Responses) ───────────────
+  const rawNetworkResponses = [
+    ...(Array.isArray(result.network_responses) ? result.network_responses : []),
+    ...(Array.isArray(result.xhr_responses) ? result.xhr_responses : []),
+    ...(Array.isArray(result.captured_requests) ? result.captured_requests : []),
+    ...(Array.isArray(result.metadata?.network_responses) ? result.metadata.network_responses : []),
+    ...(Array.isArray(result.metadata?.api_calls) ? result.metadata.api_calls : []),
+  ];
+
+  let apiEntities = extractEntitiesFromNetworkResponses(rawNetworkResponses, result.url);
+
+  // If no observed network logs in result, but HTML is present, try dynamic AJAX discovery
+  if (apiEntities.length === 0 && result.html) {
+    try {
+      apiEntities = await discoverAndFetchPageApis(result.html, result.url);
+    } catch {}
+  }
+
+  if (apiEntities.length > 0) {
+    apiEntities.forEach(e => {
+      e.metadata = { ...e.metadata, discoveryMethod: 'api' };
+    });
+    return apiEntities;
+  }
+
+  // ── TIER 3 & 4: Structured Output from Crawl4AI (CSS Selector or LLM) ────────
   if (result.extracted_content) {
     try {
       let parsed = result.extracted_content;
@@ -520,6 +570,8 @@ async function extractEntitiesFromCrawlResult(
         : [];
 
       if (rawEntities.length > 0) {
+        const isCssStrategy = !!(result.metadata?.extraction_strategy === 'json_css' || result.metadata?.strategy === 'css');
+        const discoveryMethod: CrawledEntity['metadata']['discoveryMethod'] = isCssStrategy ? 'css' : 'llm';
         const entities: CrawledEntity[] = [];
         const knownKeys = new Set([
           'title', 'shortDescription', 'short_description', 'description', 'content',
@@ -530,7 +582,7 @@ async function extractEntitiesFromCrawlResult(
 
         for (const item of rawEntities) {
           if (!item || typeof item !== 'object') continue;
-          const title = (item.title || '').trim();
+          const title = (item.title || item.name || '').trim();
           if (!title) continue;
 
           const desc =
@@ -552,7 +604,6 @@ async function extractEntitiesFromCrawlResult(
           const { imageUrls, imageSource } = processEntityImages(rawImages, result.url);
           const entityType = (item.entityType || item.entity_type || 'text') as CrawledEntity['dataType'];
 
-          // Extract additional CSS / custom properties into metadata
           const extraProps: Record<string, any> = {};
           for (const [k, v] of Object.entries(item)) {
             if (!knownKeys.has(k) && v !== undefined && v !== null && v !== '') {
@@ -560,7 +611,8 @@ async function extractEntitiesFromCrawlResult(
             }
           }
 
-          const meta = {
+          const meta: Record<string, any> = {
+            discoveryMethod,
             ...extraProps,
             ...(imageSource ? { imageSource } : {}),
             ...(typeof item.metadata === 'object' && item.metadata !== null ? item.metadata : {}),
@@ -572,6 +624,7 @@ async function extractEntitiesFromCrawlResult(
             content: desc || title,
             dataType: entityType,
             metadata: {
+              discoveryMethod,
               description: desc,
               images: imageUrls.slice(0, 5),
               statusCode: result.status_code,
@@ -589,10 +642,14 @@ async function extractEntitiesFromCrawlResult(
     }
   }
 
-  // 2. Check for SPA client-rendered chunk entities if HTML is available
+  // ── TIER 5: SPA Client-Rendered Script Chunks & HTML Fallback ───────────────
   const spaEntities = result.html ? await extractSpaChunkEntities(result.html, result.url) : [];
+  if (spaEntities.length > 0) {
+    spaEntities.forEach(e => {
+      e.metadata = { ...e.metadata, discoveryMethod: 'spa_chunk' };
+    });
+  }
 
-  // 3. Generic fallback extraction
   const markdown = result.markdown || result.cleaned_html || result.html || '';
   const meta     = result.metadata || {};
 
@@ -618,10 +675,9 @@ async function extractEntitiesFromCrawlResult(
 
   const { imageUrls: fallbackImageUrls, imageSource: fallbackImageSource } = processEntityImages(rawFallbackImages, result.url);
 
-  // Classify entity type generically
   const entityType = classifyEntityType(result.url, markdown);
 
-  const fallbackMeta = {
+  const fallbackMeta: Record<string, any> = {
     ...flattenMeta(meta),
     ...(fallbackImageSource ? { imageSource: fallbackImageSource } : {}),
   };
@@ -633,7 +689,6 @@ async function extractEntitiesFromCrawlResult(
   }
 
   const cleanedContent = cleanStructuredContent(fullContent);
-
   const entities: CrawledEntity[] = [...spaEntities];
 
   if (title.trim() || cleanedContent) {
@@ -643,6 +698,7 @@ async function extractEntitiesFromCrawlResult(
       content: cleanedContent || title.trim(),
       dataType: entityType as CrawledEntity['dataType'],
       metadata: {
+        discoveryMethod: 'html_fallback',
         description: description,
         images: fallbackImageUrls.slice(0, 5),
         statusCode: result.status_code,
