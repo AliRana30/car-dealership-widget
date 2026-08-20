@@ -110,11 +110,12 @@ function AvailabilityBadge({ value }: { value: string }) {
 }
 
 function StarRating({ rating }: { rating: number | string }) {
+  if (typeof rating === 'object' && rating !== null) return null;
   const num = typeof rating === 'string' ? parseFloat(rating) : rating;
-  if (isNaN(num)) return <span style={{ fontSize: '11px', color: '#64748B' }}>{rating}</span>;
+  if (isNaN(num)) return <span style={{ fontSize: '11px', color: '#64748B' }}>{String(rating)}</span>;
   const full = Math.floor(num);
   const half = num - full >= 0.5;
-  const empty = 5 - full - (half ? 1 : 0);
+  const empty = Math.max(0, 5 - full - (half ? 1 : 0));
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
       {Array.from({ length: full }).map((_, i) => (
@@ -189,12 +190,15 @@ function formatKeyLabel(key: string): string {
 export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0' }: IntelligenceResultCardProps) {
   const meta = (result.metadata || {}) as Record<string, any>;
 
-  const title = result.title || '';
+  const title = typeof result.title === 'string' ? result.title : '';
   const description =
-    (result as any).shortDescription ||
-    (result as any).description ||
-    (meta.description as string) ||
-    '';
+    typeof (result as any).shortDescription === 'string'
+      ? (result as any).shortDescription
+      : typeof (result as any).description === 'string'
+      ? (result as any).description
+      : typeof meta.description === 'string'
+      ? meta.description
+      : '';
 
   const rawImages =
     (result as any).imageUrls ||
@@ -202,16 +206,31 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
     (meta.images as string[]) ||
     (meta.image ? [String(meta.image)] : []);
 
-  const images = Array.isArray(rawImages) ? rawImages.filter(Boolean) : [];
+  const images = Array.isArray(rawImages) ? rawImages.filter(img => typeof img === 'string' && img.length > 0) : [];
   const hasImages = images.length > 0;
 
-  const price = (result as any).price ?? meta.price;
-  const currency = (result as any).currency || meta.currency || 'USD';
-  const availability = (result as any).availability || meta.availability;
-  const rating = (result as any).rating ?? meta.rating;
-  const reviews = (result as any).reviews ?? meta.reviews;
-  const sourceUrl = (result as any).sourceUrl || (result as any).source_url || meta.sourceUrl;
-  const entityType = result.entityType || 'Info';
+  const rawPrice = (result as any).price ?? meta.price;
+  const price = typeof rawPrice === 'object' ? undefined : rawPrice;
+
+  const currency = typeof (result as any).currency === 'string' ? (result as any).currency : typeof meta.currency === 'string' ? meta.currency : 'USD';
+  
+  const rawAvailability = (result as any).availability ?? meta.availability;
+  const availability = typeof rawAvailability === 'object' ? undefined : (rawAvailability ? String(rawAvailability) : undefined);
+
+  const rawRating = (result as any).rating ?? meta.rating;
+  const rating = typeof rawRating === 'object' ? undefined : rawRating;
+
+  const rawReviews = (result as any).reviews ?? meta.reviews;
+  let reviewsCount: number | string | undefined = undefined;
+  if (Array.isArray(rawReviews)) {
+    reviewsCount = rawReviews.length;
+  } else if (typeof rawReviews === 'number' || typeof rawReviews === 'string') {
+    reviewsCount = rawReviews;
+  }
+
+  const rawSourceUrl = (result as any).sourceUrl || (result as any).source_url || meta.sourceUrl;
+  const sourceUrl = typeof rawSourceUrl === 'string' ? rawSourceUrl : undefined;
+  const entityType = typeof result.entityType === 'string' ? result.entityType : 'Info';
 
   const hasPrice = price !== undefined && price !== null && price !== '';
   const hasRating = rating !== undefined && rating !== null && rating !== '';
@@ -225,7 +244,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
   const detailEntries = Object.entries(rawAttributes).filter(([k, v]) => {
     if (IGNORED_METADATA_KEYS.has(k)) return false;
     if (v === null || v === undefined || v === '') return false;
-    if (typeof v === 'object') return false;
+    if (typeof v === 'object' || typeof v === 'function' || Array.isArray(v)) return false;
     return true;
   });
 
@@ -312,15 +331,15 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
         )}
 
         {/* Rating & reviews */}
-        {(hasRating || reviews) && (
+        {(hasRating || reviewsCount !== undefined) && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '6px',
             marginBottom: '8px', flexWrap: 'wrap',
           }}>
             {hasRating && <StarRating rating={rating} />}
-            {reviews && (
+            {reviewsCount !== undefined && (
               <span style={{ fontSize: '10px', color: '#94A3B8' }}>
-                ({typeof reviews === 'number' ? reviews.toLocaleString() : reviews} reviews)
+                ({typeof reviewsCount === 'number' ? reviewsCount.toLocaleString() : String(reviewsCount)} reviews)
               </span>
             )}
           </div>

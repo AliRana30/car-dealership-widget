@@ -703,11 +703,13 @@ export async function getRelevantWebsiteRecords(
             result.images = [String(meta.image)];
           }
 
-          if (meta.price !== undefined) result.price = meta.price;
+          if (meta.price !== undefined && typeof meta.price !== 'object') result.price = meta.price;
           if (meta.currency) result.currency = String(meta.currency);
-          if (meta.availability) result.availability = String(meta.availability);
-          if (meta.rating !== undefined) result.rating = meta.rating;
-          if (meta.reviews !== undefined) result.reviews = meta.reviews;
+          if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
+          if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
+          if (meta.reviews !== undefined) {
+            result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
+          }
           if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
           if (r.source_url) result.sourceUrl = r.source_url;
           return result;
@@ -769,11 +771,13 @@ export async function getRelevantWebsiteRecords(
         result.images = [String(meta.image)];
       }
 
-      if (meta.price !== undefined) result.price = meta.price;
+      if (meta.price !== undefined && typeof meta.price !== 'object') result.price = meta.price;
       if (meta.currency) result.currency = String(meta.currency);
-      if (meta.availability) result.availability = String(meta.availability);
-      if (meta.rating !== undefined) result.rating = meta.rating;
-      if (meta.reviews !== undefined) result.reviews = meta.reviews;
+      if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
+      if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
+      if (meta.reviews !== undefined) {
+        result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
+      }
       if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
       if (r.source_url) result.sourceUrl = r.source_url;
       return result;
