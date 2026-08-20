@@ -31,8 +31,8 @@ export interface WidgetRecord {
 }
 
 export function getDbClient() {
-  let url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+  let url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
   if (url.startsWith('postgresql://') || url.startsWith('postgres://')) {
     try {
@@ -845,8 +845,8 @@ export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void
 
   // 4. Perform batch insert or upsert in chunks of 50
   const { client: dbClient, url: activeUrl } = getDbClient();
-  if (activeUrl.includes('placeholder-project-url')) {
-    console.warn('[widgetsDb] Placeholder Supabase URL detected; skipping actual PostgreSQL write in test/mock environment.');
+  if (!activeUrl) {
+    console.warn('[widgetsDb] No active Supabase URL configured; skipping PostgreSQL write.');
     return;
   }
 

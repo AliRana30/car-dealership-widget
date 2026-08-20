@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
-import { getSupabaseBrowserClient } from '@/lib/supabaseClient';
+import { getSupabaseBrowserClient, getOrFetchSupabaseBrowserClient } from '@/lib/supabaseClient';
 
 export interface NavigationEventPayload {
   url: string;
@@ -35,10 +35,10 @@ export async function broadcastToSession(
   }
 
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
   if (!url || !key) {
-    const errorMsg = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for session broadcast';
+    const errorMsg = 'Missing SUPABASE_URL or SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY for session broadcast';
     console.error(`[realtime] ${errorMsg}`);
     return { success: false, channel: '', error: errorMsg };
   }
@@ -103,35 +103,41 @@ export function subscribeToSessionChannel(
     return () => {};
   }
 
-  const supabase = getSupabaseBrowserClient();
-  if (!supabase) {
-    return () => {};
-  }
+  let activeChannel: RealtimeChannel | null = null;
+  let isCancelled = false;
 
-  const channelName = getSessionChannelName(sessionId);
-  const channel = supabase.channel(channelName);
+  getOrFetchSupabaseBrowserClient().then((supabase) => {
+    if (isCancelled || !supabase) return;
 
-  channel
-    .on('broadcast', { event: '*' }, (payload: any) => {
-      if (payload && payload.event) {
-        onEvent(payload.event, payload.payload);
-      }
-    })
-    .subscribe((status) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[Realtime Session] Channel ${channelName} status:`, status);
-      }
-    });
+    const channelName = getSessionChannelName(sessionId);
+    const channel = supabase.channel(channelName);
+    activeChannel = channel;
+
+    channel
+      .on('broadcast', { event: '*' }, (payload: any) => {
+        if (payload && payload.event) {
+          onEvent(payload.event, payload.payload);
+        }
+      })
+      .subscribe((status) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[Realtime Session] Channel ${channelName} status:`, status);
+        }
+      });
+  });
 
   // Return clean teardown function
   return () => {
-    try {
-      supabase.removeChannel(channel);
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`[Realtime Session] Channel ${channelName} unsubscribed & cleaned up.`);
+    isCancelled = true;
+    if (activeChannel) {
+      try {
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+          supabase.removeChannel(activeChannel);
+        }
+      } catch (err) {
+        console.warn(`[Realtime Session] Error cleaning up channel:`, err);
       }
-    } catch (err) {
-      console.warn(`[Realtime Session] Error cleaning up ${channelName}:`, err);
     }
   };
 }

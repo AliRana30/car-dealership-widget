@@ -1,37 +1,64 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let browserClient: SupabaseClient | null = null;
+let clientPromise: Promise<SupabaseClient | null> | null = null;
 
 /**
- * Returns a singleton browser-safe Supabase client configured for Realtime channels.
- * Reads NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
- *
- * If credentials are missing, logs a clear warning and returns null to prevent
- * bogus WebSocket handshake attempts with invalid placeholder keys.
+ * Synchronous client getter (if already initialized or available in env)
  */
 export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (browserClient) return browserClient;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-  if (!url || !anonKey) {
-    if (typeof window !== 'undefined') {
-      console.warn(
-        '[SupabaseBrowserClient] Realtime disabled: Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. ' +
-        'Please ensure NEXT_PUBLIC_SUPABASE_ANON_KEY is added to your Vercel Project Environment Variables.'
-      );
-    }
-    return null;
+  if (url && anonKey) {
+    browserClient = createClient(url, anonKey, {
+      realtime: {
+        params: {
+          eventsPerSecond: 10,
+        },
+      },
+    });
+    return browserClient;
   }
 
-  browserClient = createClient(url, anonKey, {
-    realtime: {
-      params: {
-        eventsPerSecond: 10,
-      },
-    },
-  });
+  return null;
+}
 
-  return browserClient;
+/**
+ * Asynchronous client getter: if direct env is missing in browser, fetches
+ * SUPABASE_URL and SUPABASE_ANON_KEY from /api/realtime/config endpoint.
+ */
+export async function getOrFetchSupabaseBrowserClient(): Promise<SupabaseClient | null> {
+  const existing = getSupabaseBrowserClient();
+  if (existing) return existing;
+
+  if (clientPromise) return clientPromise;
+
+  clientPromise = (async () => {
+    try {
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/realtime/config');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.supabaseUrl && data.supabaseAnonKey) {
+            browserClient = createClient(data.supabaseUrl, data.supabaseAnonKey, {
+              realtime: {
+                params: {
+                  eventsPerSecond: 10,
+                },
+              },
+            });
+            return browserClient;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[SupabaseBrowserClient] Could not fetch realtime config:', err);
+    }
+    return null;
+  })();
+
+  return clientPromise;
 }
