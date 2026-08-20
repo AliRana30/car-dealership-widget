@@ -125,15 +125,24 @@ sequenceDiagram
 - **Partial Speech & Real-Time Transcripts**: Live speech-to-text transcripts render user speech and agent replies in real time with word-by-word streaming.
 - **Streaming Text Chat Fallback**: Full conversational text chat tab with markdown rendering, message history, typing indicators, and seamless voice-to-text switching.
 
-### Website Intelligence & Multi-Tier Ingestion Subsystem
+### Website Intelligence & 5-Tier Universal Ingestion Subsystem
+The ingestion pipeline is architected around a resilient, multi-strategy fallback hierarchy designed to extract structured catalog data from any web architecture—from server-rendered static HTML to decoupled Single Page Applications (SPAs):
+
 - **5-Tier Extraction Hierarchy**:
   - **Tier 1 (JSON-LD & Schema.org)**: Direct extraction of structured `@type: Product`, `@type: Vehicle`, `@type: Service`, `@type: Course`, `@type: LocalBusiness`, and `@type: FAQPage`.
-  - **Tier 2 (Dynamic AJAX & REST API Discovery)**: Automatic detection of inline APIs and client-side backend endpoints (e.g. Render, Railway, Redux `apiSlice`, Next.js routes) discovered from SPA script bundle chunks.
+  - **Tier 2 (Dynamic AJAX & REST API Discovery)**: Automated discovery and interrogation of inline API routes and client-side backend endpoints (e.g. Render, Railway, Redux `apiSlice`, Next.js `/api/v1` routes) uncovered from SPA JavaScript bundle chunks.
   - **Tier 3 (User-Defined CSS Selector Schemas)**: Precision visual selector mapping for custom dealership, real estate, or enterprise inventory structures.
-  - **Tier 4 (LLM-Assisted Structured Extraction)**: Fallback LLM extraction converting unstructured DOM blocks into normalized JSON entities.
+  - **Tier 4 (LLM-Assisted Structured Extraction)**: Context-aware LLM extraction converting unstructured DOM blocks into normalized JSON catalog entities.
   - **Tier 5 (SPA Bundle Chunks & Responsive HTML Fallback)**: Client-side component decompilation extracting catalog item arrays, media, pricing, and descriptions.
 - **Fail-Fast Hybrid Crawler**: Combines containerized Crawl4AI browser automation with high-speed native extraction. Automatically falls back to native crawling on microservice timeout without stalling.
 - **Responsive Media & High-Res Image Extraction**: Automatically aggregates image URLs from `image_urls`, `metadata.images`, `metadata.thumbnail`, and responsive `<picture>` tags, selecting highest-resolution assets and CDN-hosted graphics (Cloudinary, Shopify CDN, Bunny, ImageKit).
+
+### Universal Vertical & Industry Adapters
+The platform features built-in intelligence adapters tailored to diverse business models:
+- **Next.js & React SPAs (e.g., CampusCore LMS / E-Learning)**: Automatically decompiles `<script>` bundle chunks, uncovers external backend endpoints (e.g., Render, Railway, Heroku, Vercel), and extracts course catalogs, curriculum difficulty levels, tags, and Cloudinary thumbnail assets.
+- **Automotive Dealerships (e.g., Ottawa Chrysler Jeep Dodge)**: Proactively extracts 17-digit VIN identifiers, odometer mileage, trim levels, transmission, engine specifications, MSRP/sale pricing, and high-resolution vehicle photo galleries.
+- **E-Commerce Stores (Shopify & WooCommerce)**: Real-time cryptographic webhook streams, SKU matching, multi-variant tracking, live inventory availability, and product catalogs via native JSON/REST connectors.
+- **Professional Services & Booking Businesses (Clinics, Salons, Law Firms)**: Ingests service menus, practitioner profiles, appointment durations, hourly rate cards, and direct booking links.
 
 ### Freshness Tracking & LLM Confidence Hedging
 - **Entity Freshness Lifecycle**: Tracks `first_seen`, `last_seen`, `last_checked_at`, and `still_listed` boolean flags on every entity record.
