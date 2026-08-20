@@ -6,6 +6,9 @@ import { broadcastToSession } from '@/lib/realtime/session';
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  if (!url || !key) {
+    throw new Error('[agents/tools] Missing Supabase credentials in environment.');
+  }
   return createClient(url, key);
 }
 
@@ -63,71 +66,78 @@ export async function searchEntities(
   query: string,
   limit: number = 3
 ): Promise<Entity[]> {
-  if (!query || !query.trim()) return [];
+  if (!query || !query.trim() || !widgetId) return [];
 
   const supabase = getSupabase();
   const trimmedQuery = query.trim();
 
-  // 1. Generate 1536-dim vector embedding for the search query
-  let queryVector: number[] | null = null;
-  try {
-    queryVector = await embedText(trimmedQuery);
-  } catch (embedErr) {
-    console.warn('[agent-tools] Embedding generation failed, falling back to text search:', embedErr);
+  // Resolve widget UUID if a slug was provided
+  let targetWidgetId = widgetId;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(widgetId)) {
+    const { data: w } = await supabase.from('widgets').select('id').eq('slug', widgetId).maybeSingle();
+    if (w?.id) targetWidgetId = w.id;
   }
 
-  // 2. Vector search via Supabase pgvector RPC if available
-  if (queryVector && queryVector.length === 1536) {
-    try {
+  // 1. Direct fetch rows scoped to widget_id
+  const { data: rows } = await supabase
+    .from('website_data')
+    .select('*')
+    .or(`widget_id.eq.${targetWidgetId},widget_id.eq.${widgetId}`)
+    .limit(100);
+
+  if (rows && rows.length > 0) {
+    const queryLower = trimmedQuery.toLowerCase();
+    const queryWords = queryLower.split(/\s+/).filter(w => w.length > 1);
+
+    const scored = rows.map(row => {
+      let score = 0;
+      const titleLower = (row.title || '').toLowerCase();
+      const contentLower = (row.content || '').toLowerCase();
+      const descLower = (row.short_description || '').toLowerCase();
+
+      // Exact phrase match in title gets highest priority
+      if (titleLower.includes(queryLower)) score += 50;
+      if (contentLower.includes(queryLower)) score += 20;
+
+      for (const word of queryWords) {
+        if (titleLower === word) score += 30;
+        else if (titleLower.includes(word)) score += 15;
+        if (descLower.includes(word)) score += 10;
+        if (contentLower.includes(word)) score += 4;
+      }
+
+      return { row, score };
+    });
+
+    const matches = scored
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(s => s.row);
+
+    if (matches.length > 0) {
+      return matches.map(mapRowToEntity);
+    }
+  }
+
+  // 2. Vector search via Supabase pgvector RPC fallback if keyword search produced 0 matches
+  try {
+    const queryVector = await embedText(trimmedQuery);
+    if (queryVector && queryVector.length === 1536) {
       const { data: rpcMatches, error: rpcError } = await supabase.rpc('match_website_data', {
         query_embedding: queryVector,
         match_count: limit,
-        filter_widget_id: widgetId,
+        filter_widget_id: targetWidgetId,
       });
 
       if (!rpcError && Array.isArray(rpcMatches) && rpcMatches.length > 0) {
         return rpcMatches.map(mapRowToEntity);
       }
-    } catch {
-      // Fall through to direct query if RPC is not defined
     }
-  }
+  } catch {}
 
-  // 3. Fallback: Query website_data directly scoped to widget_id
-  const { data: rows, error } = await supabase
-    .from('website_data')
-    .select('*')
-    .eq('widget_id', widgetId)
-    .limit(50);
-
-  if (error || !rows || rows.length === 0) {
-    return [];
-  }
-
-  // Score rows by title and content keyword relevance
-  const queryWords = trimmedQuery.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-  const scored = rows.map(row => {
-    let score = 0;
-    const titleLower = (row.title || '').toLowerCase();
-    const contentLower = (row.content || '').toLowerCase();
-    const descLower = (row.short_description || '').toLowerCase();
-
-    for (const word of queryWords) {
-      if (titleLower.includes(word)) score += 15;
-      if (descLower.includes(word)) score += 8;
-      if (contentLower.includes(word)) score += 3;
-    }
-    return { row, score };
-  });
-
-  const matches = scored
-    .filter(s => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(s => s.row);
-
-  const finalRows = matches.length > 0 ? matches : rows.slice(0, limit);
-  return finalRows.map(mapRowToEntity);
+  // 3. Fallback to top rows if available
+  return (rows || []).slice(0, limit).map(mapRowToEntity);
 }
 
 /**

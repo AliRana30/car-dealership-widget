@@ -26,6 +26,7 @@ import { CrawledEntity, CrawlResult } from './types';
 import {
   safeFetch,
   extractPageEntities,
+  extractSpaChunkEntities,
   extractSameDomainLinks,
   extractSitemapUrls,
 } from './extractor';
@@ -227,11 +228,13 @@ export async function crawlWebsite(
             override_navigator: true,
           },
           crawler_config: {
-            output_formats: ['markdown', 'metadata'],
+            output_formats: ['markdown', 'metadata', 'html'],
             excluded_tags: ['nav', 'footer', 'header', 'script', 'style'],
             word_count_threshold: 20,
             same_domain: true,
             anti_bot_detection: true,
+            delay_before_return_html: 2.0,
+            scan_full_page: true,
             magic: true,
             extraction_strategy: extractionStrategy,
           },
@@ -262,7 +265,13 @@ export async function crawlWebsite(
             return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
           });
 
-          if (matchingExisting && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
+          const isExistingThinOrLoading =
+            !matchingExisting?.content ||
+            matchingExisting.content.length < 150 ||
+            matchingExisting.content.toLowerCase().includes('loading...') ||
+            matchingExisting.title?.toLowerCase() === 'loading...';
+
+          if (matchingExisting && !isExistingThinOrLoading && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
             pagesSkipped++;
             try {
               await supabase
@@ -284,7 +293,7 @@ export async function crawlWebsite(
           }
 
           pagesProcessed++;
-          const entities = extractEntitiesFromCrawlResult(result);
+          const entities = await extractEntitiesFromCrawlResult(result);
           for (const entity of entities) {
             entity.contentHash = contentHash;
             entity.lastCheckedAt = new Date().toISOString();
@@ -335,7 +344,13 @@ export async function crawlWebsite(
             return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
           });
 
-          if (matchingExisting && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
+          const isExistingThinOrLoading =
+            !matchingExisting?.content ||
+            matchingExisting.content.length < 150 ||
+            matchingExisting.content.toLowerCase().includes('loading...') ||
+            matchingExisting.title?.toLowerCase() === 'loading...';
+
+          if (matchingExisting && !isExistingThinOrLoading && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
             pagesSkipped++;
             try {
               await supabase
@@ -357,7 +372,7 @@ export async function crawlWebsite(
           }
 
           pagesProcessed++;
-          const extractedEntities = extractPageEntities(pageData.html, pageUrl);
+          const extractedEntities = await extractPageEntities(pageData.html, pageUrl);
           for (const entity of extractedEntities) {
             entity.contentHash = contentHash;
             entity.lastCheckedAt = new Date().toISOString();
@@ -485,9 +500,9 @@ async function discoverUrlsViaSeeder(
 
 // ── Entity extraction from Crawl4AI result ────────────────────────────────────
 
-function extractEntitiesFromCrawlResult(
+async function extractEntitiesFromCrawlResult(
   result: import('@/lib/crawl4ai/client').CrawlResult
-): CrawledEntity[] {
+): Promise<CrawledEntity[]> {
   // 1. Check for structured output from Crawl4AI (LLM or CSS extraction strategy)
   if (result.extracted_content) {
     try {
@@ -574,11 +589,14 @@ function extractEntitiesFromCrawlResult(
     }
   }
 
-  // 2. Generic fallback extraction (no vertical-specific branching)
+  // 2. Check for SPA client-rendered chunk entities if HTML is available
+  const spaEntities = result.html ? await extractSpaChunkEntities(result.html, result.url) : [];
+
+  // 3. Generic fallback extraction
   const markdown = result.markdown || result.cleaned_html || result.html || '';
   const meta     = result.metadata || {};
 
-  if (!markdown && !meta.title) return [];
+  if (!markdown && !meta.title && spaEntities.length === 0) return [];
 
   const title =
     (typeof meta.title === 'string' ? meta.title : '') ||
@@ -608,22 +626,32 @@ function extractEntitiesFromCrawlResult(
     ...(fallbackImageSource ? { imageSource: fallbackImageSource } : {}),
   };
 
-  const cleanedContent = cleanStructuredContent(description || markdown.substring(0, 1500));
+  let fullContent = description || markdown.substring(0, 2000);
+  if (spaEntities.length > 0) {
+    const catalogSummary = spaEntities.map(e => `• ${e.title}: ${e.metadata?.description || ''} ${e.metadata?.price ? `(${e.metadata.price})` : ''}`).join('\n');
+    fullContent += `\n\nCatalog Items / Offerings:\n${catalogSummary}`;
+  }
 
-  const entity: CrawledEntity = {
-    url: result.url,
-    title: title.trim(),
-    content: cleanedContent,
-    dataType: entityType as CrawledEntity['dataType'],
-    metadata: {
-      description: description,
-      images: fallbackImageUrls.slice(0, 5),
-      statusCode: result.status_code,
-      ...fallbackMeta,
-    },
-  };
+  const cleanedContent = cleanStructuredContent(fullContent);
 
-  return [entity];
+  const entities: CrawledEntity[] = [...spaEntities];
+
+  if (title.trim() || cleanedContent) {
+    entities.push({
+      url: result.url,
+      title: title.trim(),
+      content: cleanedContent || title.trim(),
+      dataType: entityType as CrawledEntity['dataType'],
+      metadata: {
+        description: description,
+        images: fallbackImageUrls.slice(0, 5),
+        statusCode: result.status_code,
+        ...fallbackMeta,
+      },
+    });
+  }
+
+  return entities;
 }
 
 function cleanStructuredContent(raw: string): string {
@@ -682,11 +710,12 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
   if (!entities.length) return;
   const supabase = getSupabase();
 
-  // Find widget(s) associated with websiteId (matching id, website_id, or widget_id)
+  // Find widget(s) associated with websiteId (matching id, website_id, widget_id, or slug)
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(websiteId);
   const { data: widgets, error: widgetError } = await supabase
     .from('widgets')
-    .select('id, widget_id, website_id')
-    .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
+    .select('id, widget_id, website_id, slug')
+    .or(isUuid ? `id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}` : `slug.eq.${websiteId}`);
 
   if (widgetError) {
     console.error('[crawler] Widget lookup error:', widgetError.message);

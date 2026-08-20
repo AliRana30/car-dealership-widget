@@ -419,9 +419,147 @@ function guessDataType(item: any): CrawledEntity['dataType'] {
   return 'product';
 }
 
-// ─── Meta-tag page extractor ──────────────────────────────────────────────────
+// ─── Meta-tag & SPA page extractor ──────────────────────────────────────────
 
-export function extractPageEntities(html: string, pageUrl: string): CrawledEntity[] {
+export async function extractSpaChunkEntities(html: string, pageUrl: string): Promise<CrawledEntity[]> {
+  try {
+    const base = new URL(pageUrl);
+    const scriptRegex = /<script[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    const scriptUrls: string[] = [];
+    let match;
+    while ((match = scriptRegex.exec(html)) !== null) {
+      const src = match[1];
+      if (
+        src.includes('chunk') ||
+        src.includes('page') ||
+        src.includes('index') ||
+        src.includes('app') ||
+        src.includes('main') ||
+        src.includes('assets/') ||
+        src.includes('static/')
+      ) {
+        try {
+          const fullUrl = new URL(src, base.origin).href;
+          if (!scriptUrls.includes(fullUrl)) {
+            scriptUrls.push(fullUrl);
+          }
+        } catch {}
+      }
+    }
+
+    if (scriptUrls.length === 0) return [];
+
+    const entities: CrawledEntity[] = [];
+    const seenTitles = new Set<string>();
+
+    for (const scriptUrl of scriptUrls.slice(0, 12)) {
+      try {
+        const res = await fetch(scriptUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          },
+        });
+        if (!res.ok) continue;
+        const code = await res.text();
+
+        // 1. Array of objects pattern: [{id:"...",title:"...",...},...]
+        const arrayMatches = code.match(/\[\s*\{[^{}]*?(?:title|name)\s*:\s*["'][^"']+["'][\s\S]*?\}\s*\]/g) || [];
+        for (const arrStr of arrayMatches) {
+          const objRegex = /\{[^{}]*?(?:title|name)\s*:\s*["']([^"']{3,100})["'][^{}]*?\}/g;
+          let objMatch;
+          while ((objMatch = objRegex.exec(arrStr)) !== null) {
+            parseAndPushEntity(objMatch[0], pageUrl, entities, seenTitles);
+          }
+        }
+
+        // 2. Individual object literal pattern: {id:"...",title:"...",description:"...",price:"..."}
+        const singleObjRegex = /\{[^{}]*?(?:title|name)\s*:\s*["']([^"']{3,100})["'][^{}]*?\}/g;
+        let singleMatch;
+        while ((singleMatch = singleObjRegex.exec(code)) !== null) {
+          parseAndPushEntity(singleMatch[0], pageUrl, entities, seenTitles);
+        }
+      } catch (err) {
+        console.warn(`[extractor] Error fetching script chunk ${scriptUrl}:`, err);
+      }
+    }
+
+    return entities;
+  } catch (err) {
+    console.warn('[extractor] SPA chunk extraction failed:', err);
+    return [];
+  }
+}
+
+function parseAndPushEntity(
+  objStr: string,
+  pageUrl: string,
+  entities: CrawledEntity[],
+  seenTitles: Set<string>
+) {
+  const extractField = (key: string) => {
+    const m = objStr.match(new RegExp(`(?:^|[{,\\s])(?:${key})\\s*:\\s*(?:"([^"]*)"|'([^']*)'|(\\d+(?:\\.\\d+)?)|true|false)`, 'i'));
+    return m ? (m[1] ?? m[2] ?? m[3]) : undefined;
+  };
+
+  const title = extractField('title') || extractField('name');
+  if (!title) return;
+
+  const cleanTitle = title.trim();
+  const lowerTitle = cleanTitle.toLowerCase();
+
+  // Filter out framework/UI noise
+  if (
+    cleanTitle.length < 3 ||
+    seenTitles.has(lowerTitle) ||
+    ['button', 'dialog', 'modal', 'card', 'loading', 'default', 'root', 'page', 'home', 'courses', 'about', 'faq', 'contact', 'terms of service', 'privacy policy'].includes(lowerTitle) ||
+    lowerTitle.startsWith('animate-') ||
+    lowerTitle.startsWith('w-') ||
+    lowerTitle.startsWith('h-') ||
+    lowerTitle.startsWith('text-')
+  ) {
+    return;
+  }
+
+  const description = extractField('description') || extractField('desc') || extractField('summary') || extractField('short_description') || extractField('details') || '';
+  const price = extractField('price') || extractField('cost') || extractField('amount');
+  const image = extractField('image') || extractField('imageUrl') || extractField('img') || extractField('photo') || extractField('thumbnail');
+  const rating = extractField('rating') || extractField('stars');
+  const level = extractField('level') || extractField('difficulty') || extractField('category') || extractField('department');
+  const reviews = extractField('reviews') || extractField('reviewCount');
+
+  // Require at least description, price, level, image, or rating to be a valid catalog item
+  if (!description && !price && !level && !image && !rating) {
+    return;
+  }
+
+  seenTitles.add(lowerTitle);
+
+  let formattedContent = `${cleanTitle}`;
+  if (description) formattedContent += `\n\n${description}`;
+  if (price) formattedContent += `\n\nPrice: ${price}`;
+  if (level) formattedContent += `\nLevel: ${level}`;
+  if (rating) formattedContent += `\nRating: ${rating}★${reviews ? ` (${reviews} reviews)` : ''}`;
+
+  const metadata: Record<string, any> = {
+    source: 'spa_chunk_extract',
+    description: description || cleanTitle,
+    ...(price ? { price } : {}),
+    ...(level ? { level, category: level } : {}),
+    ...(rating ? { rating: Number(rating) } : {}),
+    ...(reviews ? { reviewCount: Number(reviews) } : {}),
+    ...(image ? { image, images: [image] } : {}),
+  };
+
+  entities.push({
+    url: pageUrl,
+    title: cleanTitle,
+    content: formattedContent,
+    dataType: price || level ? 'service' : 'text',
+    metadata,
+  });
+}
+
+export async function extractPageEntities(html: string, pageUrl: string): Promise<CrawledEntity[]> {
   const entities: CrawledEntity[] = [];
 
   // 1. JSON-LD (highest fidelity)
@@ -434,46 +572,58 @@ export function extractPageEntities(html: string, pageUrl: string): CrawledEntit
   const inlineEntities = extractInlineJson(html, pageUrl);
   entities.push(...inlineEntities);
 
-  // 3. Fallback: OG/meta tags + Heading & Body extraction → one high-fidelity page-level text entity
-  if (entities.length === 0) {
-    const h1 = extractTag(html, 'h1');
-    const siteTitle = extractTag(html, 'title') ||
-      extractMeta(html, 'og:title') ||
-      extractMeta(html, 'twitter:title') || '';
-    
-    let title = h1 || siteTitle || new URL(pageUrl).pathname.replace(/^\/+/, '') || new URL(pageUrl).hostname;
-    if (h1 && siteTitle && !h1.toLowerCase().includes(siteTitle.toLowerCase()) && !siteTitle.toLowerCase().includes(h1.toLowerCase())) {
-      title = `${h1} — ${siteTitle}`;
-    }
+  // 3. Client-rendered SPA JS chunk extraction
+  const spaEntities = await extractSpaChunkEntities(html, pageUrl);
+  if (spaEntities.length > 0) {
+    entities.push(...spaEntities);
+  }
 
-    const description = extractMeta(html, 'description') ||
-      extractMeta(html, 'og:description') ||
-      extractMeta(html, 'twitter:description') || '';
-    const bodyText = extractAllText(html, 8000);
+  // 4. Page-level text entity
+  const h1 = extractTag(html, 'h1');
+  const siteTitle = extractTag(html, 'title') ||
+    extractMeta(html, 'og:title') ||
+    extractMeta(html, 'twitter:title') || '';
+  
+  let title = h1 || siteTitle || new URL(pageUrl).pathname.replace(/^\/+/, '') || new URL(pageUrl).hostname;
+  if (h1 && siteTitle && !h1.toLowerCase().includes(siteTitle.toLowerCase()) && !siteTitle.toLowerCase().includes(h1.toLowerCase())) {
+    title = `${h1} — ${siteTitle}`;
+  }
 
-    const decodedContent = decodeHtmlEntities([description, bodyText].filter(Boolean).join('\n\n').trim());
-    if (title || decodedContent) {
-      const lower = (pageUrl + ' ' + title + ' ' + decodedContent).toLowerCase();
-      let dataType: CrawledEntity['dataType'] = 'text';
-      if (/course|learn|curriculum|syllabus|lesson|class|tutorial/.test(lower)) dataType = 'service';
-      else if (/faq|frequently asked questions|question|answer/.test(lower)) dataType = 'faq';
-      else if (/policy|terms|privacy|refund|cookie|compliance/.test(lower)) dataType = 'text';
-      else if (/contact|support|phone|email|location|address/.test(lower)) dataType = 'contact';
-      else if (/pricing|price|cost|tier|subscription/.test(lower)) dataType = 'pricing';
-      else if (/product|item|cart|shop|store/.test(lower)) dataType = 'product';
+  const description = extractMeta(html, 'description') ||
+    extractMeta(html, 'og:description') ||
+    extractMeta(html, 'twitter:description') || '';
+  const bodyText = extractAllText(html, 8000);
 
-      const entity: CrawledEntity = {
-        url: pageUrl,
-        title: decodeHtmlEntities(title.trim()),
-        content: decodedContent || title,
-        dataType,
-        metadata: {},
-      };
-      if (description) entity.metadata.description = decodeHtmlEntities(description);
-      const images = extractImages(html, pageUrl);
-      if (images.length) entity.metadata.images = images;
-      entities.push(entity);
-    }
+  let fullContent = [description, bodyText].filter(Boolean).join('\n\n').trim();
+
+  // If SPA entities were extracted, append their catalog text to the page-level record
+  if (spaEntities.length > 0) {
+    const catalogSummary = spaEntities.map(e => `• ${e.title}: ${e.metadata?.description || ''} ${e.metadata?.price ? `(${e.metadata.price})` : ''}`).join('\n');
+    fullContent += `\n\nCatalog Items / Offerings:\n${catalogSummary}`;
+  }
+
+  const decodedContent = decodeHtmlEntities(fullContent.trim());
+  if (title || decodedContent) {
+    const lower = (pageUrl + ' ' + title + ' ' + decodedContent).toLowerCase();
+    let dataType: CrawledEntity['dataType'] = 'text';
+    if (/course|learn|curriculum|syllabus|lesson|class|tutorial/.test(lower)) dataType = 'service';
+    else if (/faq|frequently asked questions|question|answer/.test(lower)) dataType = 'faq';
+    else if (/policy|terms|privacy|refund|cookie|compliance/.test(lower)) dataType = 'text';
+    else if (/contact|support|phone|email|location|address/.test(lower)) dataType = 'contact';
+    else if (/pricing|price|cost|tier|subscription/.test(lower)) dataType = 'pricing';
+    else if (/product|item|cart|shop|store/.test(lower)) dataType = 'product';
+
+    const entity: CrawledEntity = {
+      url: pageUrl,
+      title: decodeHtmlEntities(title.trim()),
+      content: decodedContent || title,
+      dataType,
+      metadata: {},
+    };
+    if (description) entity.metadata.description = decodeHtmlEntities(description);
+    const images = extractImages(html, pageUrl);
+    if (images.length) entity.metadata.images = images;
+    entities.push(entity);
   }
 
   return entities;

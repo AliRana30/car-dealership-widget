@@ -14,7 +14,7 @@ async function testPages() {
       console.log('Failed:', url);
       continue;
     }
-    const entities = extractPageEntities(data.html, url);
+    const entities = await extractPageEntities(data.html, url);
     console.log(`\n========================================`);
     console.log(`PAGE: ${url}`);
     console.log(`Entities count: ${entities.length}`);

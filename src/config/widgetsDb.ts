@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { VoiceWidgetConfig } from './voiceWidget/types';
 import {
   WidgetConfigurationRecord,
@@ -30,7 +30,9 @@ export interface WidgetRecord {
   vapiApiKey?: string;
 }
 
-export function getDbClient() {
+let _cachedDbClient: SupabaseClient | null = null;
+
+export function getDbClient(): { client: SupabaseClient; url: string; key: string } {
   let url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
@@ -46,14 +48,29 @@ export function getDbClient() {
     } catch {}
   }
 
+  if (!_cachedDbClient && url && key) {
+    _cachedDbClient = createClient(url, key);
+  }
+
   return {
-    client: createClient(url, key),
+    client: _cachedDbClient || (url && key ? createClient(url, key) : (null as any)),
     url,
     key,
   };
 }
 
-export const supabase = getDbClient().client;
+// Lazy getter proxy for backwards compatibility without crashing at module evaluation time
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const { client } = getDbClient();
+    if (!client) {
+      console.warn('[widgetsDb] Supabase client accessed without valid credentials in environment.');
+      return () => ({ data: null, error: new Error('Supabase client not initialized') });
+    }
+    const val = (client as any)[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  },
+});
 
 function fromDbRow(widgetRow: any, agentRow?: any, secretRow?: any): WidgetRecord {
   const provider = (agentRow?.provider || 'retell') as 'retell' | 'vapi';
@@ -853,14 +870,23 @@ export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void
   const DB_CHUNK_SIZE = 50;
   for (let i = 0; i < enrichedRows.length; i += DB_CHUNK_SIZE) {
     const chunk = enrichedRows.slice(i, i + DB_CHUNK_SIZE);
-    const hasIds = chunk.some(row => row.id);
-    const { error } = hasIds
-      ? await dbClient.from('website_data').upsert(chunk)
-      : await dbClient.from('website_data').insert(chunk);
+    const rowsWithId = chunk.filter(row => row.id);
+    const rowsWithoutId = chunk.filter(row => !row.id);
 
-    if (error) {
-      console.error('[widgetsDb] Error inserting/upserting website data batch chunk:', error);
-      throw new Error(`[widgetsDb] Save failed: ${error.message}`);
+    if (rowsWithId.length > 0) {
+      const { error: upsertError } = await dbClient.from('website_data').upsert(rowsWithId);
+      if (upsertError) {
+        console.error('[widgetsDb] Error upserting website data rows with id:', upsertError);
+        throw new Error(`[widgetsDb] Upsert failed: ${upsertError.message}`);
+      }
+    }
+
+    if (rowsWithoutId.length > 0) {
+      const { error: insertError } = await dbClient.from('website_data').insert(rowsWithoutId);
+      if (insertError) {
+        console.error('[widgetsDb] Error inserting new website data rows:', insertError);
+        throw new Error(`[widgetsDb] Insert failed: ${insertError.message}`);
+      }
     }
   }
 }

@@ -55,7 +55,7 @@ async function testNativeCrawl() {
       continue;
     }
 
-    const entities = extractPageEntities(pageData.html, url);
+    const entities = await extractPageEntities(pageData.html, url);
     console.log(`\n--- URL: ${url} (Found ${entities.length} entities) ---`);
     entities.forEach((e, i) => {
       console.log(`  [Entity ${i + 1}] Title: "${e.title}" | Type: ${e.dataType}`);
