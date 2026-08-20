@@ -41,7 +41,7 @@ export function isTrackingOrTelemetryUrl(url: string): boolean {
 }
 
 /**
- * Checks if a given object matches an inventory or catalog item shape.
+ * Checks if a given object matches an inventory, catalog, or course item shape.
  */
 function isInventoryShapedObject(item: any): boolean {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
@@ -49,6 +49,8 @@ function isInventoryShapedObject(item: any): boolean {
   const title =
     item.title ||
     item.name ||
+    item.courseName ||
+    item.course_name ||
     item.vehicleTitle ||
     item.productName ||
     item.product_name ||
@@ -66,18 +68,18 @@ function isInventoryShapedObject(item: any): boolean {
   const uiNoise = ['button', 'close', 'submit', 'menu', 'nav', 'header', 'footer', 'modal', 'card', 'loading', 'default'];
   if (uiNoise.includes(lowerTitle)) return false;
 
-  // Check for at least one inventory/catalog attribute
-  const hasPrice = item.price !== undefined || item.cost !== undefined || item.msrp !== undefined || item.sellingPrice !== undefined || item.amount !== undefined;
+  // Check for at least one inventory/catalog/course attribute
+  const hasPrice = item.price !== undefined || item.cost !== undefined || item.msrp !== undefined || item.sellingPrice !== undefined || item.amount !== undefined || item.estimatedPrice !== undefined;
   const hasImage = !!(item.image || item.images || item.imageUrl || item.image_url || item.photos || item.thumbnail);
   const hasDesc = !!(item.description || item.desc || item.shortDescription || item.short_description || item.summary || item.details);
-  const hasIdentifiers = !!(item.vin || item.sku || item.id || item.stockNumber || item.stock_number || item.modelCode);
-  const hasSpecs = !!(item.mileage || item.year || item.make || item.model || item.specs || item.attributes || item.category);
+  const hasIdentifiers = !!(item.vin || item.sku || item.id || item._id || item.stockNumber || item.stock_number || item.modelCode);
+  const hasSpecs = !!(item.mileage || item.year || item.make || item.model || item.specs || item.attributes || item.category || item.tags || item.level || item.benefits);
 
   return hasPrice || hasImage || hasDesc || hasIdentifiers || hasSpecs;
 }
 
 /**
- * Normalizes an raw image field into a clean string array.
+ * Normalizes a raw image field into a clean string array.
  */
 function extractImageUrls(raw: any, pageUrl: string): string[] {
   const images: string[] = [];
@@ -93,6 +95,7 @@ function extractImageUrls(raw: any, pageUrl: string): string[] {
       if (typeof val.url === 'string') add(val.url);
       else if (typeof val.src === 'string') add(val.src);
       else if (typeof val.href === 'string') add(val.href);
+      else if (typeof val.secure_url === 'string') add(val.secure_url);
     }
   };
 
@@ -106,12 +109,14 @@ function extractImageUrls(raw: any, pageUrl: string): string[] {
 }
 
 /**
- * Extracts and maps an inventory-shaped object into a structured CrawledEntity.
+ * Extracts and maps an inventory or course object into a structured CrawledEntity.
  */
 function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: string): CrawledEntity | null {
   const title = (
     item.title ||
     item.name ||
+    item.courseName ||
+    item.course_name ||
     item.vehicleTitle ||
     item.productName ||
     item.product_name ||
@@ -135,14 +140,14 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
     ''
   ).toString().trim();
 
-  const rawPrice = item.price ?? item.cost ?? item.msrp ?? item.sellingPrice ?? item.amount;
+  const rawPrice = item.price ?? item.cost ?? item.msrp ?? item.sellingPrice ?? item.amount ?? item.estimatedPrice;
   let priceStr: string | undefined = undefined;
   if (rawPrice !== undefined && rawPrice !== null && rawPrice !== '') {
     priceStr = typeof rawPrice === 'number' ? `$${rawPrice.toLocaleString()}` : String(rawPrice).trim();
     if (/^\d+(\.\d+)?$/.test(priceStr)) priceStr = `$${priceStr}`;
   }
 
-  const rawImages = item.images || item.image || item.imageUrl || item.image_url || item.photos || item.thumbnail || item.photoList;
+  const rawImages = item.images || item.image || item.imageUrl || item.image_url || item.photos || item.thumbnail?.url || item.thumbnail?.secure_url || item.thumbnail || item.photoList;
   const images = extractImageUrls(rawImages, pageUrl);
 
   const vin = item.vin || item.VIN;
@@ -152,7 +157,8 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
   const make = item.make || item.brand;
   const model = item.model;
   const trim = item.trim;
-  const category = item.category || item.department || item.type;
+  const category = item.category || item.department || item.type || item.tags;
+  const level = item.level;
   const rating = item.rating || item.stars || item.averageRating;
   const reviews = item.reviews || item.reviewCount;
   const itemUrl = item.url || item.link || item.detailUrl || item.detail_url || item.href;
@@ -168,17 +174,18 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
   const contentParts: string[] = [title];
   if (description) contentParts.push(description);
   if (priceStr) contentParts.push(`Price: ${priceStr}`);
+  if (level) contentParts.push(`Level: ${level}`);
+  if (category) contentParts.push(`Category / Tags: ${category}`);
   if (vin) contentParts.push(`VIN: ${vin}`);
   if (sku) contentParts.push(`SKU: ${sku}`);
   if (mileage) contentParts.push(`Mileage: ${typeof mileage === 'number' ? mileage.toLocaleString() : mileage} miles`);
   if (year || make || model) contentParts.push(`Specs: ${[year, make, model, trim].filter(Boolean).join(' ')}`);
-  if (category) contentParts.push(`Category: ${category}`);
   if (rating) contentParts.push(`Rating: ${rating}★${reviews ? ` (${reviews} reviews)` : ''}`);
 
   // Collect extra metadata properties
   const extraProps: Record<string, any> = {};
   const ignoredKeys = new Set([
-    'title', 'name', 'vehicleTitle', 'productName', 'product_name', 'item_name',
+    'title', 'name', 'courseName', 'course_name', 'vehicleTitle', 'productName', 'product_name', 'item_name',
     'description', 'desc', 'shortDescription', 'short_description', 'summary', 'details',
     'price', 'cost', 'msrp', 'sellingPrice', 'amount',
     'images', 'image', 'imageUrl', 'image_url', 'photos', 'thumbnail', 'photoList',
@@ -193,7 +200,7 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
 
   let dataType: CrawledEntity['dataType'] = 'product';
   const lowerTitle = title.toLowerCase();
-  if (/service|repair|maintenance|inspection|oil change|consultation|lesson|course/.test(lowerTitle)) {
+  if (/service|repair|maintenance|inspection|oil change|consultation|lesson|course|mastery|bootcamp|academy/.test(lowerTitle)) {
     dataType = 'service';
   } else if (/pricing|plan|subscription|tier/.test(lowerTitle)) {
     dataType = 'pricing';
@@ -204,16 +211,18 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
     title,
     content: contentParts.join('\n\n'),
     dataType,
+    imageUrls: images,
     metadata: {
       discoveryMethod: 'api',
       apiEndpoint,
       ...(priceStr ? { price: priceStr } : {}),
       ...(description ? { description } : {}),
       ...(images.length > 0 ? { images, image: images[0] } : {}),
+      ...(level ? { level } : {}),
+      ...(category ? { category: String(category) } : {}),
       ...(vin ? { vin } : {}),
       ...(sku ? { sku } : {}),
       ...(mileage ? { mileage } : {}),
-      ...(category ? { category } : {}),
       ...(rating ? { rating: Number(rating) } : {}),
       ...(reviews ? { reviews: Number(reviews) } : {}),
       ...extraProps,
@@ -222,7 +231,7 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
 }
 
 /**
- * Parses captured network responses (XHR / fetch API calls) and extracts inventory entities.
+ * Extracts entities from raw HTTP network response logs captured during crawling.
  */
 export function extractEntitiesFromNetworkResponses(
   networkResponses: NetworkResponseLog[],
@@ -233,7 +242,6 @@ export function extractEntitiesFromNetworkResponses(
     return [];
   }
 
-  const baseOrigin = allowedOrigin || new URL(pageUrl).origin.toLowerCase();
   const entities: CrawledEntity[] = [];
   const seenTitles = new Set<string>();
 
@@ -242,22 +250,12 @@ export function extractEntitiesFromNetworkResponses(
     if (resp.status && (resp.status < 200 || resp.status >= 400)) continue;
     if (!resp.url) continue;
 
-    // 1. Same-domain check
-    try {
-      const respOrigin = new URL(resp.url).origin.toLowerCase();
-      if (respOrigin !== baseOrigin && !resp.url.startsWith('/')) {
-        continue;
-      }
-    } catch {
-      continue;
-    }
-
-    // 2. Discard tracking & analytics
+    // Discard tracking & analytics
     if (isTrackingOrTelemetryUrl(resp.url)) {
       continue;
     }
 
-    // 3. Parse body
+    // Parse body
     let json: any = resp.body;
     if (typeof json === 'string') {
       const trimmed = json.trim();
@@ -271,7 +269,7 @@ export function extractEntitiesFromNetworkResponses(
 
     if (!json || typeof json !== 'object') continue;
 
-    // 4. Find candidate inventory arrays
+    // Find candidate inventory / course arrays
     const candidateArrays: any[][] = [];
 
     if (Array.isArray(json)) {
@@ -280,7 +278,7 @@ export function extractEntitiesFromNetworkResponses(
       // Check envelope properties
       const envelopeKeys = [
         'data', 'results', 'items', 'products', 'vehicles', 'inventory',
-        'listings', 'records', 'courses', 'hits', 'nodes', 'cars', 'properties',
+        'listings', 'records', 'courses', 'allCourses', 'hits', 'nodes', 'cars', 'properties',
       ];
       for (const key of envelopeKeys) {
         if (Array.isArray(json[key])) {
@@ -293,7 +291,7 @@ export function extractEntitiesFromNetworkResponses(
       }
     }
 
-    // 5. Extract entities from candidate arrays
+    // Extract entities from candidate arrays
     for (const arr of candidateArrays) {
       for (const rawItem of arr) {
         if (isInventoryShapedObject(rawItem)) {
@@ -315,7 +313,7 @@ export function extractEntitiesFromNetworkResponses(
 
 /**
  * Discovers and safely fetches candidate dynamic AJAX / API endpoints from page HTML
- * in native crawl mode.
+ * and JS script bundle chunks in native crawl mode.
  */
 export async function discoverAndFetchPageApis(html: string, pageUrl: string): Promise<CrawledEntity[]> {
   if (!html || !pageUrl) return [];
@@ -337,27 +335,87 @@ export async function discoverAndFetchPageApis(html: string, pageUrl: string): P
       if (endpoint && !isTrackingOrTelemetryUrl(endpoint)) {
         try {
           const fullUrl = new URL(endpoint, base.origin).href;
-          if (new URL(fullUrl).origin.toLowerCase() === base.origin.toLowerCase()) {
-            candidateApiUrls.add(fullUrl);
-          }
+          candidateApiUrls.add(fullUrl);
         } catch {}
       }
     }
+  }
+
+  // 2. Scan script bundle chunks for API bases and endpoints (e.g. Next.js / React / Redux / Render backend)
+  const scriptRegex = /<script[^>]*src=["']([^"']+)["']/gi;
+  const scriptUrls: string[] = [];
+  let scriptMatch;
+  while ((scriptMatch = scriptRegex.exec(html)) !== null) {
+    const src = scriptMatch[1];
+    if (src.includes('chunk') || src.includes('main') || src.includes('app') || src.includes('page') || src.includes('index')) {
+      try {
+        const fullScriptUrl = new URL(src, base.origin).href;
+        if (!scriptUrls.includes(fullScriptUrl)) scriptUrls.push(fullScriptUrl);
+      } catch {}
+    }
+  }
+
+  let discoveredApiBase = '';
+  for (const sUrl of scriptUrls.slice(0, 10)) {
+    try {
+      const scriptRes = await fetch(sUrl, {
+        signal: AbortSignal.timeout(3000),
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
+      if (!scriptRes.ok) continue;
+      const code = await scriptRes.text();
+
+      // Look for backend server URIs (Render, Railway, Heroku, Vercel, or standard /api/v1)
+      const baseMatches = code.match(/https?:\/\/[a-zA-Z0-9.-]+\.(?:onrender\.com|railway\.app|herokuapp\.com|vercel\.app|fly\.dev)(?:\/api(?:\/v\d+)?)?/gi);
+      if (baseMatches) {
+        for (const bm of baseMatches) {
+          if (!bm.includes('_next')) {
+            discoveredApiBase = bm;
+            break;
+          }
+        }
+      }
+
+      // Look for candidate endpoints like get-courses, get-products, etc.
+      const epMatches = code.match(/(?:url\s*:\s*["']([^"']+)["']|["'](?:get-courses|get-all-courses|all-courses|courses|catalog|inventory|get-products)["'])/gi);
+      if (epMatches) {
+        for (const ep of epMatches) {
+          const clean = ep.replace(/url\s*:\s*["']|["']/gi, '').trim();
+          if (/courses|products|inventory|catalog|items|listings/i.test(clean)) {
+            if (discoveredApiBase) {
+              candidateApiUrls.add(`${discoveredApiBase.replace(/\/+$/, '')}/${clean.replace(/^\/+/, '')}`);
+            }
+            try {
+              candidateApiUrls.add(new URL(`/api/${clean.replace(/^\/+/, '')}`, base.origin).href);
+            } catch {}
+          }
+        }
+      }
+    } catch {}
   }
 
   if (candidateApiUrls.size === 0) return [];
 
   const responses: NetworkResponseLog[] = [];
 
-  for (const apiUrl of Array.from(candidateApiUrls).slice(0, 8)) {
+  for (const apiUrl of Array.from(candidateApiUrls).slice(0, 10)) {
     try {
-      const res = await fetch(apiUrl, {
-        signal: AbortSignal.timeout(3000),
+      let res = await fetch(apiUrl, {
+        signal: AbortSignal.timeout(5000),
         headers: {
           'Accept': 'application/json, text/plain, */*',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         },
       });
+
+      // Retry once if 503 (e.g. Render/free-tier cold start)
+      if (res.status === 503) {
+        await new Promise(r => setTimeout(r, 2000));
+        res = await fetch(apiUrl, {
+          signal: AbortSignal.timeout(5000),
+          headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+        });
+      }
 
       if (!res.ok) continue;
       const contentType = res.headers.get('content-type') || '';

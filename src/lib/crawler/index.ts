@@ -854,6 +854,7 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
     .in('widget_id', widgetIds);
 
   const rowsToSave: WebsiteDataRow[] = [];
+  const claimedExistingIds = new Set<string>();
 
   for (const widgetId of widgetIds) {
     for (const e of entities) {
@@ -900,8 +901,9 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
       };
 
       // Match against existing records (Shopify, WooCommerce, Feed, Manual, or previous Crawl)
-      const matchingExisting = findMatchingExistingEntity(incomingRow, (existingRecords || []) as WebsiteDataRow[]);
+      const matchingExisting = findMatchingExistingEntity(incomingRow, (existingRecords || []) as WebsiteDataRow[], claimedExistingIds);
       if (matchingExisting) {
+        if (matchingExisting.id) claimedExistingIds.add(matchingExisting.id);
         // Precedence merge: preserve connector fields, fill in missing JSON-LD/crawled fields
         const mergedRow = mergeEntity(matchingExisting, incomingRow);
         rowsToSave.push(mergedRow);
@@ -911,9 +913,20 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
     }
   }
 
+  // Deduplicate rowsToSave by ID if ID is present
+  const uniqueRows: WebsiteDataRow[] = [];
+  const seenSavedIds = new Set<string>();
+  for (const r of rowsToSave) {
+    if (r.id) {
+      if (seenSavedIds.has(r.id)) continue;
+      seenSavedIds.add(r.id);
+    }
+    uniqueRows.push(r);
+  }
+
   // Batch insert/upsert in chunks of 50 via centralized embedding path
-  for (let i = 0; i < rowsToSave.length; i += 50) {
-    const chunk = rowsToSave.slice(i, i + 50);
+  for (let i = 0; i < uniqueRows.length; i += 50) {
+    const chunk = uniqueRows.slice(i, i + 50);
     try {
       await saveWebsiteDataBatch(chunk);
     } catch (err: any) {

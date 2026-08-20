@@ -37,7 +37,8 @@ export function normalizeUrl(url?: string): string {
  */
 export function findMatchingExistingEntity(
   incoming: Partial<WebsiteDataRow>,
-  existingRecords: WebsiteDataRow[]
+  existingRecords: WebsiteDataRow[],
+  claimedIds?: Set<string>
 ): WebsiteDataRow | null {
   if (!existingRecords || existingRecords.length === 0) return null;
 
@@ -49,19 +50,20 @@ export function findMatchingExistingEntity(
   const incomingTitle = incoming.title ? incoming.title.trim().toLowerCase() : '';
 
   for (const existing of existingRecords) {
-    // 1. Match by source_url
-    if (incomingUrl && existing.source_url && normalizeUrl(existing.source_url) === incomingUrl) {
-      return existing;
+    if (claimedIds && existing.id && claimedIds.has(existing.id)) {
+      continue;
     }
 
-    // 2. Match by SKU
+    const existingTitle = existing.title ? existing.title.trim().toLowerCase() : '';
+
+    // 1. Match by SKU
     if (incomingSku && existing.metadata?.sku) {
       if (String(existing.metadata.sku).trim().toLowerCase() === incomingSku) {
         return existing;
       }
     }
 
-    // 3. Match by platform ID
+    // 2. Match by platform ID
     if (incomingShopifyId && existing.metadata?.shopifyId === incomingShopifyId) {
       return existing;
     }
@@ -72,14 +74,21 @@ export function findMatchingExistingEntity(
       return existing;
     }
 
-    // 4. Match by exact title + entity_type if URL is empty or matches
+    // 3. Match by exact title + entity_type
     if (
       incomingTitle &&
-      existing.title &&
-      existing.title.trim().toLowerCase() === incomingTitle &&
+      existingTitle &&
+      existingTitle === incomingTitle &&
       (existing.entity_type || 'product') === (incoming.entity_type || 'product')
     ) {
       return existing;
+    }
+
+    // 4. Match by source_url (only if titles match or if one is generic/empty)
+    if (incomingUrl && existing.source_url && normalizeUrl(existing.source_url) === incomingUrl) {
+      if (!incomingTitle || !existingTitle || incomingTitle === existingTitle || existingTitle.includes(incomingTitle) || incomingTitle.includes(existingTitle)) {
+        return existing;
+      }
     }
   }
 

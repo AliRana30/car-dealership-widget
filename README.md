@@ -125,11 +125,32 @@ sequenceDiagram
 - **Partial Speech & Real-Time Transcripts**: Live speech-to-text transcripts render user speech and agent replies in real time with word-by-word streaming.
 - **Streaming Text Chat Fallback**: Full conversational text chat tab with markdown rendering, message history, typing indicators, and seamless voice-to-text switching.
 
-### Website Intelligence & Ingestion Subsystem
-- **Headless Crawl4AI Engine**: Integrated containerized browser crawler supporting JavaScript-heavy single-page applications and responsive DOM trees.
-- **Intelligent URL Seeding**: `AsyncUrlSeeder` provides sitemap-driven discovery with Quick Scan (15-page ceiling) and Master Scan (150-page ceiling) execution modes.
-- **Multi-Tier Anti-Bot & WAF Challenge Isolation**: Proactively detects Cloudflare, Akamai, Datadome, and AWS WAF firewall challenge pages. Blocked pages are counted, isolated from the vector database, and surfaced in the scan status dashboard.
-- **Responsive Media Extraction**: High-resolution image parser extracts `<picture>` and `srcset` tags, selecting maximum resolution assets (`2048w`) and identifying CDN hostnames (Shopify CDN, Cloudinary, Bunny, ImageKit).
+### Website Intelligence & Multi-Tier Ingestion Subsystem
+- **5-Tier Extraction Hierarchy**:
+  - **Tier 1 (JSON-LD & Schema.org)**: Direct extraction of structured `@type: Product`, `@type: Vehicle`, `@type: Service`, `@type: Course`, `@type: LocalBusiness`, and `@type: FAQPage`.
+  - **Tier 2 (Dynamic AJAX & REST API Discovery)**: Automatic detection of inline APIs and client-side backend endpoints (e.g. Render, Railway, Redux `apiSlice`, Next.js routes) discovered from SPA script bundle chunks.
+  - **Tier 3 (User-Defined CSS Selector Schemas)**: Precision visual selector mapping for custom dealership, real estate, or enterprise inventory structures.
+  - **Tier 4 (LLM-Assisted Structured Extraction)**: Fallback LLM extraction converting unstructured DOM blocks into normalized JSON entities.
+  - **Tier 5 (SPA Bundle Chunks & Responsive HTML Fallback)**: Client-side component decompilation extracting catalog item arrays, media, pricing, and descriptions.
+- **Fail-Fast Hybrid Crawler**: Combines containerized Crawl4AI browser automation with high-speed native extraction. Automatically falls back to native crawling on microservice timeout without stalling.
+- **Responsive Media & High-Res Image Extraction**: Automatically aggregates image URLs from `image_urls`, `metadata.images`, `metadata.thumbnail`, and responsive `<picture>` tags, selecting highest-resolution assets and CDN-hosted graphics (Cloudinary, Shopify CDN, Bunny, ImageKit).
+
+### Freshness Tracking & LLM Confidence Hedging
+- **Entity Freshness Lifecycle**: Tracks `first_seen`, `last_seen`, `last_checked_at`, and `still_listed` boolean flags on every entity record.
+- **Soft Deletion Signal**: Missing entities are retained with `still_listed = false`, preserving historical knowledge rather than discarding data.
+- **LLM Confidence Hedging Directives**: Dynamic system prompts instruct voice and chat agents to modulate their confidence:
+  - *Fresh (< 24h)*: Stated with high confidence as active inventory.
+  - *Recent (1–7 days)*: Stated normally.
+  - *Stale (> 7 days) or Unlisted*: Hedged transparently (e.g. *"Our records show we had this item listed last week; let me verify current availability for you."*).
+
+### Incremental Re-Crawling & Known-URL Fast-Path
+- **Known-URL Tracking**: Persists discovered inventory URLs in a JSONB array (`websites.known_urls`).
+- **Content-Hash Acceleration**: Computes normalized SHA-256 digests (`computeContentHash`) on raw page content. Unchanged pages bypass re-extraction and vector re-embedding, performing a lightweight `last_seen` timestamp update.
+
+### Interactive Knowledge Viewer & Media Showcase UI
+- **Dual Tab Presentation**: Separates **Knowledge Records** (structured products, courses, vehicles, services) from **Site Pages** (raw navigation and content pages).
+- **📷 High-Res Photos & Media Showcase**: Visual thumbnail cards with image counters, lightbox hover zoom, and graceful cross-origin / CDN hotlink protection fallback cards (`🔗 Open URL →`).
+- **Interactive Search & Filter Intelligence**: Live full-text search across titles, descriptions, categories, and prices with dynamic counter badges.
 
 ### High-Dimensional Vector Embeddings & Semantic Search
 - **pgvector Vector Database**: PostgreSQL vector extension enabled with 1536-dimensional vectors and HNSW cosine distance indexing (`vector_cosine_ops`).
