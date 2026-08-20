@@ -34,8 +34,14 @@ export async function broadcastToSession(
     return { success: false, channel: '', error: 'Session ID is required' };
   }
 
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project-url.supabase.co';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  if (!url || !key) {
+    const errorMsg = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for session broadcast';
+    console.error(`[realtime] ${errorMsg}`);
+    return { success: false, channel: '', error: errorMsg };
+  }
 
   const supabase = createClient(url, key);
   const channelName = getSessionChannelName(sessionId);
@@ -45,7 +51,7 @@ export async function broadcastToSession(
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        resolve(); // Avoid blocking indefinitely if realtime cluster is unreachable/mock
+        resolve(); // Avoid blocking indefinitely if realtime cluster is unreachable
       }, 2500);
 
       channel.subscribe(async (status) => {
@@ -98,8 +104,11 @@ export function subscribeToSessionChannel(
   }
 
   const supabase = getSupabaseBrowserClient();
-  const channelName = getSessionChannelName(sessionId);
+  if (!supabase) {
+    return () => {};
+  }
 
+  const channelName = getSessionChannelName(sessionId);
   const channel = supabase.channel(channelName);
 
   channel
