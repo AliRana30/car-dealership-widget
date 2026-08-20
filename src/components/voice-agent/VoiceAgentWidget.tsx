@@ -440,6 +440,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               chatId,
               content: text,
               widgetId: widgetId || 'default',
+              history: chatMessages.slice(-6),
             }),
           });
 
@@ -456,15 +457,36 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             setActiveSessionId(data.sessionId);
           }
           if (data.messages && Array.isArray(data.messages)) {
-            const mapped = data.messages.map((m: any) => ({
-              role: m.role === 'agent' ? 'agent' : 'user',
-              content: m.content,
-              // Carry through structured results from Website Intelligence
-              ...(m.results && Array.isArray(m.results) && m.results.length > 0
-                ? { results: m.results }
-                : {}),
-            })) as TranscriptMessage[];
-            setChatMessages((prev) => [...prev, ...mapped]);
+            // Filter only agent messages to prevent duplicating the user's message in the UI
+            const agentMsgs = data.messages
+              .filter((m: any) => m.role === 'agent')
+              .map((m: any) => ({
+                role: 'agent' as const,
+                content: m.content,
+                ...(m.results && Array.isArray(m.results) && m.results.length > 0
+                  ? { results: m.results }
+                  : {}),
+              })) as TranscriptMessage[];
+
+            if (agentMsgs.length > 0) {
+              setChatMessages((prev) => [...prev, ...agentMsgs]);
+            }
+
+            // Real-Time Autonomous Host Navigation
+            const navUrl = data.navigationUrl || data.action?.url || (data.messages.find((m: any) => m.navigationUrl || m.action?.url))?.navigationUrl;
+            if (navUrl && typeof window !== 'undefined') {
+              try {
+                if (window.parent && window.parent !== window) {
+                  window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url: navUrl }, '*');
+                  window.parent.postMessage({ type: 'voice-agent-navigate', url: navUrl }, '*');
+                  window.parent.postMessage({ type: 'navigate', url: navUrl }, '*');
+                } else if (window.location.pathname !== new URL(navUrl, window.location.href).pathname) {
+                  window.location.href = navUrl;
+                }
+              } catch (navErr) {
+                console.warn('[VoiceAgent] Navigation error:', navErr);
+              }
+            }
           }
         } catch {
           setChatMessages((prev) => [
@@ -475,7 +497,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           setChatTyping(false);
         }
       },
-      [chatInput, chatId, isDemo, mergedConfig.branding.companyName, widgetId]
+      [chatInput, chatId, isDemo, mergedConfig.branding.companyName, widgetId, chatMessages]
     );
 
     const startCall = useCallback(async () => {

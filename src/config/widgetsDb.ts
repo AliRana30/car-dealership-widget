@@ -113,23 +113,22 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
   try {
     let query = supabase.from('widgets').select('*');
     if (isUuid) {
-      query = query.eq('id', normalizedSearchId);
+      query = query.or(`id.eq.${normalizedSearchId},website_id.eq.${normalizedSearchId}`);
     } else {
-      query = query.eq('widget_id', normalizedSearchId);
+      query = query.or(`widget_id.eq.${normalizedSearchId},id.eq.${normalizedSearchId}`);
     }
     // Enforce user isolation when userId is provided
     if (userId) {
       query = query.eq('user_id', userId);
     }
 
-    const { data: widgetRow, error } = await query.single();
+    const { data: widgetRows, error } = await query.limit(1);
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null;
-      }
-      throw error;
+    if (error || !widgetRows || widgetRows.length === 0) {
+      return null;
     }
+
+    const widgetRow = widgetRows[0];
 
     let agentRow: any = null;
     let secretRow: any = null;
@@ -521,7 +520,85 @@ export function isValidUuid(str?: string | null): boolean {
   return Boolean(str && UUID_REGEX.test(str.trim()));
 }
 
-export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: string): Promise<string> {
+function parsePriceValue(price: any): number | null {
+  if (typeof price === 'number') return price;
+  if (!price) return null;
+  const str = String(price).replace(/,/g, '');
+  const m = str.match(/\$?\s*(\d+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+interface ParsedQueryConstraints {
+  maxPrice?: number;
+  minPrice?: number;
+  sortByPrice?: 'asc' | 'desc';
+  sortByRating?: boolean;
+  isAboutQuery: boolean;
+  isPolicyQuery: boolean;
+  isFaqQuery: boolean;
+  isContactQuery: boolean;
+  isCatalogQuery: boolean;
+  specificKeywords: string[];
+}
+
+function parseQueryConstraints(query: string): ParsedQueryConstraints {
+  const lower = query.trim().toLowerCase();
+  
+  let maxPrice: number | undefined;
+  let minPrice: number | undefined;
+  let sortByPrice: 'asc' | 'desc' | undefined;
+  
+  const underMatch = lower.match(/(?:under|below|less than|cheaper than|max(?:imum)?|<=?)\s*\$?(\d+)/i);
+  if (underMatch) maxPrice = parseFloat(underMatch[1]);
+
+  const overMatch = lower.match(/(?:above|over|more than|greater than|min(?:imum)?|>=?)\s*\$?(\d+)/i);
+  if (overMatch) minPrice = parseFloat(overMatch[1]);
+
+  const betweenMatch = lower.match(/between\s*\$?(\d+)\s*(?:and|-|to)\s*\$?(\d+)/i);
+  if (betweenMatch) {
+    minPrice = parseFloat(betweenMatch[1]);
+    maxPrice = parseFloat(betweenMatch[2]);
+  }
+
+  if (/(?:cheapest|lowest price|least expensive|budget friendly|affordable)/i.test(lower)) {
+    sortByPrice = 'asc';
+  } else if (/(?:most expensive|premium|highest price|luxury)/i.test(lower)) {
+    sortByPrice = 'desc';
+  }
+
+  const sortByRating = /(?:best rated|top rated|highest rated|top reviews|5 star|best courses?|top courses?|best products?|top products?)/i.test(lower);
+
+  const isAboutQuery = /(?:about|who are you|mission|story|company|founder|developer|background|team|who built)/i.test(lower);
+  const isPolicyQuery = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(lower);
+  const isFaqQuery = /(?:faq|frequently asked|questions|help)/i.test(lower);
+  const isContactQuery = /(?:contact|reach out|email|phone|address|location|support)/i.test(lower);
+  const isCatalogQuery = !isAboutQuery && !isPolicyQuery && !isFaqQuery && !isContactQuery && /(?:course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing|stock)/i.test(lower);
+
+  const stopWords = new Set(['show', 'me', 'the', 'a', 'an', 'what', 'is', 'your', 'tell', 'about', 'can', 'you', 'give', 'details', 'for', 'of', 'in', 'at', 'with', 'course', 'courses', 'product', 'products', 'service', 'services']);
+  const words = lower.split(/\W+/).filter(w => w.length > 2 && !stopWords.has(w));
+
+  return {
+    maxPrice,
+    minPrice,
+    sortByPrice,
+    sortByRating,
+    isAboutQuery,
+    isPolicyQuery,
+    isFaqQuery,
+    isContactQuery,
+    isCatalogQuery,
+    specificKeywords: words,
+  };
+}
+
+/**
+ * Returns the most relevant crawled text chunks for an agent context prompt.
+ * Uses query constraints (price, rating, intent) and entity matching.
+ */
+export async function getRelevantWebsiteData(
+  websiteOrWidgetId: string,
+  query: string
+): Promise<string> {
   try {
     const isTargetUuid = isValidUuid(websiteOrWidgetId);
     let widgets: any[] | null = null;
@@ -559,40 +636,8 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
       return '';
     }
 
-    const isCatalogQuery = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|program|degrees?|what do you offer/i.test(trimmedQuery);
-    const isPolicyQuery = /policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer/i.test(trimmedQuery);
+    const constraints = parseQueryConstraints(query);
 
-    // Try pgvector similarity search first
-    try {
-      const queryEmbedding = await embedText(query);
-      const { data: matchedRecords, error: matchError } = await supabase
-        .rpc('match_website_data', {
-          query_embedding: queryEmbedding,
-          match_threshold: 0.1,
-          match_count: 5,
-          filter_widget_ids: filterWidgetIds
-        });
-
-      if (!matchError && matchedRecords && matchedRecords.length > 0) {
-        const filtered = matchedRecords.filter((r: any) => {
-          const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price) || Boolean(r.image_urls?.length);
-          if (isCatalogQuery && !isCatalogEntity) return false;
-          if (!isPolicyQuery && /policy|terms|privacy|cookie/i.test(r.title || '')) return false;
-          return true;
-        });
-
-        if (filtered.length > 0) {
-          return filtered.slice(0, 3).map((r: any) => {
-            const price = r.metadata?.price ? ` [Price: ${r.metadata.price}]` : '';
-            return `Title: ${r.title}${price}\nContent: ${r.content}`;
-          }).join('\n\n');
-        }
-      }
-    } catch (err) {
-      console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
-    }
-
-    // Keyword search fallback
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
@@ -601,41 +646,79 @@ export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: s
     if (error || !records || records.length === 0) {
       return '';
     }
-    const queryWords = trimmedQuery.split(/\W+/).filter(w => w.length > 2);
-    if (queryWords.length === 0) {
-      return '';
-    }
 
     const scored = records.map(record => {
       let score = 0;
       const titleLower = (record.title || '').toLowerCase();
       const contentLower = (record.content || '').toLowerCase();
-      const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(record.entity_type) || Boolean(record.metadata?.price) || Boolean(record.image_urls?.length);
-      const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal/.test(titleLower);
+      const meta = (record.metadata || {}) as Record<string, any>;
+      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice);
+      const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
+      const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length);
+      const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(record.entity_type) || hasPricingOrMedia;
+      const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal|security/.test(titleLower);
+      const isAboutEntity = /about|mission|story|empowering|founder|developer/.test(titleLower);
+      const isFaqEntity = ['faq'].includes(record.entity_type) || /faq|frequently asked|questions/.test(titleLower);
 
-      if (isCatalogQuery && isCatalogEntity) score += 35;
-      if (isCatalogQuery && isPolicyEntity && !isPolicyQuery) score -= 50;
-      if (isPolicyQuery && isPolicyEntity) score += 40;
+      // Specific intent routing
+      if (constraints.isAboutQuery && isAboutEntity) score += 100;
+      if (constraints.isPolicyQuery && isPolicyEntity) score += 100;
+      if (constraints.isFaqQuery && isFaqEntity) score += 100;
 
-      if (titleLower.includes(trimmedQuery)) score += 30;
+      // Penalize mismatched intents
+      if (constraints.isAboutQuery && (isCatalogEntity || isPolicyEntity)) score -= 80;
+      if (constraints.isPolicyQuery && isCatalogEntity) score -= 80;
+      if (constraints.isCatalogQuery && (isPolicyEntity || isAboutEntity)) score -= 80;
 
-      for (const word of queryWords) {
-        if (titleLower.includes(word)) score += 20;
-        if (contentLower.includes(word)) {
-          const matches = Math.min(5, contentLower.split(word).length - 1);
-          score += matches * 2;
+      // Budget filtering
+      if (constraints.maxPrice !== undefined) {
+        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 60;
+        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 100;
+      }
+      if (constraints.minPrice !== undefined) {
+        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 60;
+        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 100;
+      }
+
+      // Rating boost
+      if (constraints.sortByRating && rating >= 4) {
+        score += rating * 10;
+      }
+
+      // Specific keyword matching (e.g. "mern", "leetcode", "wrangler")
+      if (constraints.specificKeywords.length > 0) {
+        for (const word of constraints.specificKeywords) {
+          if (titleLower.includes(word)) score += 50;
+          if (contentLower.includes(word)) score += 15;
         }
       }
-      return { record, score };
+
+      if (titleLower.includes(trimmedQuery)) score += 40;
+
+      if (constraints.isCatalogQuery && hasPricingOrMedia) score += 30;
+
+      return { record, score, itemPrice, rating };
     });
 
-    const sorted = scored.sort((a, b) => b.score - a.score);
-    const matched = sorted.filter(s => s.score > 0).map(s => s.record);
-    if (matched.length === 0) return '';
+    const validMatches = scored.filter(s => s.score > 0);
+    if (validMatches.length === 0) return '';
 
-    return matched.slice(0, 3).map(r => {
+    // Apply sorting
+    if (constraints.sortByPrice === 'asc') {
+      validMatches.sort((a, b) => (a.itemPrice ?? 999999) - (b.itemPrice ?? 999999));
+    } else if (constraints.sortByPrice === 'desc') {
+      validMatches.sort((a, b) => (b.itemPrice ?? 0) - (a.itemPrice ?? 0));
+    } else if (constraints.sortByRating) {
+      validMatches.sort((a, b) => b.rating - a.rating);
+    } else {
+      validMatches.sort((a, b) => b.score - a.score);
+    }
+
+    return validMatches.slice(0, 3).map(s => {
+      const r = s.record;
       const price = r.metadata?.price ? ` [Price: ${r.metadata.price}]` : '';
-      return `Title: ${r.title}${price}\nContent: ${r.content}`;
+      const url = r.source_url ? ` [SourceURL: ${r.source_url}]` : '';
+      return `Title: ${r.title}${price}${url}\nContent: ${r.content}`;
     }).join('\n\n');
   } catch (err) {
     console.error(`[widgetsDb] Error in getRelevantWebsiteData:`, err);
@@ -661,7 +744,8 @@ export interface WebsiteDataRecord {
 
 /**
  * Returns scored, structured website data records for frontend card rendering.
- * Only records scoring above 0 and matching catalog intent are returned (max 3).
+ * Respects query constraints (e.g. only matching 1 specific item if asked specifically,
+ * filtering by price max/min, rating, and suppressing cards on informational queries).
  */
 export async function getRelevantWebsiteRecords(
   websiteOrWidgetId: string,
@@ -675,8 +759,11 @@ export async function getRelevantWebsiteRecords(
       return [];
     }
 
-    const isCatalogQuery = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|program|degrees?|show|items?/i.test(trimmedQuery);
-    const isPolicyQuery = /policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer/i.test(trimmedQuery);
+    const constraints = parseQueryConstraints(query);
+    // If user asked about About, Policy, FAQ, or Contact info, return 0 catalog cards!
+    if (constraints.isAboutQuery || constraints.isPolicyQuery || constraints.isFaqQuery || constraints.isContactQuery) {
+      return [];
+    }
 
     const isTargetUuid = isValidUuid(websiteOrWidgetId);
     let widgets: any[] | null = null;
@@ -708,71 +795,6 @@ export async function getRelevantWebsiteRecords(
       filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
     }
 
-    // Try pgvector similarity search first
-    try {
-      const queryEmbedding = await embedText(query);
-      const { data: matchedRecords, error: matchError } = await supabase
-        .rpc('match_website_data', {
-          query_embedding: queryEmbedding,
-          match_threshold: 0.1,
-          match_count: limit,
-          filter_widget_ids: filterWidgetIds
-        });
-
-      if (!matchError && matchedRecords && matchedRecords.length > 0) {
-        const filtered = matchedRecords
-          .filter((r: any) => {
-            const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price) || Boolean(r.image_urls?.length);
-            if (isCatalogQuery && !isCatalogEntity) return false;
-            if (!isPolicyQuery && /policy|terms|privacy|cookie/i.test(r.title || '')) return false;
-            return true;
-          })
-          .sort((a: any, b: any) => {
-            const aHasPrice = Boolean(a.metadata?.price || a.image_urls?.length);
-            const bHasPrice = Boolean(b.metadata?.price || b.image_urls?.length);
-            if (aHasPrice && !bHasPrice) return -1;
-            if (!aHasPrice && bHasPrice) return 1;
-            return 0;
-          });
-
-        if (filtered.length > 0) {
-          return filtered.slice(0, limit).map((r: any) => {
-            const meta = (r.metadata || {}) as Record<string, any>;
-            const result: WebsiteDataRecord = { entityType: r.entity_type };
-            if (r.title) result.title = r.title;
-            
-            if (r.short_description) {
-              result.description = r.short_description;
-            } else if (r.content) {
-              result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
-            }
-            
-            if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
-              result.images = r.image_urls;
-            } else if (meta.images && Array.isArray(meta.images)) {
-              result.images = meta.images.filter(Boolean);
-            } else if (meta.image) {
-              result.images = [String(meta.image)];
-            }
-
-            if (meta.price !== undefined && typeof meta.price !== 'object') result.price = meta.price;
-            if (meta.currency) result.currency = String(meta.currency);
-            if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
-            if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
-            if (meta.reviews !== undefined) {
-              result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
-            }
-            if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
-            if (r.source_url) result.sourceUrl = r.source_url;
-            return result;
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('[widgetsDb] Embedding-based search failed, falling back to keyword search:', err);
-    }
-
-    // Keyword search fallback
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
@@ -780,63 +802,88 @@ export async function getRelevantWebsiteRecords(
 
     if (error || !records || records.length === 0) return [];
 
-    const queryWords = trimmedQuery.split(/\W+/).filter(w => w.length > 2);
-    if (queryWords.length === 0) return [];
-
     const scored = records.map(record => {
       let score = 0;
       const titleLower = (record.title || '').toLowerCase();
       const contentLower = (record.content || '').toLowerCase();
-      const hasPricingOrMedia = Boolean(record.metadata?.price) || Boolean(record.image_urls?.length);
+      const meta = (record.metadata || {}) as Record<string, any>;
+      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice);
+      const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
+      const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length);
       const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(record.entity_type) || hasPricingOrMedia;
       const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal/.test(titleLower);
 
-      if (isCatalogQuery && hasPricingOrMedia) score += 60;
-      else if (isCatalogQuery && isCatalogEntity) score += 30;
+      if (!isCatalogEntity || isPolicyEntity) return { record, score: -100, itemPrice, rating, exactTitleMatch: false };
 
-      if (isCatalogQuery && isPolicyEntity && !isPolicyQuery) score -= 50;
-      if (isPolicyQuery && isPolicyEntity) score += 40;
-
-      if (titleLower.includes(trimmedQuery)) score += 30;
-
-      for (const word of queryWords) {
-        if (titleLower.includes(word)) score += 20;
-        if (contentLower.includes(word)) {
-          const matches = Math.min(5, contentLower.split(word).length - 1);
-          score += matches * 2;
-        }
+      // Budget filtering
+      if (constraints.maxPrice !== undefined) {
+        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 60;
+        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 200;
       }
-      return { record, score };
+      if (constraints.minPrice !== undefined) {
+        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 60;
+        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 200;
+      }
+
+      // Rating boost
+      if (constraints.sortByRating && rating >= 4) {
+        score += rating * 10;
+      }
+
+      // Exact or specific keyword match
+      let exactTitleMatch = false;
+      if (constraints.specificKeywords.length > 0) {
+        let matchedKeywords = 0;
+        for (const word of constraints.specificKeywords) {
+          if (titleLower.includes(word)) {
+            score += 60;
+            matchedKeywords++;
+          }
+          if (contentLower.includes(word)) score += 15;
+        }
+        if (matchedKeywords >= 1) exactTitleMatch = true;
+      }
+
+      if (titleLower.includes(trimmedQuery)) {
+        score += 80;
+        exactTitleMatch = true;
+      }
+
+      if (hasPricingOrMedia) score += 30;
+
+      return { record, score, itemPrice, rating, exactTitleMatch };
     });
 
-    const matched = scored
-      .filter(s => s.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(s => s.record)
-      .filter(r => {
-        const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price) || Boolean(r.image_urls?.length);
-        if (isCatalogQuery && !isCatalogEntity) return false;
-        if (!isPolicyQuery && /policy|terms|privacy|cookie/i.test(r.title || '')) return false;
-        return true;
-      });
+    const validMatches = scored.filter(s => s.score > 0);
+    if (validMatches.length === 0) return [];
 
-    if (matched.length === 0) return [];
+    // If there is an exact/specific item match (e.g. user asked for "mern stack"), isolate to just matching item(s)
+    const exactMatches = validMatches.filter(s => s.exactTitleMatch);
+    const candidateList = (exactMatches.length > 0 && constraints.specificKeywords.length > 0) ? exactMatches : validMatches;
 
-    return matched.slice(0, limit).map(r => {
+    // Apply sorting
+    if (constraints.sortByPrice === 'asc') {
+      candidateList.sort((a, b) => (a.itemPrice ?? 999999) - (b.itemPrice ?? 999999));
+    } else if (constraints.sortByPrice === 'desc') {
+      candidateList.sort((a, b) => (b.itemPrice ?? 0) - (a.itemPrice ?? 0));
+    } else if (constraints.sortByRating) {
+      candidateList.sort((a, b) => b.rating - a.rating);
+    } else {
+      candidateList.sort((a, b) => b.score - a.score);
+    }
+
+    return candidateList.slice(0, limit).map(s => {
+      const r = s.record;
       const meta = (r.metadata || {}) as Record<string, any>;
       const result: WebsiteDataRecord = { entityType: r.entity_type };
       if (r.title) result.title = r.title;
       
       if (r.short_description) {
         result.description = r.short_description;
-      } else if (r.entity_type === 'text' && r.content) {
-        result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
-      } else if (meta.description) {
-        result.description = String(meta.description);
       } else if (r.content) {
         result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
       }
-
+      
       if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
         result.images = r.image_urls;
       } else if (meta.images && Array.isArray(meta.images)) {
@@ -849,6 +896,7 @@ export async function getRelevantWebsiteRecords(
       if (meta.currency) result.currency = String(meta.currency);
       if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
       if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
+      if (meta.ratings !== undefined && typeof meta.ratings !== 'object') result.rating = meta.ratings;
       if (meta.reviews !== undefined) {
         result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
       }

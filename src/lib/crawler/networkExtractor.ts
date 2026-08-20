@@ -164,11 +164,24 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
   const itemUrl = item.url || item.link || item.detailUrl || item.detail_url || item.href;
 
   let resolvedUrl = pageUrl;
-  if (typeof itemUrl === 'string' && itemUrl.trim()) {
-    try {
-      resolvedUrl = new URL(itemUrl.trim(), new URL(pageUrl).origin).href;
-    } catch {}
-  }
+  try {
+    const origin = new URL(pageUrl).origin;
+    if (typeof itemUrl === 'string' && itemUrl.trim()) {
+      resolvedUrl = new URL(itemUrl.trim(), origin).href;
+    } else if (item._id || item.id || item.slug) {
+      const rawId = item._id || item.id || item.slug;
+      const lowerTitle = title.toLowerCase();
+      if (pageUrl.includes('/courses') || pageUrl.includes('/course') || /course|mastery|bootcamp|academy|lesson|tutorial/.test(lowerTitle)) {
+        resolvedUrl = `${origin}/course/${rawId}`;
+      } else if (/inventory|vehicle|car|truck|suv/.test(pageUrl) || vin) {
+        resolvedUrl = `${origin}/inventory/${rawId}`;
+      } else if (pageUrl.includes('/products') || sku) {
+        resolvedUrl = `${origin}/products/${item.handle || item.slug || rawId}`;
+      } else {
+        resolvedUrl = `${origin}/course/${rawId}`;
+      }
+    }
+  } catch {}
 
   // Format rich multi-line content for agent retrieval
   const contentParts: string[] = [title];

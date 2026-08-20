@@ -308,6 +308,27 @@ npx tsx scratch/test-all-phases-0-to-4.ts
 # Run synchronization and webhook test suite (Phase 5)
 npx tsx scratch/test-all-phase-5.ts
 
+# Run universal chat intent, navigation & constraint test suite
+npx tsx scratch/test-universal-chat-engine.ts
+```
+
+---
+
+## Autonomous Host Page Navigation & Dynamic Filtering
+
+Widgetized features a bi-directional event bridge allowing the AI agent (via text chat or voice telephony) to autonomously navigate the user's host browser to specific pages, filter catalog items dynamically, and keep cost-effective in-session memory:
+
+1. **Autonomous Host Navigation**:
+   - The embed iframe dispatches `postMessage({ type: 'WIDGET_NAVIGATE', url })` and `voice-agent-navigate` events to the parent host window.
+   - The host listener (`widget.js`) inspects the target URL and executes immediate `window.location.href` navigation.
+2. **Multi-Dimensional Constraint Engine**:
+   - **Numeric Budget & Pricing**: Automatically parses user intents such as `under $100`, `between $50 and $100`, `cheapest`, and filters entities dynamically.
+   - **Specific Item Isolation**: When a specific title/keyword is mentioned (e.g., `"MERN Stack Course"`), the engine isolates retrieval to that exact entity and returns 1 high-confidence card with its direct deep link (`/course/:id`, `/inventory/:id`, `/products/:slug`).
+   - **Informational Intent Routing**: Static page queries (e.g. `"About Us"`, `"Privacy Policy"`, `"Terms"`, `"FAQ"`) synthesize concise answers and suppress unrelated catalog product cards.
+3. **In-Session Context Memory**:
+   - Conversations maintain active memory scoped strictly to the current opened widget chat (`chatMessages.slice(-6)`), eliminating stale multi-session context contamination and minimizing token consumption.
+
+```bash
 # Run agent tools and vector search test suite (Phase 6.1)
 npx tsx scratch/test-agent-tools.ts
 ```

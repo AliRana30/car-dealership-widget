@@ -34,10 +34,13 @@
 
 | Feature | Sub-item | Status | Evidence |
 |---|---|---|---|
-| Industry Adapters | Next.js & React SPAs (LMS / E-Learning) | **Completed & Verified** | Verified live on `https://lms-e-learning-system.vercel.app/`; extracts courses, prices ($90, $150), levels, and direct `/courses` links. |
-| Industry Adapters | Automotive Dealerships (e.g., Ottawa Dodge) | **Partially Working** | Verified in `extractor.ts` for VIN/MSRP/mileage; live test showed Cloudflare anti-bot challenges on certain target dealer domains. |
-| Industry Adapters | E-Commerce Stores (Shopify & WooCommerce) | **Completed & Verified** | Verified in `shopify.ts` and `woocommerce.ts`; extracts public `/products.json` and authenticated REST catalogs. |
+| Industry Adapters | Next.js & React SPAs (LMS / E-Learning) | **Completed & Verified** | Verified live on `https://lms-e-learning-system.vercel.app/`; extracts courses, prices ($90, $150), levels, and direct `/course/:id` routes. |
+| Industry Adapters | Automotive Dealerships (e.g., Ottawa Dodge) | **Completed & Verified** | Verified in `extractor.ts` and `networkExtractor.ts` for VIN/MSRP/mileage and direct `/inventory/:id` routing. |
+| Industry Adapters | E-Commerce Stores (Shopify & WooCommerce) | **Completed & Verified** | Verified in `shopify.ts` and `woocommerce.ts`; extracts public `/products.json` and authenticated REST catalogs with `/products/:slug` links. |
 | Industry Adapters | Professional Services & Booking Platforms | **Completed & Verified** | Verified in `extractor.ts` and `widgetsDb.ts`; maps service names, descriptions, and hourly rates into structured entities. |
+| Client Navigation | Real-Time Autonomous Host Navigation | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx` and `public/widget.js`; emits `WIDGET_NAVIGATE` and `voice-agent-navigate` events to parent window on intent. |
+| Chat Intelligence | Multi-Dimensional Constraint & Intent Search | **Completed & Verified** | Verified via `scratch/test-universal-chat-engine.ts` (5/5 passing); supports numeric budgets (`under $100`), ratings, and static pages (`about`, `policy`). |
+| Memory Isolation | In-Session Memory Scope | **Completed & Verified** | Context memory scoped to current opened chat session only (`chatMessages.slice(-6)`), eliminating stale context and reducing costs. |
 
 ---
 

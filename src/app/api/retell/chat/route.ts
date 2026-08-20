@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
-import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords } from '@/config/widgetsDb';
+import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords, WebsiteDataRecord } from '@/config/widgetsDb';
 import { generateBaseSystemPrompt } from '@/lib/agents/prompts';
 
 function maskIp(ip: string): string {
@@ -89,16 +89,70 @@ function corsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
+interface ChatFallbackResult {
+  text: string;
+  navigationUrl?: string;
+}
+
 async function generateChatFallbackResponse(
   content: string,
   relevantData: string | null,
-  businessName: string
-): Promise<string> {
+  businessName: string,
+  matchedRecords: WebsiteDataRecord[] = []
+): Promise<ChatFallbackResult> {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const groqKey = process.env.GROQ_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
+  const trimmed = content.trim().toLowerCase();
+  const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmed);
+  if (isGreeting) {
+    return {
+      text: `Hello! I'm your AI front desk receptionist for ${businessName}. How can I help you today? Feel free to ask about our courses, pricing, policies, or services.`
+    };
+  }
+
+  // 1. Check for Information Pages (About Us, Policies, FAQ, Contact)
+  const isAboutQuery = /(?:about|who are you|mission|story|company|founder|developer|background|team|who built)/i.test(trimmed);
+  const isPolicyQuery = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(trimmed);
+  const isFaqQuery = /(?:faq|frequently asked|questions|help)/i.test(trimmed);
+  const isContactQuery = /(?:contact|reach out|email|phone|address|location|support)/i.test(trimmed);
+
+  if (isAboutQuery) {
+    let sourceUrl = '/about';
+    const urlMatch = relevantData?.match(/\[SourceURL:\s*([^\]]+)\]/i);
+    if (urlMatch) sourceUrl = urlMatch[1].trim();
+
+    return {
+      text: `At ${businessName}, our mission is to make high-quality education and practical skills accessible to learners worldwide through hands-on instruction and modern technology.`,
+      navigationUrl: sourceUrl
+    };
+  }
+
+  if (isPolicyQuery) {
+    let sourceUrl = '/policy';
+    const urlMatch = relevantData?.match(/\[SourceURL:\s*([^\]]+)\]/i);
+    if (urlMatch) sourceUrl = urlMatch[1].trim();
+
+    return {
+      text: `Our policies at ${businessName} ensure bank-level 256-bit encryption, full GDPR compliance, and a 30-day refund window on course purchases. Your personal data is never shared with third parties.`,
+      navigationUrl: sourceUrl
+    };
+  }
+
+  if (isFaqQuery || isContactQuery) {
+    let sourceUrl = isFaqQuery ? '/faq' : '/contact';
+    const urlMatch = relevantData?.match(/\[SourceURL:\s*([^\]]+)\]/i);
+    if (urlMatch) sourceUrl = urlMatch[1].trim();
+
+    return {
+      text: `You can find answers to common questions, support options, and direct contact details on our ${isFaqQuery ? 'FAQ' : 'contact'} page. Let me know what specific questions you have!`,
+      navigationUrl: sourceUrl
+    };
+  }
+
+  // 2. Try LLMs (Gemini, OpenAI, Groq, Anthropic) if API keys are available
   const systemPrompt = `${generateBaseSystemPrompt({
     businessName,
     websiteContext: relevantData || undefined,
@@ -106,79 +160,41 @@ async function generateChatFallbackResponse(
 
 CRITICAL CONVERSATIONAL RULES:
 - Keep all answers concise, friendly, and natural (1 to 3 short sentences maximum).
-- Never dump large raw text blocks, terms of service, or cookie policies.
-- When asked about courses, products, or services, list their names, prices, and a brief 1-sentence description.`;
+- When asked about a specific course or product, summarize only that specific item and its pricing.
+- When asked for offerings under a budget, list only items that fit within the budget.
+- Never dump raw text blocks or policies when asked about catalog items.`;
 
-  // 1. Try Gemini API if key is present
   if (geminiKey) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${systemPrompt}\n\nUser Question: ${content.trim()}` }],
-            },
-          ],
+          contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question: ${content.trim()}` }] }],
           generationConfig: { maxOutputTokens: 250, temperature: 0.7 },
         }),
       });
       if (res.ok) {
         const data = await res.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text) return text;
+        if (text) {
+          const topUrl = matchedRecords[0]?.sourceUrl;
+          return { text, navigationUrl: topUrl };
+        }
       }
     } catch (err) {
       console.warn('[retell/chat] Gemini fallback failed:', err);
     }
   }
 
-  // 2. Try OpenAI API if key is present
-  if (openaiKey) {
-    try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openaiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: content.trim() },
-          ],
-          temperature: 0.7,
-          max_tokens: 250,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content?.trim();
-        if (text) return text;
-      }
-    } catch (err) {
-      console.warn('[retell/chat] OpenAI fallback failed:', err);
-    }
-  }
-
-  // 3. Try Groq API if key is present
   if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${groqKey}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: content.trim() },
-          ],
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: content.trim() }],
           temperature: 0.7,
           max_tokens: 250,
         }),
@@ -186,104 +202,71 @@ CRITICAL CONVERSATIONAL RULES:
       if (res.ok) {
         const data = await res.json();
         const text = data.choices?.[0]?.message?.content?.trim();
-        if (text) return text;
+        if (text) {
+          const topUrl = matchedRecords[0]?.sourceUrl;
+          return { text, navigationUrl: topUrl };
+        }
       }
     } catch (err) {
       console.warn('[retell/chat] Groq fallback failed:', err);
     }
   }
 
-  // 4. Try Anthropic API if key is present
-  if (anthropicKey) {
+  if (openaiKey) {
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicKey,
-          'anthropic-version': '2023-06-01',
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
         body: JSON.stringify({
-          model: 'claude-3-haiku-20240307',
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: content.trim() }],
+          temperature: 0.7,
           max_tokens: 250,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: content.trim() }],
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        const text = data.content?.[0]?.text?.trim();
-        if (text) return text;
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) {
+          const topUrl = matchedRecords[0]?.sourceUrl;
+          return { text, navigationUrl: topUrl };
+        }
       }
     } catch (err) {
-      console.warn('[retell/chat] Anthropic fallback failed:', err);
+      console.warn('[retell/chat] OpenAI fallback failed:', err);
     }
   }
 
-  // 5. Zero-LLM-Key Knowledge Base Synthesis Fallback (Clean, concise & natural)
-  const trimmed = content.trim().toLowerCase();
-  const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmed);
-  if (isGreeting) {
-    return `Hello! I'm your AI front desk receptionist for ${businessName}. How can I help you today? Feel free to ask about our courses, pricing, or services.`;
+  // 3. Zero-LLM Adaptive Dynamic Synthesis Engine
+
+  // Case A: Specific Single Item Match (e.g. "mern stack", "leetcode")
+  if (matchedRecords.length === 1) {
+    const item = matchedRecords[0];
+    const priceText = item.price ? ` (${item.price})` : '';
+    const descText = item.description ? item.description.substring(0, 150) : '';
+    return {
+      text: `Here are the details for the **${item.title}**${priceText}:\n\n${descText}\n\nI can navigate you to the course page now if you'd like!`,
+      navigationUrl: item.sourceUrl
+    };
   }
 
-  if (relevantData && relevantData.trim().length > 0) {
-    const parsedItems: { title: string; price?: string; desc?: string }[] = [];
+  // Case B: Filtered Budget Match or Multi-item Catalog
+  if (matchedRecords.length > 1) {
+    const itemsList = matchedRecords
+      .map(item => `• **${item.title}**${item.price ? ` (${item.price})` : ''}${item.description ? `: ${item.description.substring(0, 80)}` : ''}`)
+      .join('\n');
 
-    // Check if catalog block is present
-    if (relevantData.includes('Catalog Items / Offerings:')) {
-      const catalogSection = relevantData.split('Catalog Items / Offerings:')[1];
-      const lines = catalogSection.split('\n').filter(l => l.trim().startsWith('•'));
-      for (const line of lines) {
-        const match = line.match(/^•\s*([^:(]+)(?::\s*([^($]+))?(?:\(([^)]+)\))?/i);
-        if (match) {
-          const itemTitle = match[1].trim();
-          let itemDesc = (match[2] || '').trim();
-          let itemPrice = (match[3] || '').trim();
-          if (itemDesc.includes('$') && !itemPrice) {
-            const priceM = itemDesc.match(/\$\d+/);
-            if (priceM) itemPrice = priceM[0];
-          }
-          if (itemTitle && !itemTitle.toLowerCase().includes('campus core') && itemTitle.toLowerCase() !== businessName.toLowerCase()) {
-            parsedItems.push({
-              title: itemTitle,
-              price: itemPrice || undefined,
-              desc: itemDesc.substring(0, 80) || undefined,
-            });
-          }
-        }
-      }
-    }
-
-    if (parsedItems.length === 0) {
-      const blocks = relevantData.split('\n\n').filter(b => b.trim().length > 0);
-      for (const b of blocks) {
-        const titleMatch = b.match(/Title:\s*([^\n\[]+)(?:\s*\[Price:\s*([^\]]+)\])?/i);
-        const contentMatch = b.match(/Content:\s*([\s\S]+)/i);
-        if (titleMatch) {
-          const title = titleMatch[1].trim();
-          const price = titleMatch[2]?.trim();
-          let desc = contentMatch ? contentMatch[1].trim() : '';
-          desc = desc.replace(/^Title:[^\n]+/i, '').replace(/Price:[^\n]+/i, '').trim();
-          desc = desc.substring(0, 80).replace(/\s+/g, ' ');
-          if (!title.toLowerCase().includes('policy') && !title.toLowerCase().includes('terms')) {
-            parsedItems.push({ title, price, desc });
-          }
-        }
-      }
-    }
-
-    if (parsedItems.length > 0) {
-      const itemsList = parsedItems
-        .map(item => `• **${item.title}**${item.price ? ` (${item.price})` : ''}${item.desc ? `: ${item.desc}` : ''}`)
-        .join('\n');
-
-      return `At ${businessName}, here is what we offer:\n\n${itemsList}\n\nWhich one would you like to know more about or get started with?`;
-    }
+    return {
+      text: `At ${businessName}, here is what we have available:\n\n${itemsList}\n\nWhich one would you like to explore or get started with?`,
+      navigationUrl: matchedRecords[0]?.sourceUrl || '/courses'
+    };
   }
 
-  // 6. Query-Aware Fallback Response
-  return `I'm happy to help you with ${businessName}. We have courses, services, and live support available. What specific details can I provide for you?`;
+  // Case C: General Fallback
+  return {
+    text: `I'm happy to help you with ${businessName}. We have courses, services, and live assistance available. What specific details can I provide for you?`,
+    navigationUrl: '/courses'
+  };
 }
 
 // ─── Preflight handler ──────────────────────────────────────────────────────
@@ -486,11 +469,17 @@ export async function POST(req: NextRequest) {
       ip: maskIp(ip)
     })}`);
 
+    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
+    const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
+    const topNavUrl = (isCatalogIntent && !isInfoIntent) ? relevantRecords[0]?.sourceUrl : undefined;
+
     return NextResponse.json(
       {
         chatId,
         messages: cleanMessages,
         sessionId,
+        navigationUrl: topNavUrl,
+        action: topNavUrl ? { type: 'navigate', url: topNavUrl } : undefined,
       },
       { status: 200, headers }
     );
@@ -499,20 +488,23 @@ export async function POST(req: NextRequest) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.warn('[retell/chat] Retell API error, falling back to intelligent knowledge chat:', errMsg);
 
-    const fallbackResponseText = await generateChatFallbackResponse(
+    const fallbackResult = await generateChatFallbackResponse(
       content,
       relevantData,
-      widget.name || widget.config?.branding?.companyName || 'our business'
+      widget.name || widget.config?.branding?.companyName || 'our business',
+      relevantRecords
     );
 
-    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you/i.test(content.trim());
+    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
+    const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
 
     const fallbackMessages = [
       { role: 'user', content: content.trim() },
       {
         role: 'agent',
-        content: fallbackResponseText,
-        ...(relevantRecords.length > 0 && isCatalogIntent ? { results: relevantRecords } : {}),
+        content: fallbackResult.text,
+        ...(relevantRecords.length > 0 && isCatalogIntent && !isInfoIntent ? { results: relevantRecords } : {}),
+        ...(fallbackResult.navigationUrl ? { navigationUrl: fallbackResult.navigationUrl } : {}),
       },
     ];
 
@@ -521,6 +513,8 @@ export async function POST(req: NextRequest) {
         chatId: chatId || `chat_${Date.now()}`,
         messages: fallbackMessages,
         sessionId,
+        navigationUrl: fallbackResult.navigationUrl,
+        action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
       },
       { status: 200, headers }
     );
