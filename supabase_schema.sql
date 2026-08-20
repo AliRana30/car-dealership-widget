@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS websites (
     css_selector_schema JSONB DEFAULT NULL,
     detected_platform TEXT DEFAULT 'unknown' NOT NULL,
     sync_frequency TEXT DEFAULT 'off' NOT NULL CHECK (sync_frequency IN ('off', 'weekly', 'daily', 'twice_daily', 'three_times_daily')),
+    known_urls JSONB DEFAULT '[]'::jsonb NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
@@ -165,13 +166,18 @@ CREATE TABLE IF NOT EXISTS website_data (
     category_path TEXT[] DEFAULT '{}'::text[],
     content_hash TEXT,
     last_checked_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    first_seen TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    last_seen TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    still_listed BOOLEAN DEFAULT TRUE NOT NULL,
     embedding vector(1536),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Index for fast relational lookup
+-- Index for fast relational lookup and freshness queries
 CREATE INDEX IF NOT EXISTS idx_website_data_widget_id ON website_data(widget_id);
+CREATE INDEX IF NOT EXISTS idx_website_data_last_seen ON website_data(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_website_data_still_listed ON website_data(still_listed);
 
 
 -- Automatic updated_at trigger

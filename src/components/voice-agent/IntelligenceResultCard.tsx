@@ -70,6 +70,15 @@ const IGNORED_METADATA_KEYS = new Set([
   'rating',
   'reviews',
   'tags',
+  'first_seen',
+  'last_seen',
+  'still_listed',
+  'firstSeen',
+  'lastSeen',
+  'stillListed',
+  'freshnessStatus',
+  'lastSeenHuman',
+  'hedgeInstruction',
 ]);
 
 function formatPrice(price: string | number, currency?: string): string {

@@ -14,6 +14,10 @@ export interface Entity {
   embedding?: number[];
   contentHash?: string;
   lastCheckedAt?: string;
+  firstSeen?: string;
+  lastSeen?: string;
+  stillListed?: boolean;
+  freshnessStatus?: 'fresh' | 'recent' | 'stale_or_unlisted';
   createdAt: string;
   updatedAt: string;
 }

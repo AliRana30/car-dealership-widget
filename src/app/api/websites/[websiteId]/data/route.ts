@@ -83,61 +83,118 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(str?: string | null): boolean {
+  return Boolean(str && UUID_REGEX.test(str.trim()));
+}
+
 export async function GET(req: NextRequest, { params }: { params: any }) {
   try {
     const resolvedParams = params && typeof params.then === 'function' ? await params : params;
     const websiteId = resolvedParams?.websiteId || '';
     const supabase = getSupabase();
     const format = req.nextUrl.searchParams.get('format') || (req.headers.get('accept')?.includes('application/json') ? 'json' : 'html');
+    const isTargetUuid = isUuid(websiteId);
 
-    // 1. Fetch website record
-    const { data: website } = await supabase
-      .from('websites')
-      .select('id, name, allowed_domains, detected_platform')
-      .or(`id.eq.${websiteId},name.ilike.%${websiteId}%`)
-      .maybeSingle();
+    // 1. Fetch website record safely
+    let website: any = null;
+    if (isTargetUuid) {
+      const { data } = await supabase
+        .from('websites')
+        .select('id, name, allowed_domains, detected_platform')
+        .eq('id', websiteId)
+        .maybeSingle();
+      website = data;
+    } else if (websiteId) {
+      const { data } = await supabase
+        .from('websites')
+        .select('id, name, allowed_domains, detected_platform')
+        .ilike('name', `%${websiteId}%`)
+        .limit(1)
+        .maybeSingle();
+      website = data;
+    }
 
     const siteName = website?.name || (websiteId ? `${websiteId} Knowledge` : 'Website Intelligence');
     const allowedDomains = (website?.allowed_domains || []).map((d: string) =>
       d.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
     );
 
-    // 2. Fetch latest crawl job to check for blocked pages
-    const { data: latestJob } = await supabase
-      .from('crawl_jobs')
-      .select('id, status, pages_visited, entities_found, blocked_pages, error_message, created_at')
-      .or(`website_id.eq.${websiteId},website_id.eq.${website?.id || 'none'}`)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // 2. Fetch latest crawl job to check for blocked pages safely
+    let latestJob: any = null;
+    const targetWebsiteId = website?.id || (isTargetUuid ? websiteId : null);
+    if (targetWebsiteId) {
+      const { data } = await supabase
+        .from('crawl_jobs')
+        .select('id, status, pages_visited, entities_found, blocked_pages, error_message, created_at')
+        .eq('website_id', targetWebsiteId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      latestJob = data;
+    }
 
     const blockedPagesCount = latestJob?.blocked_pages || 0;
     const isJobBlocked = latestJob?.status === 'blocked' || blockedPagesCount > 0;
 
-    // 3. Resolve widget IDs strictly matching this website or widget ID (UUID and slug)
-    const { data: widgets } = await supabase
-      .from('widgets')
-      .select('id, widget_id, website_id')
-      .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
-
+    // 3. Resolve widget IDs strictly matching this website or widget ID (UUID-safe)
     const widgetIds = new Set<string>();
-    if (websiteId) widgetIds.add(websiteId);
-    if (website?.id) widgetIds.add(website.id);
-    if (widgets) {
-      widgets.forEach(w => {
-        if (w.id) widgetIds.add(w.id);
-        if (w.widget_id) widgetIds.add(w.widget_id);
-        if (w.website_id) widgetIds.add(w.website_id);
-      });
+    if (isTargetUuid) widgetIds.add(websiteId);
+    if (website?.id && isUuid(website.id)) widgetIds.add(website.id);
+
+    if (isTargetUuid) {
+      const { data: widgets } = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
+      if (widgets) {
+        widgets.forEach(w => {
+          if (isUuid(w.id)) widgetIds.add(w.id);
+          if (isUuid(w.website_id)) widgetIds.add(w.website_id);
+          if (isUuid(w.widget_id)) widgetIds.add(w.widget_id);
+        });
+      }
+    } else if (websiteId) {
+      const { data: widgets } = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .eq('widget_id', websiteId);
+      if (widgets) {
+        widgets.forEach(w => {
+          if (isUuid(w.id)) widgetIds.add(w.id);
+          if (isUuid(w.website_id)) widgetIds.add(w.website_id);
+          if (isUuid(w.widget_id)) widgetIds.add(w.widget_id);
+        });
+      }
     }
-    const filterWidgetIds = Array.from(widgetIds);
+
+    const filterWidgetIds = Array.from(widgetIds).filter(id => isUuid(id));
+    if (filterWidgetIds.length === 0) {
+      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
 
     // 4. Fetch website data records matching strictly this website or widget ID
-    const { data: rawRecords, error: dataError } = await supabase
+    let rawRecords: any[] | null = null;
+    let dataError: any = null;
+
+    const fullSelect = await supabase
       .from('website_data')
-      .select('id, source_url, title, entity_type, content, metadata, short_description, image_urls, data_type, category_path, created_at')
+      .select('id, source_url, title, entity_type, content, metadata, short_description, image_urls, data_type, category_path, created_at, first_seen, last_seen, still_listed')
       .in('widget_id', filterWidgetIds)
       .order('created_at', { ascending: false });
+
+    rawRecords = fullSelect.data;
+    dataError = fullSelect.error;
+
+    if (dataError && (dataError.code === 'PGRST204' || dataError.message?.includes('column') || dataError.message?.includes('schema cache'))) {
+      const fallbackSelect = await supabase
+        .from('website_data')
+        .select('id, source_url, title, entity_type, content, metadata, short_description, image_urls, data_type, category_path, created_at')
+        .in('widget_id', filterWidgetIds)
+        .order('created_at', { ascending: false });
+      rawRecords = fallbackSelect.data;
+      dataError = fallbackSelect.error;
+    }
 
     if (dataError) {
       return NextResponse.json({ error: dataError.message }, { status: 500 });
@@ -171,13 +228,23 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
       return true;
     });
 
+    const isKnowledgeEntity = (entityType?: string) => {
+      const t = (entityType || '').toLowerCase();
+      return ['product', 'service', 'inventory', 'article', 'faq', 'custom'].includes(t) || (!['page', 'text', 'html'].includes(t) && t.length > 0);
+    };
+
+    const entitiesCount = dataList.filter(r => isKnowledgeEntity(r.entity_type)).length;
+    const pagesCount = dataList.filter(r => !isKnowledgeEntity(r.entity_type)).length;
+
     if (format === 'json') {
       return NextResponse.json({
         websiteId,
         websiteName: siteName,
         blockedPages: blockedPagesCount,
         latestJobStatus: latestJob?.status || 'none',
-        count: dataList.length,
+        totalCount: dataList.length,
+        knowledgeEntitiesCount: entitiesCount,
+        sitePagesCount: pagesCount,
         records: dataList,
       });
     }
@@ -213,6 +280,22 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
         default:
           return { bg: '#F8FAFC', color: '#475569', border: '#E2E8F0', label: 'HTML DOM' };
       }
+    };
+
+    const getFreshnessBadge = (lastSeen?: string, stillListed?: boolean) => {
+      if (stillListed === false) {
+        return { bg: '#FEF2F2', color: '#991B1B', border: '#FCA5A5', label: '⚪ Missing in Latest Scan' };
+      }
+      const timestamp = lastSeen ? new Date(lastSeen).getTime() : Date.now();
+      const hours = Math.max(0, Date.now() - timestamp) / (1000 * 60 * 60);
+      if (hours < 6) {
+        return { bg: '#F0FDF4', color: '#15803D', border: '#86EFAC', label: `🟢 Fresh (${hours < 1 ? 'Just now' : Math.round(hours) + 'h ago'})` };
+      }
+      if (hours <= 24) {
+        return { bg: '#FEFCE8', color: '#A16207', border: '#FDE047', label: `🟡 Recent (${Math.round(hours)}h ago)` };
+      }
+      const days = Math.round(hours / 24);
+      return { bg: '#FFF7ED', color: '#C2410C', border: '#FDBA74', label: `🟠 Stale (${days}d ago)` };
     };
 
     const formatAttributeLabel = (key: string): string => {
@@ -263,13 +346,56 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             align-items: center;
             flex-wrap: wrap;
             gap: 1rem;
-            margin-bottom: 1.75rem;
+            margin-bottom: 1.5rem;
             padding-bottom: 1.25rem;
             border-bottom: 1px solid #E2E8F0;
           }
           h1 { font-size: 1.65rem; font-weight: 800; margin: 0; color: #0F172A; letter-spacing: -0.02em; }
           .subtitle { color: #64748B; font-size: 0.9rem; margin-top: 0.25rem; }
           
+          /* Navigation Tabs */
+          .tab-bar {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
+            border-bottom: 2px solid #E2E8F0;
+            padding-bottom: 2px;
+          }
+          .tab-btn {
+            background: none;
+            border: none;
+            padding: 0.6rem 1.1rem;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #64748B;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.15s ease;
+            position: relative;
+            bottom: -2px;
+          }
+          .tab-btn:hover { color: #1E293B; background: #F1F5F9; }
+          .tab-btn.active {
+            color: #2563EB;
+            border-bottom: 3px solid #2563EB;
+            background: #FFFFFF;
+          }
+          .tab-badge {
+            font-size: 0.75rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 999px;
+            background: #E2E8F0;
+            color: #475569;
+            font-weight: 700;
+          }
+          .tab-btn.active .tab-badge {
+            background: #DBEAFE;
+            color: #1D4ED8;
+          }
+
           /* Warning Banner for Blocked Pages */
           .warning-banner {
             background: #FEF2F2;
@@ -292,7 +418,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 1rem;
+            gap: 0.75rem;
             margin-bottom: 1.5rem;
             background: #FFFFFF;
             padding: 0.85rem 1.25rem;
@@ -300,13 +426,13 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             border: 1px solid #E2E8F0;
             box-shadow: 0 1px 3px rgba(0,0,0,0.02);
           }
-          .filter-group { display: flex; align-items: center; gap: 0.6rem; }
-          .filter-label { font-size: 0.85rem; font-weight: 700; color: #475569; }
+          .filter-group { display: flex; align-items: center; gap: 0.5rem; }
+          .filter-label { font-size: 0.825rem; font-weight: 700; color: #475569; }
           select, input {
-            padding: 0.5rem 0.85rem;
+            padding: 0.45rem 0.75rem;
             border-radius: 7px;
             border: 1px solid #CBD5E1;
-            font-size: 0.875rem;
+            font-size: 0.85rem;
             background: #FFFFFF;
             color: #1E293B;
             outline: none;
@@ -455,13 +581,26 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
           <div class="header">
             <div>
               <h1>${siteName} — Knowledge Viewer</h1>
-              <div class="subtitle"><span id="recordCount">${dataList.length}</span> record(s) indexed for Widgetized AI Agent injection.</div>
+              <div class="subtitle"><span id="recordCount">${dataList.length}</span> record(s) available for Voice Agent Knowledge & Realtime Ingestion.</div>
             </div>
             <div>
               <a href="?format=json" target="_blank" style="font-size: 0.825rem; font-weight: 700; color: #2563EB; text-decoration: none; padding: 0.5rem 0.9rem; border: 1px solid #BFDBFE; border-radius: 7px; background: #EFF6FF; display: inline-flex; align-items: center; gap: 4px;">
                 Export Raw JSON &rarr;
               </a>
             </div>
+          </div>
+
+          <!-- Navigation Tab Switcher -->
+          <div class="tab-bar">
+            <button class="tab-btn active" id="tabAll" onclick="setTab('all')">
+              💎 All Items <span class="tab-badge">${dataList.length}</span>
+            </button>
+            <button class="tab-btn" id="tabEntities" onclick="setTab('entities')">
+              📦 Knowledge Records / Catalog <span class="tab-badge">${entitiesCount}</span>
+            </button>
+            <button class="tab-btn" id="tabPages" onclick="setTab('pages')">
+              📄 Site Pages & Content <span class="tab-badge">${pagesCount}</span>
+            </button>
           </div>
 
           ${isJobBlocked ? `
@@ -491,7 +630,18 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
               </select>
             </div>
             <div class="filter-group">
-              <span class="filter-label">Discovery Tier:</span>
+              <span class="filter-label">Type:</span>
+              <select id="typeFilter" onchange="applyFilters()">
+                <option value="all">All Types</option>
+                <option value="product">Products / Inventory</option>
+                <option value="service">Services / Programs</option>
+                <option value="article">Articles</option>
+                <option value="faq">FAQs</option>
+                <option value="page">Pages / Content</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Tier:</span>
               <select id="tierFilter" onchange="applyFilters()">
                 <option value="all">All Tiers</option>
                 <option value="api">Network API</option>
@@ -502,9 +652,9 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 <option value="html_fallback">HTML DOM</option>
               </select>
             </div>
-            <div class="filter-group" style="flex: 1; max-width: 320px;">
+            <div class="filter-group" style="flex: 1; max-width: 300px;">
               <span class="filter-label">Search:</span>
-              <input type="text" id="searchInput" style="width: 100%;" placeholder="Search keywords, titles, VIN..." oninput="applyFilters()" />
+              <input type="text" id="searchInput" style="width: 100%;" placeholder="Keywords, titles, VIN..." oninput="applyFilters()" />
             </div>
             <span class="counter-badge" id="visibleCounter">Showing ${dataList.length} items</span>
           </div>
@@ -516,6 +666,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
               const meta = (r.metadata || {}) as Record<string, any>;
               const discoveryMethod = (meta.discoveryMethod || (r.data_type === 'shopify' || r.data_type === 'woocommerce' || r.data_type === 'feed' ? 'api' : 'html_fallback')) as string;
               const tierBadge = getDiscoveryMethodBadge(discoveryMethod);
+              const isEntity = isKnowledgeEntity(r.entity_type);
               
               const categoryHtml = Array.isArray(r.category_path) && r.category_path.length > 0
                 ? `<div class="breadcrumbs">&#128193; ${r.category_path.map((c: string) => `<span>${c}</span>`).join(' <span class="crumb-sep">&rsaquo;</span> ')}</div>`
@@ -532,7 +683,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 : '';
 
               const metaEntries = Object.entries(meta).filter(([k, v]) => {
-                if (['images', 'image', 'imageSource', 'description'].includes(k)) return false;
+                if (['images', 'image', 'imageSource', 'description', 'first_seen', 'last_seen', 'still_listed'].includes(k)) return false;
                 if (v === null || v === undefined || v === '') return false;
                 if (typeof v === 'object') return false;
                 return true;
@@ -541,14 +692,22 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
               const contentText = (r.content || '').trim();
               const formattedContentHtml = formatReadableContent(contentText);
 
+              const freshnessBadge = getFreshnessBadge(r.last_seen || r.created_at, r.still_listed);
+
               return `
-                <div class="card" data-source="${(r.data_type || 'crawl').toLowerCase()}" data-tier="${discoveryMethod.toLowerCase()}" data-text="${(r.title + ' ' + contentText).toLowerCase()}">
+                <div class="card" data-is-entity="${isEntity ? 'true' : 'false'}" data-entity-type="${(r.entity_type || 'info').toLowerCase()}" data-source="${(r.data_type || 'crawl').toLowerCase()}" data-tier="${discoveryMethod.toLowerCase()}" data-text="${(r.title + ' ' + contentText).toLowerCase()}">
                   <div class="card-top">
                     <div>
                       <a href="${r.source_url || '#'}" target="_blank" class="card-title">${r.title || 'Untitled'}</a>
                       ${r.source_url ? `<br/><a href="${r.source_url}" target="_blank" class="source-link">&#128279; ${r.source_url}</a>` : ''}
                     </div>
                     <div class="badges">
+                      <span class="badge" style="background: ${isEntity ? '#FDF2F8' : '#F1F5F9'}; color: ${isEntity ? '#BE185D' : '#475569'}; border: 1px solid ${isEntity ? '#FBCFE8' : '#CBD5E1'};">
+                        ${isEntity ? '📦 Knowledge Record' : '📄 Site Page'}
+                      </span>
+                      <span class="badge" style="background: ${freshnessBadge.bg}; color: ${freshnessBadge.color}; border: 1px solid ${freshnessBadge.border};" title="Catalog Freshness Status">
+                        ${freshnessBadge.label}
+                      </span>
                       <span class="badge" style="background: ${tierBadge.bg}; color: ${tierBadge.color}; border: 1px solid ${tierBadge.border};" title="Extraction Tier">
                         ${tierBadge.label}
                       </span>
@@ -598,23 +757,43 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
         </div>
 
         <script>
+          let currentTab = 'all';
+
+          function setTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (tab === 'all') document.getElementById('tabAll').classList.add('active');
+            if (tab === 'entities') document.getElementById('tabEntities').classList.add('active');
+            if (tab === 'pages') document.getElementById('tabPages').classList.add('active');
+            applyFilters();
+          }
+
           function applyFilters() {
             const selectedSource = document.getElementById('sourceFilter').value.toLowerCase();
+            const selectedType = document.getElementById('typeFilter').value.toLowerCase();
             const selectedTier = document.getElementById('tierFilter').value.toLowerCase();
             const searchText = document.getElementById('searchInput').value.toLowerCase().trim();
             const cards = document.querySelectorAll('.card');
             let visibleCount = 0;
 
             cards.forEach(card => {
+              const isEntity = card.getAttribute('data-is-entity') === 'true';
+              const entityType = card.getAttribute('data-entity-type') || '';
               const source = card.getAttribute('data-source') || '';
               const tier = card.getAttribute('data-tier') || '';
               const text = card.getAttribute('data-text') || '';
 
+              // Tab matching
+              let matchesTab = true;
+              if (currentTab === 'entities') matchesTab = isEntity;
+              if (currentTab === 'pages') matchesTab = !isEntity;
+
               const matchesSource = selectedSource === 'all' || source === selectedSource;
+              const matchesType = selectedType === 'all' || entityType === selectedType;
               const matchesTier = selectedTier === 'all' || tier === selectedTier;
               const matchesSearch = !searchText || text.includes(searchText);
 
-              if (matchesSource && matchesTier && matchesSearch) {
+              if (matchesTab && matchesSource && matchesType && matchesTier && matchesSearch) {
                 card.style.display = 'block';
                 visibleCount++;
               } else {

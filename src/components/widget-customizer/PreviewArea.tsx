@@ -28,8 +28,31 @@ export default function PreviewArea({ draft, widgetId }: Props) {
   const [activePreset, setActivePreset] = useState<DevicePreset>('fluid');
   const [customWidth, setCustomWidth] = useState<number>(680);
   const [isDragging, setIsDragging] = useState<'left' | 'right' | null>(null);
+  const [simulatedUrl, setSimulatedUrl] = useState<string>('yoursite.com');
+  const [navNotification, setNavNotification] = useState<{ url: string; title?: string } | null>(null);
   const startPosRef = useRef({ x: 0, width: 680 });
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Listen to agent browser navigation events from widget
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'voice-agent-navigate' || e.data?.type === 'WIDGET_NAVIGATE') {
+        const rawUrl = e.data.url;
+        if (rawUrl) {
+          try {
+            const parsed = new URL(rawUrl);
+            setSimulatedUrl(`${parsed.host}${parsed.pathname}`);
+          } catch {
+            setSimulatedUrl(rawUrl);
+          }
+          setNavNotification({ url: rawUrl, title: e.data.payload?.title });
+          setTimeout(() => setNavNotification(null), 7000);
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   // Force floating mode for preview inside the customizer frame
   const previewConfig: VoiceWidgetConfig = {
@@ -192,9 +215,46 @@ export default function PreviewArea({ draft, widgetId }: Props) {
               <span style={{ ...styles.trafficDot, background: '#34c84a' }} />
             </div>
             <div style={styles.urlBar}>
-              <span style={styles.urlText}>yoursite.com</span>
+              <span style={styles.urlText}>{simulatedUrl}</span>
             </div>
           </div>
+
+          {/* Realtime Agent Navigation Banner */}
+          {navNotification && (
+            <div style={{
+              background: '#EFF6FF',
+              borderBottom: '1px solid #BFDBFE',
+              padding: '6px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '11px',
+              color: '#1E40AF',
+              gap: '8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                <span style={{ fontSize: '13px' }}>🧭</span>
+                <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Agent Navigated:</span>
+                <span style={{ color: '#2563EB', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                  {navNotification.title ? `${navNotification.title} — ` : ''}{navNotification.url}
+                </span>
+              </div>
+              <a
+                href={navNotification.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: '#2563EB',
+                  textDecoration: 'underline',
+                  flexShrink: 0,
+                }}
+              >
+                Open Page ↗
+              </a>
+            </div>
+          )}
 
           {/* Simulated page content */}
           <div style={styles.fakePageContent}>

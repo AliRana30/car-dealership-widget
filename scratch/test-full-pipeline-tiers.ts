@@ -96,8 +96,8 @@ async function testFullPipeline() {
   `;
   const staticEntities = await extractPageEntities(staticHtml, 'https://lawfirm.example.com/about');
   assert(staticEntities.length === 1, 'Extracted 1 fallback entity');
-  assert(staticEntities[0].metadata.discoveryMethod === 'html_fallback', 'Discovery method is "html_fallback"');
-  assert(staticEntities[0].title.includes('About Our Law Firm'), 'Captured title');
+  assert(staticEntities[0]?.metadata?.discoveryMethod === 'html_fallback', 'Discovery method is "html_fallback"');
+  assert(Boolean(staticEntities[0]?.title?.includes('About Our Law Firm')), 'Captured title');
 
   // ── Scenario D: Analytics Discarded ────────────────────────────────────────
   console.log('\n--- Scenario D: Analytics Discarded ---');

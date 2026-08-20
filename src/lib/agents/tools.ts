@@ -27,6 +27,59 @@ export function appendResumeParam(rawUrl: string, sessionId?: string): string {
   }
 }
 
+export interface FreshnessInfo {
+  freshnessStatus: 'fresh' | 'recent' | 'stale_or_unlisted';
+  hoursSinceLastSeen: number;
+  lastSeenHuman: string;
+  hedgeInstruction?: string;
+}
+
+/**
+ * Evaluates entity catalog freshness based on last_seen timestamp and still_listed flag.
+ * - Under 6 hours old: "fresh" (normal confident statements)
+ * - Between 6 and 24 hours: "recent" (light hedge)
+ * - Beyond 24 hours or still_listed === false: "stale_or_unlisted" (must not guarantee availability, direct to staff)
+ */
+export function calculateFreshness(lastSeen?: string, stillListed?: boolean): FreshnessInfo {
+  if (stillListed === false) {
+    return {
+      freshnessStatus: 'stale_or_unlisted',
+      hoursSinceLastSeen: 999,
+      lastSeenHuman: 'Missing from latest site scan',
+      hedgeInstruction: 'Do NOT state availability as fact. Item was absent from latest site check; advise visitor to confirm availability with staff.',
+    };
+  }
+
+  const timestamp = lastSeen ? new Date(lastSeen).getTime() : Date.now();
+  const diffMs = Math.max(0, Date.now() - timestamp);
+  const hours = diffMs / (1000 * 60 * 60);
+
+  if (hours < 6) {
+    return {
+      freshnessStatus: 'fresh',
+      hoursSinceLastSeen: Math.round(hours * 10) / 10,
+      lastSeenHuman: hours < 1 ? 'Just now' : `${Math.round(hours)}h ago`,
+    };
+  }
+
+  if (hours <= 24) {
+    return {
+      freshnessStatus: 'recent',
+      hoursSinceLastSeen: Math.round(hours * 10) / 10,
+      lastSeenHuman: `${Math.round(hours)}h ago`,
+      hedgeInstruction: 'Hedge lightly (e.g. "As of our last update earlier today...").',
+    };
+  }
+
+  const days = Math.round(hours / 24);
+  return {
+    freshnessStatus: 'stale_or_unlisted',
+    hoursSinceLastSeen: Math.round(hours * 10) / 10,
+    lastSeenHuman: `${days}d ago`,
+    hedgeInstruction: 'Do NOT guarantee current availability. Direct visitor to confirm with staff.',
+  };
+}
+
 /**
  * Maps raw database row from website_data into the full standardized Entity shape.
  */
@@ -40,6 +93,17 @@ export function mapRowToEntity(row: any): Entity {
     ? [String(meta.image)]
     : [];
 
+  const firstSeen = row.first_seen || meta.first_seen || meta.firstSeen || row.created_at || new Date().toISOString();
+  const lastSeen = row.last_seen || meta.last_seen || meta.lastSeen || row.updated_at || row.last_checked_at || row.created_at || new Date().toISOString();
+  const stillListed = row.still_listed !== undefined && row.still_listed !== null
+    ? Boolean(row.still_listed)
+    : meta.still_listed !== undefined && meta.still_listed !== null
+    ? Boolean(meta.still_listed)
+    : meta.stillListed !== undefined && meta.stillListed !== null
+    ? Boolean(meta.stillListed)
+    : true;
+  const freshness = calculateFreshness(lastSeen, stillListed);
+
   return {
     id: row.id || '',
     widgetId: row.widget_id || '',
@@ -48,7 +112,19 @@ export function mapRowToEntity(row: any): Entity {
     imageUrls,
     sourceUrl: row.source_url || undefined,
     entityType: row.entity_type || 'text',
-    metadata: meta,
+    metadata: {
+      ...meta,
+      firstSeen,
+      lastSeen,
+      stillListed,
+      freshnessStatus: freshness.freshnessStatus,
+      lastSeenHuman: freshness.lastSeenHuman,
+      ...(freshness.hedgeInstruction ? { hedgeInstruction: freshness.hedgeInstruction } : {}),
+    },
+    firstSeen,
+    lastSeen,
+    stillListed,
+    freshnessStatus: freshness.freshnessStatus,
     dataType: (row.data_type as any) || 'crawl',
     categoryPath: Array.isArray(row.category_path) ? row.category_path : [],
     contentHash: row.content_hash || undefined,
@@ -166,7 +242,7 @@ export async function getEntityDetails(
 export const AGENT_TOOL_DEFINITIONS = {
   search_entities: {
     name: 'search_entities',
-    description: 'Search the website knowledge base, products, inventory, services, FAQs, and documentation in real time.',
+    description: 'Search the website knowledge base for items, vehicles, offerings, products, services, or FAQs. Returns matching entities with structured metadata, pricing, images, and catalog freshness tracking (firstSeen, lastSeen, stillListed, freshnessStatus).',
     parameters: {
       type: 'object',
       properties: {
@@ -184,7 +260,7 @@ export const AGENT_TOOL_DEFINITIONS = {
   },
   get_entity_details: {
     name: 'get_entity_details',
-    description: 'Retrieve complete real-time specifications, pricing, inventory availability, and attributes for a specific item by its entity ID.',
+    description: 'Retrieve complete real-time specifications, pricing, availability, and catalog freshness verification (firstSeen, lastSeen, stillListed, freshnessStatus, hedgeInstruction) for a specific entity ID before quoting specifics.',
     parameters: {
       type: 'object',
       properties: {
@@ -316,6 +392,12 @@ export async function executeAgentTool(
             availability: e.metadata?.availability,
             sourceUrl: e.sourceUrl,
             images: e.imageUrls,
+            firstSeen: e.firstSeen,
+            lastSeen: e.lastSeen,
+            stillListed: e.stillListed,
+            freshnessStatus: e.freshnessStatus,
+            lastSeenHuman: (e.metadata as any)?.lastSeenHuman,
+            hedgeInstruction: (e.metadata as any)?.hedgeInstruction,
             metadata: e.metadata,
           })),
         },
@@ -341,6 +423,12 @@ export async function executeAgentTool(
           images: entity.imageUrls,
           sourceUrl: entity.sourceUrl,
           categoryPath: entity.categoryPath,
+          firstSeen: entity.firstSeen,
+          lastSeen: entity.lastSeen,
+          stillListed: entity.stillListed,
+          freshnessStatus: entity.freshnessStatus,
+          lastSeenHuman: (entity.metadata as any)?.lastSeenHuman,
+          hedgeInstruction: (entity.metadata as any)?.hedgeInstruction,
           metadata: entity.metadata,
         },
       };

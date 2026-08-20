@@ -98,6 +98,11 @@ export function mergeEntity(
   const existingIsConnector = isConnectorDataType(existing.data_type);
   const incomingIsConnector = isConnectorDataType(incoming.data_type);
 
+  const nowIso = new Date().toISOString();
+  const first_seen = existing.first_seen || incoming.first_seen || (existing as any).created_at || nowIso;
+  const last_seen = incoming.last_seen || nowIso;
+  const still_listed = true;
+
   // If existing is authoritative connector and incoming is a crawl/JSON-LD:
   if (existingIsConnector && !incomingIsConnector) {
     // Preserve existing title unless empty/untitled
@@ -152,6 +157,10 @@ export function mergeEntity(
       image_urls,
       category_path,
       metadata: mergedMetadata,
+      first_seen,
+      last_seen,
+      still_listed,
+      last_checked_at: nowIso,
       // Retain existing connector data_type and id
       data_type: existing.data_type,
       id: existing.id,
@@ -173,6 +182,10 @@ export function mergeEntity(
       widget_id: existing.widget_id,
       metadata: mergedMetadata,
       data_type: incoming.data_type,
+      first_seen,
+      last_seen,
+      still_listed,
+      last_checked_at: nowIso,
     };
   }
 
@@ -182,6 +195,10 @@ export function mergeEntity(
     ...incoming,
     id: existing.id,
     widget_id: existing.widget_id,
+    first_seen,
+    last_seen,
+    still_listed,
+    last_checked_at: nowIso,
     metadata: {
       ...(existing.metadata || {}),
       ...(incoming.metadata || {}),

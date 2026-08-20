@@ -5,7 +5,14 @@
  * WooCommerce, or a generic/unknown stack to enable direct structured ingestion.
  */
 
-export type DetectedPlatform = 'shopify' | 'woocommerce' | 'unknown';
+export type DetectedPlatform =
+  | 'shopify'
+  | 'woocommerce'
+  | 'd2cmedia'
+  | 'dealer_dot_com'
+  | 'dealer_inspire'
+  | 'custom_inventory'
+  | 'unknown';
 
 const PROBE_TIMEOUT_MS = 2500;
 
@@ -169,6 +176,33 @@ async function probeHomepageFallback(baseUrl: string): Promise<DetectedPlatform>
         html.includes('class="woocommerce')
       ) {
         return 'woocommerce';
+      }
+
+      // Check D2C Media automotive signatures
+      if (
+        html.includes('d2cmedia.ca') ||
+        html.includes("d2c media") ||
+        html.includes('/ajax/detailsview') ||
+        html.includes('images.d2cmedia.ca')
+      ) {
+        return 'd2cmedia';
+      }
+
+      // Check Dealer.com automotive signatures
+      if (
+        html.includes('dealer.com') ||
+        html.includes('ddc-') ||
+        html.includes('dealerdotcom')
+      ) {
+        return 'dealer_dot_com';
+      }
+
+      // Check Dealer Inspire automotive signatures
+      if (
+        html.includes('dealerinspire.com') ||
+        html.includes('dealer inspire')
+      ) {
+        return 'dealer_inspire';
       }
     }
   } catch {

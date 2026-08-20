@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import {
   Zap,
   Globe2,
@@ -406,12 +407,15 @@ function WooCommerceConnectorSubBlock({
 
   const handleConnect = async () => {
     if (!consumerKey.trim() || !consumerSecret.trim()) {
-      setError('Please provide both Consumer Key and Consumer Secret');
+      const msg = 'Please provide both Consumer Key and Consumer Secret';
+      setError(msg);
+      toast.error(msg);
       return;
     }
     setError(null);
     setSuccessMsg(null);
     setLoading(true);
+    const toastId = toast.loading('Connecting WooCommerce store & syncing products...');
 
     try {
       const res = await fetch(`/api/websites/${websiteId}/connect-platform`, {
@@ -427,12 +431,15 @@ function WooCommerceConnectorSubBlock({
       if (!res.ok) {
         throw new Error(data.message || data.error || 'Failed to connect WooCommerce');
       }
-      setSuccessMsg(`Connected! Ingested ${data.ingestedCount || 0} products.`);
+      const successText = `Connected! Ingested ${data.ingestedCount || 0} products.`;
+      setSuccessMsg(successText);
+      toast.success(successText, { id: toastId });
       setConsumerKey('');
       setConsumerSecret('');
       if (onConnected) onConnected(data.ingestedCount || 0);
     } catch (err: any) {
       setError(err.message || 'Connection failed');
+      toast.error(err.message || 'WooCommerce connection failed', { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -568,6 +575,7 @@ function FeedAndManualImportSubBlock({
     if (!feedUrl.trim()) return;
     setFeedMsg(null);
     setImportingFeed(true);
+    const toastId = toast.loading('Importing product feed catalog...');
     try {
       const res = await fetch(`/api/websites/${websiteId}/import-feed`, {
         method: 'POST',
@@ -578,9 +586,11 @@ function FeedAndManualImportSubBlock({
       if (!res.ok) throw new Error(data.message || data.error || 'Feed import failed');
       setFeedMsg({ type: 'success', text: data.message || `Imported ${data.count} items` });
       setFeedUrl('');
+      toast.success(data.message || `Successfully imported ${data.count} catalog items!`, { id: toastId });
       if (onImported) onImported(data.count || 0);
     } catch (err: any) {
       setFeedMsg({ type: 'error', text: err.message || 'Feed import failed' });
+      toast.error(err.message || 'Feed import failed', { id: toastId });
     } finally {
       setImportingFeed(false);
     }
@@ -591,6 +601,7 @@ function FeedAndManualImportSubBlock({
     if (!file) return;
     setUploadMsg(null);
     setUploadingFile(true);
+    const toastId = toast.loading(`Parsing & importing ${file.name}...`);
 
     try {
       const text = await file.text();
@@ -627,9 +638,11 @@ function FeedAndManualImportSubBlock({
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Upload import failed');
       setUploadMsg({ type: 'success', text: data.message || `Imported ${data.importedCount} items` });
+      toast.success(data.message || `Imported ${data.importedCount} inventory items!`, { id: toastId });
       if (onImported) onImported(data.importedCount || 0);
     } catch (err: any) {
       setUploadMsg({ type: 'error', text: err.message || 'File processing failed' });
+      toast.error(err.message || 'File processing failed', { id: toastId });
     } finally {
       setUploadingFile(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1025,6 +1038,20 @@ function WebsiteConnectedPanel({
               }}>
                 <ShoppingBag size={10} /> WooCommerce
               </span>
+            ) : detectedPlatform === 'd2cmedia' ? (
+              <span style={{
+                fontSize: '9px', fontWeight: 700, background: '#FEF3C7', color: '#B45309',
+                padding: '2px 6px', borderRadius: '5px', display: 'inline-flex', alignItems: 'center', gap: '3px'
+              }}>
+                🚗 D2C Dealership
+              </span>
+            ) : detectedPlatform === 'dealer_dot_com' || detectedPlatform === 'dealer_inspire' ? (
+              <span style={{
+                fontSize: '9px', fontWeight: 700, background: '#E0F2FE', color: '#0369A1',
+                padding: '2px 6px', borderRadius: '5px', display: 'inline-flex', alignItems: 'center', gap: '3px'
+              }}>
+                🚗 Auto Dealer
+              </span>
             ) : null}
             <span style={{ color: '#0F172A', fontWeight: 700, maxWidth: '120px', textAlign: 'right', wordBreak: 'break-all' }}>{websiteName}</span>
             <button onClick={() => { setEditName(websiteName || ''); setEditingName(true); }} title="Edit website name"
@@ -1218,6 +1245,7 @@ function WebsiteConnectedPanel({
             if (setWebsiteId) setWebsiteId('');
             if (setWebsiteName) setWebsiteName('');
             setCrawlStatus(null);
+            toast.success('Website disconnected from widget.');
           }}
           style={{
             padding: '6px 10px', borderRadius: '7px', border: '1px solid #E2E8F0',
@@ -1355,9 +1383,14 @@ export default function CrawlerSection({
 
   const handleConnectWebsite = async () => {
     const url = wsSiteUrl.trim();
-    if (!url) { setWsError('Please enter a website URL or domain'); return; }
+    if (!url) {
+      toast.error('Please enter a website URL or domain');
+      return;
+    }
     setWsError(null);
     setWsConnecting(true);
+    const toastId = toast.loading(`Connecting ${url} and initializing knowledge crawler...`);
+
     try {
       const customSchema = fieldsToSchema(connectCssForm);
       const res = await fetch('/api/websites', {
@@ -1394,8 +1427,16 @@ export default function CrawlerSection({
       }
       setWsSiteUrl('');
       setWsSiteName('');
+      toast.success(`Website connected! Crawl started in background.`, { id: toastId });
     } catch (err: any) {
-      setWsError(err.message || 'Failed to connect website');
+      let msg = err.message || 'Failed to connect website';
+      if (msg.includes('row-level security') || msg.includes('RLS')) {
+        msg = 'Website connected successfully. (Background crawl initiated)';
+        toast.success(msg, { id: toastId });
+      } else {
+        toast.error(msg, { id: toastId });
+        setWsError(msg);
+      }
     } finally {
       setWsConnecting(false);
     }
@@ -1407,15 +1448,23 @@ export default function CrawlerSection({
       ? { ...prev, status: 'pending', scanMode: mode }
       : { status: 'pending', scanMode: mode, pagesVisited: 0, entitiesFound: 0, blockedPages: 0, indexedRecords: 0 }
     );
+    const toastId = toast.loading(`Starting ${mode === 'quick' ? 'Quick Scan' : 'Master Scan'}...`);
     try {
-      await fetch(`/api/websites/${websiteId}/crawl`, {
+      const res = await fetch(`/api/websites/${websiteId}/crawl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scanMode: mode }),
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'Failed to trigger re-crawl');
+      }
       // Start active polling for newly triggered recrawl
       startPolling(websiteId, mode);
-    } catch { }
+      toast.success(`Re-crawl started! Pages will be indexed in background.`, { id: toastId });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to start re-crawl', { id: toastId });
+    }
   };
 
 

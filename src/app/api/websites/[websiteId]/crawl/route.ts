@@ -65,23 +65,40 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.json({ status: 'never_crawled', websiteId }, { status: 200 });
     }
 
-    // Get count of indexed records (resolving UUID and slug)
-    const { data: widgets } = await supabase
-      .from('widgets')
-      .select('id, widget_id, website_id')
-      .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
-
+    // Get count of indexed records (resolving UUID and slug safely)
+    const isTargetUuid = Boolean(websiteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(websiteId));
     const widgetIds = new Set<string>();
-    if (websiteId) widgetIds.add(websiteId);
-    if (existingWebsite?.id) widgetIds.add(existingWebsite.id);
+    if (isTargetUuid) widgetIds.add(websiteId);
+    if (existingWebsite?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(existingWebsite.id)) {
+      widgetIds.add(existingWebsite.id);
+    }
+
+    let widgets: any[] | null = null;
+    if (isTargetUuid) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
+      widgets = res.data;
+    } else if (websiteId) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .eq('widget_id', websiteId);
+      widgets = res.data;
+    }
+
     if (widgets) {
       widgets.forEach(w => {
-        if (w.id) widgetIds.add(w.id);
-        if (w.widget_id) widgetIds.add(w.widget_id);
-        if (w.website_id) widgetIds.add(w.website_id);
+        if (w.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(w.id)) widgetIds.add(w.id);
+        if (w.website_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(w.website_id)) widgetIds.add(w.website_id);
+        if (w.widget_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(w.widget_id)) widgetIds.add(w.widget_id);
       });
     }
     const filterWidgetIds = Array.from(widgetIds);
+    if (filterWidgetIds.length === 0) {
+      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
 
     const { count } = await supabase
       .from('website_data')

@@ -61,18 +61,29 @@ export async function POST(
       );
     }
 
-    // Find associated widgets
-    const { data: widgets } = await supabase
-      .from('widgets')
-      .select('id, widget_id, website_id')
-      .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
+    // Find associated widgets (UUID-safe)
+    const isTargetUuid = Boolean(websiteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(websiteId));
+    let widgets: any[] | null = null;
+    if (isTargetUuid) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
+      widgets = res.data;
+    } else if (websiteId) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .eq('widget_id', websiteId);
+      widgets = res.data;
+    }
 
     const targetWidgetIds = new Set<string>();
     if (widgets && widgets.length > 0) {
       widgets.forEach(w => {
-        if (w.id) targetWidgetIds.add(w.id);
+        if (w.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(w.id)) targetWidgetIds.add(w.id);
       });
-    } else if (websiteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(websiteId)) {
+    } else if (isTargetUuid) {
       targetWidgetIds.add(websiteId);
     }
     const widgetIds = Array.from(targetWidgetIds);

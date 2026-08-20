@@ -516,23 +516,42 @@ export async function saveWidgetConfiguration(
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isValidUuid(str?: string | null): boolean {
+  return Boolean(str && UUID_REGEX.test(str.trim()));
+}
+
 export async function getRelevantWebsiteData(websiteOrWidgetId: string, query: string): Promise<string> {
   try {
-    const { data: widgets } = await supabase
-      .from('widgets')
-      .select('id, widget_id, website_id')
-      .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
+    const isTargetUuid = isValidUuid(websiteOrWidgetId);
+    let widgets: any[] | null = null;
+    if (isTargetUuid) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
+      widgets = res.data;
+    } else if (websiteOrWidgetId) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .eq('widget_id', websiteOrWidgetId);
+      widgets = res.data;
+    }
 
     const widgetIds = new Set<string>();
-    if (websiteOrWidgetId) widgetIds.add(websiteOrWidgetId);
+    if (isTargetUuid) widgetIds.add(websiteOrWidgetId);
     if (widgets) {
       widgets.forEach(w => {
-        if (w.id) widgetIds.add(w.id);
-        if (w.widget_id) widgetIds.add(w.widget_id);
-        if (w.website_id) widgetIds.add(w.website_id);
+        if (isValidUuid(w.id)) widgetIds.add(w.id);
+        if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
+        if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
       });
     }
-    const filterWidgetIds = Array.from(widgetIds);
+    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
+    if (filterWidgetIds.length === 0) {
+      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
 
     // Try pgvector similarity search first
     try {
@@ -622,21 +641,35 @@ export async function getRelevantWebsiteRecords(
   limit = 3
 ): Promise<WebsiteDataRecord[]> {
   try {
-    const { data: widgets } = await supabase
-      .from('widgets')
-      .select('id, widget_id, website_id')
-      .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
+    const isTargetUuid = isValidUuid(websiteOrWidgetId);
+    let widgets: any[] | null = null;
+    if (isTargetUuid) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
+      widgets = res.data;
+    } else if (websiteOrWidgetId) {
+      const res = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .eq('widget_id', websiteOrWidgetId);
+      widgets = res.data;
+    }
 
     const widgetIds = new Set<string>();
-    if (websiteOrWidgetId) widgetIds.add(websiteOrWidgetId);
+    if (isTargetUuid) widgetIds.add(websiteOrWidgetId);
     if (widgets) {
       widgets.forEach(w => {
-        if (w.id) widgetIds.add(w.id);
-        if (w.widget_id) widgetIds.add(w.widget_id);
-        if (w.website_id) widgetIds.add(w.website_id);
+        if (isValidUuid(w.id)) widgetIds.add(w.id);
+        if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
+        if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
       });
     }
-    const filterWidgetIds = Array.from(widgetIds);
+    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
+    if (filterWidgetIds.length === 0) {
+      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
+    }
 
     // Try pgvector similarity search first
     try {
@@ -753,20 +786,45 @@ export async function getRelevantWebsiteRecords(
 
 export async function getWebsiteContextSummary(websiteId: string): Promise<string> {
   try {
-    const { data: widgets } = await supabase
-      .from('widgets')
-      .select('id')
-      .eq('website_id', websiteId);
+    const isTargetUuid = isValidUuid(websiteId);
+    const widgetIds = new Set<string>();
+    if (isTargetUuid) widgetIds.add(websiteId);
 
-    const widgetIds = widgets?.map(w => w.id) || [];
-    if (widgetIds.length === 0) {
-      widgetIds.push('00000000-0000-0000-0000-000000000000');
+    if (isTargetUuid) {
+      const { data: widgets } = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .or(`id.eq.${websiteId},website_id.eq.${websiteId},widget_id.eq.${websiteId}`);
+      if (widgets) {
+        widgets.forEach(w => {
+          if (isValidUuid(w.id)) widgetIds.add(w.id);
+          if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
+          if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
+        });
+      }
+    } else if (websiteId) {
+      const { data: widgets } = await supabase
+        .from('widgets')
+        .select('id, widget_id, website_id')
+        .eq('widget_id', websiteId);
+      if (widgets) {
+        widgets.forEach(w => {
+          if (isValidUuid(w.id)) widgetIds.add(w.id);
+          if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
+          if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
+        });
+      }
+    }
+
+    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
+    if (filterWidgetIds.length === 0) {
+      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
     }
 
     const { data: records, error } = await supabase
       .from('website_data')
       .select('*')
-      .in('widget_id', widgetIds);
+      .in('widget_id', filterWidgetIds);
 
     if (error || !records || records.length === 0) {
       return '';
@@ -801,6 +859,9 @@ export interface WebsiteDataRow {
   category_path?: string[];
   content_hash?: string;
   last_checked_at?: string;
+  first_seen?: string;
+  last_seen?: string;
+  still_listed?: boolean;
   embedding?: number[];
 }
 
@@ -843,22 +904,45 @@ export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void
     }
   });
 
-  // 3. Enrich rows with embeddings
-  const enrichedRows = rows.map((row, idx) => ({
-    widget_id: row.widget_id,
-    source_url: row.source_url || null,
-    title: row.title || 'Untitled',
-    content: row.content || '',
-    entity_type: row.entity_type || 'text',
-    metadata: row.metadata || {},
-    short_description: row.short_description || row.content?.substring(0, 300) || '',
-    image_urls: Array.isArray(row.image_urls) ? row.image_urls : [],
-    data_type: row.data_type || 'crawl',
-    category_path: Array.isArray(row.category_path) ? row.category_path : [],
-    content_hash: row.content_hash || null,
-    embedding: row.embedding && row.embedding.length > 0 ? row.embedding : (embeddingMap.get(idx) || null),
-    ...(row.id ? { id: row.id } : {})
-  }));
+  const nowIso = new Date().toISOString();
+
+  // 3. Enrich rows with embeddings & freshness timestamps (both top-level and JSONB metadata)
+  const enrichedRows = rows.map((row, idx) => {
+    const rowFirstSeen = row.first_seen || (row.metadata as any)?.first_seen || (row.metadata as any)?.firstSeen || nowIso;
+    const rowLastSeen = row.last_seen || (row.metadata as any)?.last_seen || (row.metadata as any)?.lastSeen || nowIso;
+    const rowStillListed = row.still_listed !== undefined && row.still_listed !== null
+      ? Boolean(row.still_listed)
+      : (row.metadata as any)?.still_listed !== undefined && (row.metadata as any)?.still_listed !== null
+      ? Boolean((row.metadata as any)?.still_listed)
+      : true;
+
+    const mergedMetadata = {
+      ...(row.metadata || {}),
+      first_seen: rowFirstSeen,
+      last_seen: rowLastSeen,
+      still_listed: rowStillListed,
+    };
+
+    return {
+      widget_id: row.widget_id,
+      source_url: row.source_url || null,
+      title: row.title || 'Untitled',
+      content: row.content || '',
+      entity_type: row.entity_type || 'text',
+      metadata: mergedMetadata,
+      short_description: row.short_description || row.content?.substring(0, 300) || '',
+      image_urls: Array.isArray(row.image_urls) ? row.image_urls : [],
+      data_type: row.data_type || 'crawl',
+      category_path: Array.isArray(row.category_path) ? row.category_path : [],
+      content_hash: row.content_hash || null,
+      last_checked_at: row.last_checked_at || nowIso,
+      first_seen: rowFirstSeen,
+      last_seen: rowLastSeen,
+      still_listed: rowStillListed,
+      embedding: row.embedding && row.embedding.length > 0 ? row.embedding : (embeddingMap.get(idx) || null),
+      ...(row.id ? { id: row.id } : {})
+    };
+  });
 
   // 4. Perform batch insert or upsert in chunks of 50
   const { client: dbClient, url: activeUrl } = getDbClient();
@@ -874,7 +958,17 @@ export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void
     const rowsWithoutId = chunk.filter(row => !row.id);
 
     if (rowsWithId.length > 0) {
-      const { error: upsertError } = await dbClient.from('website_data').upsert(rowsWithId);
+      let { error: upsertError } = await dbClient.from('website_data').upsert(rowsWithId);
+      // Fallback if remote schema cache is missing newer columns
+      if (upsertError && (upsertError.code === 'PGRST204' || upsertError.message?.includes('column') || upsertError.message?.includes('schema cache'))) {
+        console.warn('[widgetsDb] Retrying upsert without newer columns:', upsertError.message);
+        const fallbackRows = rowsWithId.map(r => {
+          const { first_seen, last_seen, still_listed, ...rest } = r;
+          return rest;
+        });
+        const retry = await dbClient.from('website_data').upsert(fallbackRows);
+        upsertError = retry.error;
+      }
       if (upsertError) {
         console.error('[widgetsDb] Error upserting website data rows with id:', upsertError);
         throw new Error(`[widgetsDb] Upsert failed: ${upsertError.message}`);
@@ -882,7 +976,17 @@ export async function saveWebsiteDataBatch(rows: WebsiteDataRow[]): Promise<void
     }
 
     if (rowsWithoutId.length > 0) {
-      const { error: insertError } = await dbClient.from('website_data').insert(rowsWithoutId);
+      let { error: insertError } = await dbClient.from('website_data').insert(rowsWithoutId);
+      // Fallback if remote schema cache is missing newer columns
+      if (insertError && (insertError.code === 'PGRST204' || insertError.message?.includes('column') || insertError.message?.includes('schema cache'))) {
+        console.warn('[widgetsDb] Retrying insert without newer columns:', insertError.message);
+        const fallbackRows = rowsWithoutId.map(r => {
+          const { first_seen, last_seen, still_listed, ...rest } = r;
+          return rest;
+        });
+        const retry = await dbClient.from('website_data').insert(fallbackRows);
+        insertError = retry.error;
+      }
       if (insertError) {
         console.error('[widgetsDb] Error inserting new website data rows:', insertError);
         throw new Error(`[widgetsDb] Insert failed: ${insertError.message}`);
