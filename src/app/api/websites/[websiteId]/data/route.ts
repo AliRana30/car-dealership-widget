@@ -509,24 +509,93 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
           }
           .crumb-sep { color: #94A3B8; }
 
-          /* Image Gallery */
-          .images-row {
-            display: flex;
-            gap: 0.6rem;
-            margin-bottom: 1rem;
-            overflow-x: auto;
-            padding-bottom: 0.35rem;
-          }
-          .thumb {
-            height: 72px;
-            width: 72px;
-            border-radius: 8px;
-            object-fit: cover;
+          /* Image & Media Showcase */
+          .media-showcase {
+            background: #FFFFFF;
             border: 1px solid #E2E8F0;
-            background: #F8FAFC;
-            transition: transform 0.15s ease;
+            border-radius: 10px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 1rem;
           }
-          .thumb:hover { transform: scale(1.05); }
+          .media-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.6rem;
+            font-size: 0.75rem;
+          }
+          .media-title {
+            font-weight: 700;
+            color: #334155;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+          .media-count {
+            font-weight: 600;
+            color: #2563EB;
+            background: #EFF6FF;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid #BFDBFE;
+          }
+          .media-grid {
+            display: flex;
+            gap: 0.75rem;
+            overflow-x: auto;
+            padding-bottom: 0.4rem;
+            align-items: center;
+          }
+          .media-card {
+            flex-shrink: 0;
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #CBD5E1;
+            background: #F8FAFC;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
+          }
+          .media-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-color: #3B82F6;
+          }
+          .media-thumb {
+            height: 96px;
+            width: 140px;
+            object-fit: cover;
+            display: block;
+            background: #F1F5F9;
+          }
+          .media-fallback {
+            height: 96px;
+            width: 140px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #F8FAFC;
+            padding: 0.5rem;
+            text-align: center;
+            gap: 4px;
+          }
+          .fallback-text {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #64748B;
+          }
+          .fallback-link {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #2563EB;
+            text-decoration: none;
+          }
+          .fallback-link:hover {
+            text-decoration: underline;
+          }
 
           /* Content formatting */
           .content-box {
@@ -672,18 +741,45 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 ? `<div class="breadcrumbs">&#128193; ${r.category_path.map((c: string) => `<span>${c}</span>`).join(' <span class="crumb-sep">&rsaquo;</span> ')}</div>`
                 : '';
 
-              const rawImages = Array.isArray(r.image_urls) && r.image_urls.length > 0
-                ? r.image_urls
-                : Array.isArray(meta.images) ? meta.images : meta.image ? [meta.image] : [];
+              const collectedImages: string[] = [];
+              if (Array.isArray(r.image_urls)) {
+                r.image_urls.forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) collectedImages.push(img); });
+              }
+              if (Array.isArray(meta.images)) {
+                meta.images.forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) collectedImages.push(img); });
+              }
+              if (typeof meta.image === 'string' && meta.image.startsWith('http')) {
+                collectedImages.push(meta.image);
+              }
+              if (typeof meta.photoUrl === 'string' && meta.photoUrl.startsWith('http')) {
+                collectedImages.push(meta.photoUrl);
+              }
+              if (typeof meta.thumbnail === 'string' && meta.thumbnail.startsWith('http')) {
+                collectedImages.push(meta.thumbnail);
+              }
+
+              const rawImages = Array.from(new Set(collectedImages));
 
               const imagesHtml = rawImages.length > 0
-                ? `<div class="images-row">
-                    ${rawImages.slice(0, 6).map((img: string) => `<img src="${img}" class="thumb" onerror="this.style.display='none'" />`).join('')}
+                ? `<div class="media-showcase">
+                    <div class="media-header">
+                      <span class="media-title">📷 High-Res Photos & Media</span>
+                      <span class="media-count">${rawImages.length} Photo${rawImages.length > 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="media-grid">
+                      ${rawImages.slice(0, 8).map((img: string, idx: number) => `
+                        <div class="media-card">
+                          <a href="${img}" target="_blank" rel="noopener noreferrer" title="View Full High-Resolution Photo">
+                            <img src="${img}" class="media-thumb" loading="lazy" alt="Asset ${idx + 1}" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'media-fallback\\'>🖼️ <span class=\\'fallback-text\\'>Photo ${idx + 1}</span><a href=\\'${img}\\' target=\\'_blank\\' rel=\\'noopener noreferrer\\' class=\\'fallback-link\\'>Open URL &rarr;</a></div>'" />
+                          </a>
+                        </div>
+                      `).join('')}
+                    </div>
                    </div>`
                 : '';
 
               const metaEntries = Object.entries(meta).filter(([k, v]) => {
-                if (['images', 'image', 'imageSource', 'description', 'first_seen', 'last_seen', 'still_listed'].includes(k)) return false;
+                if (['images', 'image', 'imageSource', 'photoUrl', 'thumbnail', 'description', 'first_seen', 'last_seen', 'still_listed'].includes(k)) return false;
                 if (v === null || v === undefined || v === '') return false;
                 if (typeof v === 'object') return false;
                 return true;

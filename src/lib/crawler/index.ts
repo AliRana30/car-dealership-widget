@@ -232,12 +232,14 @@ export async function crawlWebsite(
 
   // Process in batches of 5
   const BATCH_SIZE = 5;
+  let crawl4aiDisabled = !process.env.CRAWL4AI_BASE_URL;
+
   for (let i = 0; i < urlsToFetch.length; i += BATCH_SIZE) {
     const batch = urlsToFetch.slice(i, i + BATCH_SIZE);
     let crawl4aiSucceeded = false;
 
-    // 1. Try Crawl4AI REST service if configured in environment
-    if (process.env.CRAWL4AI_BASE_URL) {
+    // 1. Try Crawl4AI REST service if configured and healthy
+    if (!crawl4aiDisabled) {
       try {
         const response = await getCrawl4AIClient().crawl({
           urls: batch,
@@ -262,81 +264,82 @@ export async function crawlWebsite(
             magic: true,
             extraction_strategy: extractionStrategy,
           },
-        });
+        }, 15000); // 15-second cap per batch
 
-      if (response && Array.isArray(response.results) && response.results.length > 0) {
-        crawl4aiSucceeded = true;
-        for (const result of response.results) {
-          // Anti-bot detection: Check if page was blocked by WAF challenge / firewall
-          if (isCrawlResultBlocked(result)) {
-            blockedPages++;
-            errors.push(`Page blocked by anti-bot/WAF (${result.url}): status ${result.status_code || 'blocked'}`);
-            continue;
-          }
+        if (response && Array.isArray(response.results) && response.results.length > 0) {
+          crawl4aiSucceeded = true;
+          for (const result of response.results) {
+            // Anti-bot detection: Check if page was blocked by WAF challenge / firewall
+            if (isCrawlResultBlocked(result)) {
+              blockedPages++;
+              errors.push(`Page blocked by anti-bot/WAF (${result.url}): status ${result.status_code || 'blocked'}`);
+              continue;
+            }
 
-          if (!result.success) {
-            errors.push(`Failed to crawl ${result.url}: ${result.error_message || 'unknown error'}`);
-            continue;
-          }
-          pagesVisited++;
+            if (!result.success) {
+              errors.push(`Failed to crawl ${result.url}: ${result.error_message || 'unknown error'}`);
+              continue;
+            }
+            pagesVisited++;
 
-          const rawContent = (result.markdown || result.html || result.cleaned_html || '').trim();
-          const contentHash = computeContentHash(rawContent);
+            const rawContent = (result.markdown || result.html || result.cleaned_html || '').trim();
+            const contentHash = computeContentHash(rawContent);
 
-          const normResultUrl = result.url.replace(/\/+$/, '').toLowerCase();
-          const matchingExisting = (existingRows || []).find(r => {
-            if (!r.source_url) return false;
-            return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
-          });
-
-          const isExistingThinOrLoading =
-            !matchingExisting?.content ||
-            matchingExisting.content.length < 150 ||
-            matchingExisting.content.toLowerCase().includes('loading...') ||
-            matchingExisting.title?.toLowerCase() === 'loading...';
-
-          if (matchingExisting && !isExistingThinOrLoading && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
-            pagesSkipped++;
-            const nowIso = new Date().toISOString();
-            try {
-              await supabase
-                .from('website_data')
-                .update({ last_seen: nowIso, last_checked_at: nowIso, still_listed: true })
-                .eq('id', matchingExisting.id);
-            } catch {}
-
-            allEntities.push({
-              url: matchingExisting.source_url || result.url,
-              title: matchingExisting.title,
-              content: matchingExisting.content,
-              dataType: (matchingExisting.entity_type as any) || 'text',
-              contentHash: matchingExisting.content_hash,
-              lastCheckedAt: nowIso,
-              metadata: {
-                ...(matchingExisting.metadata || {}),
-                last_seen: nowIso,
-                still_listed: true,
-              },
+            const normResultUrl = result.url.replace(/\/+$/, '').toLowerCase();
+            const matchingExisting = (existingRows || []).find(r => {
+              if (!r.source_url) return false;
+              return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
             });
-            continue;
-          }
 
-          pagesProcessed++;
-          const entities = await extractEntitiesFromCrawlResult(result);
-          for (const entity of entities) {
-            entity.contentHash = contentHash;
-            entity.lastCheckedAt = new Date().toISOString();
-            if (!isDuplicate(entity, allEntities)) {
-              allEntities.push(entity);
+            const isExistingThinOrLoading =
+              !matchingExisting?.content ||
+              matchingExisting.content.length < 150 ||
+              matchingExisting.content.toLowerCase().includes('loading...') ||
+              matchingExisting.title?.toLowerCase() === 'loading...';
+
+            if (matchingExisting && !isExistingThinOrLoading && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
+              pagesSkipped++;
+              const nowIso = new Date().toISOString();
+              try {
+                await supabase
+                  .from('website_data')
+                  .update({ last_seen: nowIso, last_checked_at: nowIso, still_listed: true })
+                  .eq('id', matchingExisting.id);
+              } catch {}
+
+              allEntities.push({
+                url: matchingExisting.source_url || result.url,
+                title: matchingExisting.title,
+                content: matchingExisting.content,
+                dataType: (matchingExisting.entity_type as any) || 'text',
+                contentHash: matchingExisting.content_hash,
+                lastCheckedAt: nowIso,
+                metadata: {
+                  ...(matchingExisting.metadata || {}),
+                  last_seen: nowIso,
+                  still_listed: true,
+                },
+              });
+              continue;
+            }
+
+            pagesProcessed++;
+            const entities = await extractEntitiesFromCrawlResult(result);
+            for (const entity of entities) {
+              entity.contentHash = contentHash;
+              entity.lastCheckedAt = new Date().toISOString();
+              if (!isDuplicate(entity, allEntities)) {
+                allEntities.push(entity);
+              }
             }
           }
         }
+      } catch (crawl4aiErr: any) {
+        console.warn(`[crawler] Crawl4AI service error (${crawl4aiErr.message || 'connection failed'}). Switching to native high-speed crawler.`);
+        crawl4aiDisabled = true;
+        crawl4aiSucceeded = false;
       }
-    } catch {
-      // Crawl4AI service unavailable or fetch failed — silently fall back to native crawling
-      crawl4aiSucceeded = false;
     }
-  }
 
     // 2. Native high-fidelity HTML crawler fallback if Crawl4AI didn't process the batch
     if (!crawl4aiSucceeded) {
@@ -509,7 +512,7 @@ async function discoverUrlsViaSeeder(
         source: 'sitemap+cc',
         max_urls: pageCap,
         ...(scanMode === 'quick' ? { max_depth: 1 } : {}),
-      });
+      }, 4000);
 
       const validUrls = (seedResult.urls || []).filter(
         (u): u is string => typeof u === 'string' && u.startsWith('http')
@@ -854,11 +857,23 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
 
   for (const widgetId of widgetIds) {
     for (const e of entities) {
-      const imageUrls: string[] = Array.isArray(e.metadata?.images)
-        ? (e.metadata.images as any[]).filter((img): img is string => typeof img === 'string')
-        : typeof e.metadata?.image === 'string' && e.metadata.image
-        ? [e.metadata.image as string]
-        : [];
+      const rawImgs: string[] = [];
+      if (Array.isArray(e.imageUrls)) {
+        e.imageUrls.forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) rawImgs.push(img); });
+      }
+      if (Array.isArray(e.metadata?.images)) {
+        (e.metadata.images as any[]).forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) rawImgs.push(img); });
+      }
+      if (typeof e.metadata?.image === 'string' && e.metadata.image.startsWith('http')) {
+        rawImgs.push(e.metadata.image);
+      }
+      if (typeof e.metadata?.photoUrl === 'string' && e.metadata.photoUrl.startsWith('http')) {
+        rawImgs.push(e.metadata.photoUrl);
+      }
+      if (typeof e.metadata?.thumbnail === 'string' && e.metadata.thumbnail.startsWith('http')) {
+        rawImgs.push(e.metadata.thumbnail);
+      }
+      const imageUrls = Array.from(new Set(rawImgs));
 
       const categoryPath: string[] = [];
       if (typeof e.metadata?.category === 'string' && e.metadata.category) {

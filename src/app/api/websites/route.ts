@@ -15,6 +15,7 @@ import {
   type ScanMode,
 } from '@/lib/crawler';
 import { detectPlatform } from '@/lib/crawler/platform-detect';
+import { decryptSession, SESSION_COOKIE } from '@/lib/session';
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -22,11 +23,23 @@ function getSupabase() {
   return createClient(url, key);
 }
 
+async function resolveAuthUserId(req: NextRequest): Promise<string | null> {
+  const headerId = req.headers.get('x-user-id');
+  if (headerId) return headerId;
+
+  const rawToken = req.cookies.get(SESSION_COOKIE)?.value || req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  if (rawToken) {
+    const session = await decryptSession(rawToken);
+    if (session?.userId) return session.userId;
+  }
+  return null;
+}
+
 // ─── GET /api/websites ────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   try {
-    const userId = req.headers.get('x-user-id');
+    const userId = await resolveAuthUserId(req);
     if (!userId) {
       return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
     }
@@ -82,7 +95,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = req.headers.get('x-user-id');
+    const userId = await resolveAuthUserId(req);
     if (!userId) {
       return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
     }
@@ -127,14 +140,21 @@ export async function POST(req: NextRequest) {
 
     // ── Deduplication: Check if website already exists for this widget or user domain ──
     let existingWebsite: any = null;
+    const isTargetUuid = Boolean(targetWidgetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetWidgetId));
 
     // 1. Check if the target widget already has a linked website with the same domain
     if (targetWidgetId) {
-      const { data: currentWidget } = await supabase
-        .from('widgets')
-        .select('id, website_id')
-        .or(`id.eq.${targetWidgetId},widget_id.eq.${targetWidgetId}`)
-        .maybeSingle();
+      const { data: currentWidget } = isTargetUuid
+        ? await supabase
+            .from('widgets')
+            .select('id, website_id')
+            .or(`id.eq.${targetWidgetId},widget_id.eq.${targetWidgetId}`)
+            .maybeSingle()
+        : await supabase
+            .from('widgets')
+            .select('id, website_id')
+            .eq('widget_id', targetWidgetId)
+            .maybeSingle();
 
       if (currentWidget?.website_id && currentWidget.website_id !== '00000000-0000-0000-0000-000000000000') {
         const { data: currentWs } = await supabase
@@ -190,13 +210,18 @@ export async function POST(req: NextRequest) {
       website = updatedWs || existingWebsite;
     } else {
       // ── INSERT NEW ROW (Brand-new domain) ──
-      // Product Design Decision: When a widget is switched to a completely new domain,
-      // previous website rows and their historical website_data records are retained
-      // (unreferenced by this widget) rather than auto-deleted, preserving historical audit
-      // trails while cleanly shifting the widget's active pointer to the new website.
+      // Check if user exists before attaching user_id foreign key
+      const { data: userExists } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const validUserId = userExists?.id || null;
+
       const fullPayload: Record<string, any> = {
         organization_id: orgId,
-        user_id: userId,
+        ...(validUserId ? { user_id: validUserId } : {}),
         name: name.trim(),
         allowed_domains: [targetHost],
         css_selector_schema: cssSelectorSchema,
@@ -213,14 +238,13 @@ export async function POST(req: NextRequest) {
       website = fullResult.data;
       let wsError = fullResult.error;
 
-      // Fallback if remote schema cache is missing newer columns
-      if (wsError && (wsError.code === 'PGRST204' || wsError.message?.includes('schema cache') || wsError.message?.includes('column'))) {
-        console.warn('[api/websites] Retrying website creation with base columns due to missing DB columns:', wsError.message);
+      // Fallback if remote schema cache is missing newer columns or user_id FK fails
+      if (wsError && (wsError.code === '23503' || wsError.code === 'PGRST204' || wsError.message?.includes('user_id') || wsError.message?.includes('schema cache') || wsError.message?.includes('column'))) {
+        console.warn('[api/websites] Retrying website creation with base columns:', wsError.message);
         const fallbackResult = await supabase
           .from('websites')
           .insert({
             organization_id: orgId,
-            user_id: userId,
             name: name.trim(),
             allowed_domains: [targetHost],
           })
@@ -236,14 +260,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Immediately link website to the owning widget
+    // Immediately link website to the owning widget (UUID-safe)
     if (targetWidgetId) {
-      const { data: linkedWidget, error: widgetLinkError } = await supabase
-        .from('widgets')
-        .update({ website_id: website.id })
-        .or(`id.eq.${targetWidgetId},widget_id.eq.${targetWidgetId}`)
-        .select('id, widget_id, website_id')
-        .maybeSingle();
+      const { data: linkedWidget, error: widgetLinkError } = isTargetUuid
+        ? await supabase
+            .from('widgets')
+            .update({ website_id: website.id })
+            .or(`id.eq.${targetWidgetId},widget_id.eq.${targetWidgetId}`)
+            .select('id, widget_id, website_id')
+            .maybeSingle()
+        : await supabase
+            .from('widgets')
+            .update({ website_id: website.id })
+            .eq('widget_id', targetWidgetId)
+            .select('id, widget_id, website_id')
+            .maybeSingle();
 
       if (widgetLinkError) {
         console.error('[api/websites] Failed to update widget.website_id:', widgetLinkError.message);

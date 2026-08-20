@@ -273,6 +273,39 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
       if (entity.title || entity.content) entities.push(entity);
     }
 
+    // Vehicle / Car / Automotive
+    else if (type.includes('vehicle') || type.includes('car') || type.includes('motorcycle') || type.includes('truck')) {
+      const offer = ld.offers || ld.offer || {};
+      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+      const title = ld.name || `${ld.vehicleModelDate || ld.modelDate || ''} ${ld.brand?.name || ld.brand || ''} ${ld.model || ''}`.trim() || 'Vehicle';
+      const entity: CrawledEntity = {
+        url: pageUrl,
+        title,
+        content: ld.description || title,
+        dataType: 'product',
+        imageUrls: rawImgs,
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          images: rawImgs,
+          image: rawImgs[0] || undefined,
+          vin: ld.vehicleIdentificationNumber || ld.vin,
+          mileage: ld.mileageFromOdometer?.value || ld.mileageFromOdometer,
+          year: ld.vehicleModelDate || ld.modelDate,
+          make: ld.brand?.name || ld.brand,
+          model: ld.model,
+          trim: ld.vehicleConfiguration || ld.trim,
+          color: ld.color,
+          fuelType: ld.fuelType,
+          transmission: ld.vehicleTransmission,
+          price: offer.price,
+          currency: offer.priceCurrency || 'USD',
+          availability: simplifyAvailability(offer.availability),
+        },
+      };
+      if (entity.title || entity.content) entities.push(entity);
+    }
+
     // Service
     else if (type.includes('service') || type.includes('offer')) {
       const entity: CrawledEntity = {

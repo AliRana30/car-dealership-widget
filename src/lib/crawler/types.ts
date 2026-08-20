@@ -27,6 +27,7 @@ export interface CrawledEntity {
   title?: string;
   content: string;
   dataType: 'product' | 'service' | 'text' | 'faq' | 'contact' | 'pricing' | 'event';
+  imageUrls?: string[];
   contentHash?: string;
   lastCheckedAt?: string;
   metadata: {
