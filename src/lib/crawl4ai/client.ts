@@ -251,6 +251,14 @@ export class Crawl4AIClient {
    * - Server-side errors (HTTP 5xx)
    */
   private isTransientError(error: any, status?: number): boolean {
+    // If running with default localhost URL and env var is not explicitly set,
+    // do not retry on connection refused (fetch failed) to avoid delaying native fallback
+    if (!process.env.CRAWL4AI_BASE_URL && (this.baseUrl.includes('127.0.0.1') || this.baseUrl.includes('localhost'))) {
+      if (error instanceof TypeError || (error instanceof Error && error.message?.includes('fetch failed'))) {
+        return false;
+      }
+    }
+
     if (error instanceof TypeError) {
       return true; // network errors
     }

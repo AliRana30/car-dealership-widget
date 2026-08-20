@@ -8,17 +8,31 @@ import { CrawledEntity } from './types';
 
 // ─── Safe fetch with timeout ──────────────────────────────────────────────────
 
-const FETCH_TIMEOUT_MS = 8000;
-const MAX_BODY_BYTES = 512 * 1024; // 512 KB
+const FETCH_TIMEOUT_MS = 10000;
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
-export async function safeFetch(url: string): Promise<{ html: string; contentType: string } | null> {
+export function decodeHtmlEntities(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+export async function safeFetch(url: string): Promise<{ html: string; contentType: string; status: number } | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'FrontDeskBot/1.0 (website-intelligence-crawler; +https://frontdesk.app)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7',
         'Accept-Language': 'en-US,en;q=0.9',
       },
@@ -26,9 +40,11 @@ export async function safeFetch(url: string): Promise<{ html: string; contentTyp
     });
     clearTimeout(timer);
 
-    if (!res.ok) return null;
-
     const contentType = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      return { html: '', contentType, status: res.status };
+    }
+
     // Stream-read with size cap
     const reader = res.body?.getReader();
     if (!reader) return null;
@@ -53,9 +69,80 @@ export async function safeFetch(url: string): Promise<{ html: string; contentTyp
       offset += chunk.length;
     }
     const html = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
-    return { html, contentType };
+    return { html, contentType, status: res.status };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Extracts all valid same-domain links from HTML.
+ */
+export function extractSameDomainLinks(html: string, baseUrl: string): string[] {
+  try {
+    const base = new URL(baseUrl);
+    const links = new Set<string>();
+    links.add(base.href);
+
+    const hrefRegex = /href=["']([^"']+)["']/gi;
+    let match;
+    while ((match = hrefRegex.exec(html)) !== null) {
+      const rawHref = match[1]?.trim();
+      if (
+        !rawHref ||
+        rawHref.startsWith('#') ||
+        rawHref.startsWith('javascript:') ||
+        rawHref.startsWith('mailto:') ||
+        rawHref.startsWith('tel:')
+      ) {
+        continue;
+      }
+
+      try {
+        const resolved = new URL(rawHref, base.href);
+        if (resolved.hostname.toLowerCase() === base.hostname.toLowerCase()) {
+          const path = resolved.pathname.toLowerCase();
+          // Filter out static asset files
+          if (!path.match(/\.(css|js|woff|woff2|ttf|eot|png|jpg|jpeg|gif|svg|ico|webp|mp4|webm|pdf|json|xml|map)$/)) {
+            resolved.hash = '';
+            links.add(resolved.href);
+          }
+        }
+      } catch {}
+    }
+
+    return Array.from(links);
+  } catch {
+    return [baseUrl];
+  }
+}
+
+/**
+ * Parses XML sitemap content to extract candidate URLs.
+ */
+export function extractSitemapUrls(xmlText: string, baseUrl: string): string[] {
+  try {
+    const base = new URL(baseUrl);
+    const urls = new Set<string>();
+    const locRegex = /<loc>\s*([^<\s]+)\s*<\/loc>/gi;
+    let match;
+    while ((match = locRegex.exec(xmlText)) !== null) {
+      const loc = match[1]?.trim();
+      if (!loc || !loc.startsWith('http')) continue;
+      try {
+        const parsed = new URL(loc);
+        if (parsed.hostname.toLowerCase() === base.hostname.toLowerCase()) {
+          const path = parsed.pathname.toLowerCase();
+          if (!path.match(/\.(css|js|woff|woff2|png|jpg|jpeg|gif|svg|ico|webp|pdf|xml)$/)) {
+            parsed.hash = '';
+            urls.add(parsed.href);
+          }
+        }
+      } catch {}
+    }
+    return Array.from(urls);
+  } catch {
+    return [];
   }
 }
 
@@ -64,10 +151,10 @@ export async function safeFetch(url: string): Promise<{ html: string; contentTyp
 function extractTag(html: string, tag: string, attr?: string): string {
   if (attr) {
     const re = new RegExp(`<${tag}[^>]*\\s${attr}\\s*=\\s*["']([^"']+)["'][^>]*>`, 'i');
-    return html.match(re)?.[1]?.trim() || '';
+    return decodeHtmlEntities(html.match(re)?.[1]?.trim() || '');
   }
   const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
-  return stripTags(html.match(re)?.[1] || '');
+  return decodeHtmlEntities(stripTags(html.match(re)?.[1] || ''));
 }
 
 function extractMeta(html: string, nameOrProp: string): string {
@@ -78,7 +165,7 @@ function extractMeta(html: string, nameOrProp: string): string {
   ];
   for (const p of patterns) {
     const m = html.match(p);
-    if (m?.[1]) return m[1].trim();
+    if (m?.[1]) return decodeHtmlEntities(m[1].trim());
   }
   return '';
 }
@@ -347,26 +434,42 @@ export function extractPageEntities(html: string, pageUrl: string): CrawledEntit
   const inlineEntities = extractInlineJson(html, pageUrl);
   entities.push(...inlineEntities);
 
-  // 3. Fallback: OG/meta tags → one page-level text entity
+  // 3. Fallback: OG/meta tags + Heading & Body extraction → one high-fidelity page-level text entity
   if (entities.length === 0) {
-    const title = extractTag(html, 'title') ||
+    const h1 = extractTag(html, 'h1');
+    const siteTitle = extractTag(html, 'title') ||
       extractMeta(html, 'og:title') ||
       extractMeta(html, 'twitter:title') || '';
+    
+    let title = h1 || siteTitle || new URL(pageUrl).pathname.replace(/^\/+/, '') || new URL(pageUrl).hostname;
+    if (h1 && siteTitle && !h1.toLowerCase().includes(siteTitle.toLowerCase()) && !siteTitle.toLowerCase().includes(h1.toLowerCase())) {
+      title = `${h1} — ${siteTitle}`;
+    }
+
     const description = extractMeta(html, 'description') ||
       extractMeta(html, 'og:description') ||
       extractMeta(html, 'twitter:description') || '';
-    const bodyText = extractAllText(html, 4000);
+    const bodyText = extractAllText(html, 8000);
 
-    const content = [description, bodyText].filter(Boolean).join('\n\n').trim();
-    if (title || content) {
+    const decodedContent = decodeHtmlEntities([description, bodyText].filter(Boolean).join('\n\n').trim());
+    if (title || decodedContent) {
+      const lower = (pageUrl + ' ' + title + ' ' + decodedContent).toLowerCase();
+      let dataType: CrawledEntity['dataType'] = 'text';
+      if (/course|learn|curriculum|syllabus|lesson|class|tutorial/.test(lower)) dataType = 'service';
+      else if (/faq|frequently asked questions|question|answer/.test(lower)) dataType = 'faq';
+      else if (/policy|terms|privacy|refund|cookie|compliance/.test(lower)) dataType = 'text';
+      else if (/contact|support|phone|email|location|address/.test(lower)) dataType = 'contact';
+      else if (/pricing|price|cost|tier|subscription/.test(lower)) dataType = 'pricing';
+      else if (/product|item|cart|shop|store/.test(lower)) dataType = 'product';
+
       const entity: CrawledEntity = {
         url: pageUrl,
-        title: title || new URL(pageUrl).hostname,
-        content: content || title,
-        dataType: 'text',
+        title: decodeHtmlEntities(title.trim()),
+        content: decodedContent || title,
+        dataType,
         metadata: {},
       };
-      if (description) entity.metadata.description = description;
+      if (description) entity.metadata.description = decodeHtmlEntities(description);
       const images = extractImages(html, pageUrl);
       if (images.length) entity.metadata.images = images;
       entities.push(entity);

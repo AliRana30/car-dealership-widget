@@ -23,6 +23,12 @@ import { findMatchingExistingEntity, mergeEntity } from './merge';
 import { ingestShopifyProducts } from '@/lib/connectors/shopify';
 import { ingestWooCommerceProducts } from '@/lib/connectors/woocommerce';
 import { CrawledEntity, CrawlResult } from './types';
+import {
+  safeFetch,
+  extractPageEntities,
+  extractSameDomainLinks,
+  extractSitemapUrls,
+} from './extractor';
 import { createClient } from '@supabase/supabase-js';
 import { saveWebsiteDataBatch, WebsiteDataRow } from '@/config/widgetsDb';
 import crypto from 'crypto';
@@ -202,100 +208,167 @@ export async function crawlWebsite(
   let pagesSkipped = 0;
   let blockedPages = 0;
 
-  // Process in batches of 5 to avoid overwhelming the service
+  // Process in batches of 5
   const BATCH_SIZE = 5;
   for (let i = 0; i < urlsToFetch.length; i += BATCH_SIZE) {
     const batch = urlsToFetch.slice(i, i + BATCH_SIZE);
-    try {
-      const response = await getCrawl4AIClient().crawl({
-        urls: batch,
-        browser_config: {
-          headless: true,
-          verbose: false,
-          // Crawl4AI anti-bot handling and user emulation
-          magic: true,
-          simulate_user: true,
-          override_navigator: true,
-        },
-        crawler_config: {
-          // Extract clean markdown content from each page
-          output_formats: ['markdown', 'metadata'],
-          // Skip media-heavy boilerplate for speed
-          excluded_tags: ['nav', 'footer', 'header', 'script', 'style'],
-          word_count_threshold: 20,
-          // Follow only same-domain links
-          same_domain: true,
-          // Built-in anti-bot detection
-          anti_bot_detection: true,
-          magic: true,
-          // CSS fast-path if configured, otherwise generic LLM strategy
-          extraction_strategy: extractionStrategy,
-        },
-      });
+    let crawl4aiSucceeded = false;
 
-      for (const result of response.results) {
-        // Anti-bot detection: Check if page was blocked by WAF challenge / firewall
-        if (isCrawlResultBlocked(result)) {
-          blockedPages++;
-          errors.push(`Page blocked by anti-bot/WAF (${result.url}): status ${result.status_code || 'blocked'}`);
-          continue; // DO NOT insert an Entity row for a blocked page
-        }
-
-        if (!result.success) {
-          errors.push(`Failed to crawl ${result.url}: ${result.error_message || 'unknown error'}`);
-          continue;
-        }
-        pagesVisited++;
-
-        // Compute content hash on fetched content
-        const rawContent = (result.markdown || result.html || result.cleaned_html || '').trim();
-        const contentHash = computeContentHash(rawContent);
-
-        // Check if matching existing entity has unchanged content hash
-        const normResultUrl = result.url.replace(/\/+$/, '').toLowerCase();
-        const matchingExisting = (existingRows || []).find(r => {
-          if (!r.source_url) return false;
-          return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
+    // 1. Try Crawl4AI REST service if configured in environment
+    if (process.env.CRAWL4AI_BASE_URL) {
+      try {
+        const response = await getCrawl4AIClient().crawl({
+          urls: batch,
+          browser_config: {
+            headless: true,
+            verbose: false,
+            magic: true,
+            simulate_user: true,
+            override_navigator: true,
+          },
+          crawler_config: {
+            output_formats: ['markdown', 'metadata'],
+            excluded_tags: ['nav', 'footer', 'header', 'script', 'style'],
+            word_count_threshold: 20,
+            same_domain: true,
+            anti_bot_detection: true,
+            magic: true,
+            extraction_strategy: extractionStrategy,
+          },
         });
 
-        if (matchingExisting && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
-          pagesSkipped++;
-          console.log(`[crawler] Page unchanged (hash ${contentHash.slice(0, 8)}) — skipped re-extraction: ${result.url}`);
+      if (response && Array.isArray(response.results) && response.results.length > 0) {
+        crawl4aiSucceeded = true;
+        for (const result of response.results) {
+          // Anti-bot detection: Check if page was blocked by WAF challenge / firewall
+          if (isCrawlResultBlocked(result)) {
+            blockedPages++;
+            errors.push(`Page blocked by anti-bot/WAF (${result.url}): status ${result.status_code || 'blocked'}`);
+            continue;
+          }
 
-          // Update last_checked_at timestamp on existing entity
-          try {
-            await supabase
-              .from('website_data')
-              .update({ last_checked_at: new Date().toISOString() })
-              .eq('id', matchingExisting.id);
-          } catch {}
+          if (!result.success) {
+            errors.push(`Failed to crawl ${result.url}: ${result.error_message || 'unknown error'}`);
+            continue;
+          }
+          pagesVisited++;
 
-          // Preserve existing entity in active crawl list
-          allEntities.push({
-            url: matchingExisting.source_url || result.url,
-            title: matchingExisting.title,
-            content: matchingExisting.content,
-            dataType: (matchingExisting.entity_type as any) || 'text',
-            contentHash: matchingExisting.content_hash,
-            lastCheckedAt: new Date().toISOString(),
-            metadata: matchingExisting.metadata || {},
+          const rawContent = (result.markdown || result.html || result.cleaned_html || '').trim();
+          const contentHash = computeContentHash(rawContent);
+
+          const normResultUrl = result.url.replace(/\/+$/, '').toLowerCase();
+          const matchingExisting = (existingRows || []).find(r => {
+            if (!r.source_url) return false;
+            return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
           });
-          continue;
-        }
 
-        // New or modified page: proceed with extraction and attach contentHash
-        pagesProcessed++;
-        const entities = extractEntitiesFromCrawlResult(result);
-        for (const entity of entities) {
-          entity.contentHash = contentHash;
-          entity.lastCheckedAt = new Date().toISOString();
-          if (!isDuplicate(entity, allEntities)) {
-            allEntities.push(entity);
+          if (matchingExisting && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
+            pagesSkipped++;
+            try {
+              await supabase
+                .from('website_data')
+                .update({ last_checked_at: new Date().toISOString() })
+                .eq('id', matchingExisting.id);
+            } catch {}
+
+            allEntities.push({
+              url: matchingExisting.source_url || result.url,
+              title: matchingExisting.title,
+              content: matchingExisting.content,
+              dataType: (matchingExisting.entity_type as any) || 'text',
+              contentHash: matchingExisting.content_hash,
+              lastCheckedAt: new Date().toISOString(),
+              metadata: matchingExisting.metadata || {},
+            });
+            continue;
+          }
+
+          pagesProcessed++;
+          const entities = extractEntitiesFromCrawlResult(result);
+          for (const entity of entities) {
+            entity.contentHash = contentHash;
+            entity.lastCheckedAt = new Date().toISOString();
+            if (!isDuplicate(entity, allEntities)) {
+              allEntities.push(entity);
+            }
           }
         }
       }
-    } catch (err: any) {
-      errors.push(`Batch crawl error (${batch.join(', ')}): ${err.message}`);
+    } catch {
+      // Crawl4AI service unavailable or fetch failed — silently fall back to native crawling
+      crawl4aiSucceeded = false;
+    }
+  }
+
+    // 2. Native high-fidelity HTML crawler fallback if Crawl4AI didn't process the batch
+    if (!crawl4aiSucceeded) {
+      console.log(`[crawler] Executing native HTML crawling for batch: ${batch.join(', ')}`);
+      for (const pageUrl of batch) {
+        try {
+          const pageData = await safeFetch(pageUrl);
+          if (!pageData || !pageData.html || pageData.status >= 400) {
+            console.warn(`[crawler] Page fetch returned status ${pageData?.status || 'network error'} for ${pageUrl}`);
+            continue;
+          }
+
+          // Anti-bot check
+          const probeResult: import('@/lib/crawl4ai/client').CrawlResult = {
+            url: pageUrl,
+            success: true,
+            status_code: pageData.status,
+            html: pageData.html,
+            markdown: pageData.html,
+          };
+
+          if (isCrawlResultBlocked(probeResult)) {
+            blockedPages++;
+            errors.push(`Page blocked by anti-bot/WAF (${pageUrl}): status ${pageData.status}`);
+            continue;
+          }
+
+          pagesVisited++;
+
+          const contentHash = computeContentHash(pageData.html);
+          const normResultUrl = pageUrl.replace(/\/+$/, '').toLowerCase();
+          const matchingExisting = (existingRows || []).find(r => {
+            if (!r.source_url) return false;
+            return r.source_url.replace(/\/+$/, '').toLowerCase() === normResultUrl;
+          });
+
+          if (matchingExisting && matchingExisting.content_hash && matchingExisting.content_hash === contentHash) {
+            pagesSkipped++;
+            try {
+              await supabase
+                .from('website_data')
+                .update({ last_checked_at: new Date().toISOString() })
+                .eq('id', matchingExisting.id);
+            } catch {}
+
+            allEntities.push({
+              url: matchingExisting.source_url || pageUrl,
+              title: matchingExisting.title,
+              content: matchingExisting.content,
+              dataType: (matchingExisting.entity_type as any) || 'text',
+              contentHash: matchingExisting.content_hash,
+              lastCheckedAt: new Date().toISOString(),
+              metadata: matchingExisting.metadata || {},
+            });
+            continue;
+          }
+
+          pagesProcessed++;
+          const extractedEntities = extractPageEntities(pageData.html, pageUrl);
+          for (const entity of extractedEntities) {
+            entity.contentHash = contentHash;
+            entity.lastCheckedAt = new Date().toISOString();
+            if (!isDuplicate(entity, allEntities)) {
+              allEntities.push(entity);
+            }
+          }
+        } catch (nativeErr: any) {
+          console.warn(`[crawler] Error extracting ${pageUrl}:`, nativeErr.message);
+        }
+      }
     }
   }
 
@@ -327,14 +400,15 @@ export async function crawlWebsite(
   };
 }
 
-// ── Seeder: discover URLs via Crawl4AI AsyncUrlSeeder ────────────────────────
+// ── Seeder: discover URLs via Sitemap + Native Link Extractor ────────────────
 
 /**
- * Calls the Crawl4AI seeder endpoint (POST /seed) to get candidate URLs from
- * sitemap discovery + Common Crawl index fallback.
+ * Multi-layer URL discovery:
+ * 1. Checks /sitemap.xml and /sitemap_index.xml (silently falls through on 404)
+ * 2. Tries Crawl4AI seed endpoint if available
+ * 3. Extracts same-domain links from the homepage HTML
  *
- * Quick Scan: limits results to the homepage and its immediately-linked pages.
- * Master Scan: returns the full sitemap-driven URL list up to pageCap.
+ * Guaranteed to return candidate URLs without logging false sitemap errors.
  */
 async function discoverUrlsViaSeeder(
   startUrl: string,
@@ -342,30 +416,70 @@ async function discoverUrlsViaSeeder(
   scanMode: ScanMode,
   errors: string[]
 ): Promise<string[]> {
-  const client = getCrawl4AIClient();
+  const discoveredUrls = new Set<string>();
+  const parsedStart = new URL(startUrl);
+  const origin = parsedStart.origin;
 
+  // Layer 1: Check standard sitemap endpoints
   try {
-    const seedResult = await client.seed({
-      url: startUrl,
-      source: 'sitemap+cc',
-      max_urls: pageCap,
-      ...(scanMode === 'quick' ? { max_depth: 1 } : {}),
-    });
-
-    const validUrls = (seedResult.urls || []).filter(
-      (u): u is string => typeof u === 'string' && u.startsWith('http')
-    );
-
-    if (validUrls.length > 0) {
-      return validUrls;
+    const sitemapCandidates = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
+    for (const sitemapUrl of sitemapCandidates) {
+      const res = await safeFetch(sitemapUrl);
+      if (res && res.html && res.status === 200 && res.html.includes('<loc>')) {
+        const sitemapUrls = extractSitemapUrls(res.html, startUrl);
+        sitemapUrls.forEach(u => discoveredUrls.add(u));
+        if (discoveredUrls.size > 0) {
+          console.log(`[crawler] Discovered ${discoveredUrls.size} URLs from ${sitemapUrl}`);
+          break;
+        }
+      }
     }
-
-    errors.push('Seeder returned no URLs; falling back to homepage');
-    return [startUrl];
-  } catch (err: any) {
-    errors.push(`Seeder error (${err.message}), falling back to homepage`);
-    return [startUrl];
+  } catch {
+    // Missing sitemaps are normal — silently continue to link discovery
   }
+
+  // Layer 2: Try Crawl4AI seed endpoint if Crawl4AI is configured
+  if (process.env.CRAWL4AI_BASE_URL) {
+    try {
+      const client = getCrawl4AIClient();
+      const seedResult = await client.seed({
+        url: startUrl,
+        source: 'sitemap+cc',
+        max_urls: pageCap,
+        ...(scanMode === 'quick' ? { max_depth: 1 } : {}),
+      });
+
+      const validUrls = (seedResult.urls || []).filter(
+        (u): u is string => typeof u === 'string' && u.startsWith('http')
+      );
+
+      validUrls.forEach(u => discoveredUrls.add(u));
+    } catch {
+      // Crawl4AI seed failure is non-fatal — fall through to homepage links
+    }
+  }
+
+  // Layer 3: Always extract same-domain links from the homepage
+  try {
+    const homeData = await safeFetch(startUrl);
+    if (homeData && homeData.html) {
+      const homeLinks = extractSameDomainLinks(homeData.html, startUrl);
+      homeLinks.forEach(u => discoveredUrls.add(u));
+    }
+  } catch (err: any) {
+    console.warn(`[crawler] Homepage link discovery warning for ${startUrl}:`, err.message);
+  }
+
+  // Always ensure the startUrl itself is included
+  discoveredUrls.add(startUrl);
+
+  const candidateList = Array.from(discoveredUrls);
+  console.log(`[crawler] Discovered ${candidateList.length} candidate URLs for ${startUrl}`);
+
+  if (scanMode === 'quick') {
+    return candidateList.slice(0, Math.min(pageCap, 10));
+  }
+  return candidateList.slice(0, pageCap);
 }
 
 
