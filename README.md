@@ -441,3 +441,17 @@ npx tsx scratch/test-agent-tools.ts
    - Removed redundant inline navigation badge banners from the chat transcript for a clean conversation flow.
 4. **Immediate Container Open on Host Navigation**:
    - Host bridge immediately resizes the container on page reload using cached session storage state, ensuring the widget never minimizes during site navigation.
+
+---
+
+## Real-Time Voice Call Navigation & Live Catalog Recommendations
+
+1. **Real-Time Voice Speech Navigation Bridge**:
+   - In active WebRTC voice calls, the transcript listener automatically scans spoken transcripts for destination URLs and explicit navigation commands (`navigate to about`, `open courses`, `open mern stack`).
+   - Dispatches `voice-agent-navigate` and `WIDGET_NAVIGATE` to the host parent window in real time, navigating the host page seamlessly without the voice agent reading aloud raw URLs.
+2. **Real-Time Voice Entity Intelligence Cards**:
+   - Spoken inquiries regarding catalog offerings, best-sellers, tuition pricing, or specific courses during live voice telephony trigger real-time entity lookups.
+   - Populates `voiceResults` and expands the 710px side drawer with picture cards, 5★ ratings, prices, and direct links during the voice call.
+3. **Structured Voice Context & Authoritative Recommendations**:
+   - `getWebsiteContextSummary` injects structured operating guidelines into Retell's dynamic variables with ratings (`[Rating: 5★]`), review counts, and best-seller enrollments.
+   - Instructs the voice AI to enthusiastically recommend top catalog items (e.g. MERN Stack Development Course, Leetcode Mastery) when asked for best/top products, eliminating generic "I don't have sales rankings" disclaimers across all connected websites.

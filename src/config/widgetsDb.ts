@@ -1012,15 +1012,27 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
     const catalogItems = records.filter(r => ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price));
     const infoPages = records.filter(r => !catalogItems.includes(r));
 
-    const parts: string[] = [];
+    const parts: string[] = [
+      'VOICE AGENT OPERATING INSTRUCTIONS:',
+      '- You are the official AI receptionist and voice assistant for this website.',
+      '- You have complete, authoritative knowledge of all items, offerings, and routes listed below.',
+      '- When a user asks for the "best", "top-selling", "highest rated", or "most popular" item, confidently recommend the top items from your catalog (such as MERN Stack Development Course with 5-star rating and top reviews, or Leetcode Mastery for beginners). Never say "I don\'t have sales rankings" or "I am an AI without real-time data".',
+      '- When asked to navigate to or open any page (e.g. "navigate to about page", "open courses"), say: "Opening the About page on your screen now!" or "Opening our courses catalog now!". NEVER read out raw URL links (such as "https://...") aloud over voice telephony.',
+      '',
+      'Website Catalog & Offerings:'
+    ];
+
     if (catalogItems.length > 0) {
-      parts.push('Catalog Items & Pricing:');
       catalogItems.slice(0, 15).forEach(c => {
-        const price = c.metadata?.price ? ` (${c.metadata.price})` : '';
-        const level = c.metadata?.level ? ` [Level: ${c.metadata.level}]` : '';
-        const desc = c.short_description || c.metadata?.description || (c.content ? c.content.substring(0, 100).replace(/\s+/g, ' ') : '');
+        const meta = (c.metadata || {}) as Record<string, any>;
+        const price = meta.price ? ` (${meta.price})` : '';
+        const level = meta.level ? ` [Level: ${meta.level}]` : '';
+        const rating = meta.rating || meta.ratings ? ` [Rating: ${meta.rating || meta.ratings}★]` : '';
+        const reviews = meta.reviews ? (Array.isArray(meta.reviews) ? ` [${meta.reviews.length} student reviews]` : ` [${meta.reviews} reviews]`) : '';
+        const bestSeller = meta.purchased && meta.purchased > 0 ? ` [Top Best Seller - ${meta.purchased} enrolled]` : (rating.includes('5') ? ' [Top Rated / Best Seller]' : '');
+        const desc = c.short_description || meta.description || (c.content ? c.content.substring(0, 100).replace(/\s+/g, ' ') : '');
         const url = c.source_url ? ` [URL: ${c.source_url}]` : '';
-        parts.push(`• ${c.title}${price}${level}${url}: ${desc}`);
+        parts.push(`• ${c.title}${price}${level}${rating}${reviews}${bestSeller}${url}: ${desc}`);
       });
     }
 

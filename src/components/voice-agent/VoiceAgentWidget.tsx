@@ -195,63 +195,95 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       );
     };
 
-    // Only query backend for voice cards when substantive catalog questions are answered after user speaks
+    const lastNavigatedUrlRef = useRef<string | null>(null);
+
+    // ── Real-Time Voice Navigation & Entity Cards Bridge ───
     useEffect(() => {
       const isCallActive = ['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState);
       if (!isCallActive) {
         setVoiceResults({});
         fetchedContents.current.clear();
+        lastNavigatedUrlRef.current = null;
         return;
       }
 
-      // Do NOT fetch result cards if user has not spoken yet or conversation is just starting
-      if (!hasUserSpokenRef.current || transcript.length <= 1) {
-        return;
-      }
+      if (transcript.length === 0) return;
 
-      transcript.forEach((msg) => {
+      const latestMessages = transcript.slice(-4);
+
+      for (const msg of latestMessages) {
         const content = msg.content?.trim();
-        if (!content || msg.role !== 'agent' || fetchedContents.current.has(content)) {
-          return;
-        }
+        if (!content) continue;
+        const textLower = content.toLowerCase();
 
-        // Ignore greetings and generic opening remarks
-        if (isGreetingOrGeneric(content)) {
-          return;
-        }
+        // 1. Real-time Spoken Navigation Listener
+        if (mergedConfig.behavior.allowAgentNavigation) {
+          // Check for embedded URLs in speech (e.g. "https://.../about", "https://.../courses", "/about")
+          const urlMatch = content.match(/https?:\/\/[^\s<>"')]+|\/(?:about|courses|policy|faq|contact|course\/[a-z0-9_-]+|product\/[a-z0-9_-]+)/i);
+          let targetUrl = urlMatch ? urlMatch[0] : null;
 
-        // Only search if the content has catalog/offering intent
-        const hasCatalogKeywords = /course|courses|program|programs|class|classes|pricing|price|cost|tier|service|services|offering|inventory|product|learn/i.test(content);
-        if (!hasCatalogKeywords) {
-          return;
-        }
-
-        fetchedContents.current.add(content);
-
-        // Query backend for relevant structured entity records
-        fetch('/api/agent/tools', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'search',
-            query: content,
-            widgetId: widgetId || 'default',
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.results && Array.isArray(data.results) && data.results.length > 0) {
-              setVoiceResults((prev) => ({
-                ...prev,
-                [content]: data.results,
-              }));
+          // Check for explicit spoken navigation requests
+          if (!targetUrl && /\b(?:navigate|take me to|open|go to|redirect|visit|browse)\b/i.test(textLower)) {
+            if (/\b(?:about|who are you|mission|story)\b/i.test(textLower)) {
+              targetUrl = '/about';
+            } else if (/\b(?:courses|catalog|inventory|shop|all programs|offerings)\b/i.test(textLower)) {
+              targetUrl = '/courses';
+            } else if (/\b(?:policy|policies|terms|privacy|refund)\b/i.test(textLower)) {
+              targetUrl = '/policy';
+            } else if (/\b(?:faq|frequently asked|help)\b/i.test(textLower)) {
+              targetUrl = '/faq';
+            } else if (/\b(?:mern)\b/i.test(textLower)) {
+              targetUrl = 'https://lms-e-learning-system.vercel.app/course/6945abe7c4769ef223f140fd';
+            } else if (/\b(?:backend)\b/i.test(textLower)) {
+              targetUrl = 'https://lms-e-learning-system.vercel.app/course/6a8885e7b07fd83e210c84d6';
+            } else if (/\b(?:leetcode)\b/i.test(textLower)) {
+              targetUrl = 'https://lms-e-learning-system.vercel.app/course/69309149f53ad74946204d40';
             }
-          })
-          .catch((err) => {
-            console.warn('[voice-agent] Failed to search website records for:', content, err);
-          });
-      });
-    }, [transcript, callState, widgetId]);
+          }
+
+          if (targetUrl && lastNavigatedUrlRef.current !== targetUrl) {
+            lastNavigatedUrlRef.current = targetUrl;
+            console.log('[Voice Navigation] Real-time voice navigation triggered for:', targetUrl);
+            
+            // Broadcast navigation to parent frame / host window
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+              window.parent.postMessage({ type: 'voice-agent-navigate', url: targetUrl }, '*');
+              window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url: targetUrl }, '*');
+            } else if (typeof window !== 'undefined') {
+              try { window.location.href = targetUrl; } catch {}
+            }
+          }
+        }
+
+        // 2. Real-time Voice Result Cards (Pictures, Ratings, Prices)
+        if (!fetchedContents.current.has(content) && !isGreetingOrGeneric(content)) {
+          const hasCatalogIntent = /\b(?:course|courses|program|programs|class|classes|pricing|price|cost|tier|service|services|offering|inventory|product|learn|best|selling|popular|top|mern|backend|leetcode|recommend)\b/i.test(content);
+          if (hasCatalogIntent) {
+            fetchedContents.current.add(content);
+
+            // Query entity search for cards
+            fetch(`/api/widgets/${widgetId || 'default'}/entities/search`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: content, limit: 3 }),
+            })
+              .then((res) => res.json())
+              .then((data) => {
+                const results = data.entities || data.results || [];
+                if (Array.isArray(results) && results.length > 0) {
+                  setVoiceResults((prev) => ({
+                    ...prev,
+                    [content]: results,
+                  }));
+                }
+              })
+              .catch((err) => {
+                console.warn('[voice-agent] Failed to search website records for:', content, err);
+              });
+          }
+        }
+      }
+    }, [transcript, callState, widgetId, mergedConfig.behavior.allowAgentNavigation]);
 
     const enrichedTranscript = React.useMemo(() => {
       return transcript.map((msg) => {

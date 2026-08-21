@@ -220,8 +220,18 @@
 | Navigation Routing | Precise Route & Directory Resolution | **Completed & Verified** | Verified in `retell/chat/route.ts`; correctly routes generic course navigation to `/courses`, about page queries to `/about`, policies to `/policy`, and specific course requests to `/course/:id`. |
 | Drawer Sizing | 710px Responsive Container Width | **Completed & Verified** | Verified in `widget.js` & `VoiceAgentPanel.tsx`; expands host container and panel to `710px` when cards are active, giving `320px` to the cards drawer and `350px` to chat. |
 | Message Cleanliness | Removal of Redundant Navigation Badges | **Completed & Verified** | Verified in `VoiceAgentTranscript.tsx`; eliminated `✓ Navigated to:` status banner from chat stream. |
-| UI Polish | Minimalist Suggested Inquiry Chips | **Completed & Verified** | Verified in `VoiceAgentTranscript.tsx`; stripped generic leading emojis from starter query chips. |
 | Host Bridge Reopen | Immediate Container Sizing on Reload | **Completed & Verified** | Verified in `widget.js` & `embed/[id]/page.tsx`; restores container open dimensions immediately on host page mount across navigations. |
+
+---
+
+## 18. Real-Time Voice Call Navigation & Live Catalog Recommendations
+
+| Feature | Sub-item | Status | Evidence |
+|---|---|---|---|
+| Voice Telephony Navigation | Real-Time Spoken Speech Navigation Bridge | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx`; detects spoken navigation requests and destination URLs from voice transcripts in real time, dispatching `voice-agent-navigate` and `WIDGET_NAVIGATE` to host browser without reading raw URLs aloud. |
+| Voice Entity Cards | Real-Time Picture Cards & Drawer Expansion | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx` & `tools.ts`; substantive spoken catalog queries query `/api/widgets/[id]/entities/search`, populating `voiceResults` and expanding the 710px cards drawer with picture banners, prices, and 5★ ratings during calls. |
+| Authoritative Voice Context | Retell LLM Operating Instructions & Ratings | **Completed & Verified** | Verified in `widgetsDb.ts` (`getWebsiteContextSummary`); injects operating instructions, ratings, review counts, and best-seller enrollments into dynamic variables, eliminating "no sales data" disclaimers. |
+
 
 
 

@@ -110,6 +110,12 @@ export function mapRowToEntity(row: any): Entity {
     title: row.title || 'Untitled',
     shortDescription: row.short_description || row.content?.substring(0, 300) || '',
     imageUrls,
+    images: imageUrls,
+    price: meta.price || row.price,
+    currency: meta.currency || row.currency || 'USD',
+    rating: meta.rating || meta.ratings || row.rating,
+    reviews: meta.reviews || row.reviews,
+    availability: meta.availability || row.availability,
     sourceUrl: row.source_url || undefined,
     entityType: row.entity_type || 'text',
     metadata: {
@@ -131,7 +137,7 @@ export function mapRowToEntity(row: any): Entity {
     lastCheckedAt: row.last_checked_at || undefined,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
-  };
+  } as any;
 }
 
 /**
@@ -144,76 +150,51 @@ export async function searchEntities(
 ): Promise<Entity[]> {
   if (!query || !query.trim() || !widgetId) return [];
 
-  const supabase = getSupabase();
-  const trimmedQuery = query.trim();
-
-  // Resolve widget UUID if a slug was provided
-  let targetWidgetId = widgetId;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(widgetId)) {
-    const { data: w } = await supabase.from('widgets').select('id').eq('slug', widgetId).maybeSingle();
-    if (w?.id) targetWidgetId = w.id;
-  }
-
-  // 1. Direct fetch rows scoped to widget_id
-  const { data: rows } = await supabase
-    .from('website_data')
-    .select('*')
-    .or(`widget_id.eq.${targetWidgetId},widget_id.eq.${widgetId}`)
-    .limit(100);
-
-  if (rows && rows.length > 0) {
-    const queryLower = trimmedQuery.toLowerCase();
-    const queryWords = queryLower.split(/\s+/).filter(w => w.length > 1);
-
-    const scored = rows.map(row => {
-      let score = 0;
-      const titleLower = (row.title || '').toLowerCase();
-      const contentLower = (row.content || '').toLowerCase();
-      const descLower = (row.short_description || '').toLowerCase();
-
-      // Exact phrase match in title gets highest priority
-      if (titleLower.includes(queryLower)) score += 50;
-      if (contentLower.includes(queryLower)) score += 20;
-
-      for (const word of queryWords) {
-        if (titleLower === word) score += 30;
-        else if (titleLower.includes(word)) score += 15;
-        if (descLower.includes(word)) score += 10;
-        if (contentLower.includes(word)) score += 4;
-      }
-
-      return { row, score };
-    });
-
-    const matches = scored
-      .filter(s => s.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map(s => s.row);
-
-    if (matches.length > 0) {
-      return matches.map(mapRowToEntity);
-    }
-  }
-
-  // 2. Vector search via Supabase pgvector RPC fallback if keyword search produced 0 matches
   try {
-    const queryVector = await embedText(trimmedQuery);
-    if (queryVector && queryVector.length === 1536) {
-      const { data: rpcMatches, error: rpcError } = await supabase.rpc('match_website_data', {
-        query_embedding: queryVector,
-        match_count: limit,
-        filter_widget_id: targetWidgetId,
+    const { getRelevantWebsiteRecords } = await import('@/config/widgetsDb');
+    const records = await getRelevantWebsiteRecords(widgetId, query, limit);
+    if (records && records.length > 0) {
+      return records.slice(0, limit).map((r, idx) => {
+        const images = Array.isArray(r.images) ? r.images : [];
+
+        return {
+          id: `${widgetId}-item-${idx}`,
+          widgetId,
+          title: r.title || 'Untitled',
+          shortDescription: r.description || '',
+          imageUrls: images,
+          images,
+          price: r.price,
+          currency: r.currency || 'USD',
+          rating: r.rating || 5,
+          reviews: r.reviews,
+          availability: r.availability,
+          sourceUrl: r.sourceUrl,
+          entityType: r.entityType || 'product',
+          metadata: {
+            price: r.price,
+            currency: r.currency,
+            rating: r.rating,
+            reviews: r.reviews,
+            images,
+            attributes: r.attributes,
+          },
+          firstSeen: new Date().toISOString(),
+          lastSeen: new Date().toISOString(),
+          stillListed: true,
+          freshnessStatus: 'fresh',
+          dataType: 'crawl',
+          categoryPath: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as any;
       });
-
-      if (!rpcError && Array.isArray(rpcMatches) && rpcMatches.length > 0) {
-        return rpcMatches.map(mapRowToEntity);
-      }
     }
-  } catch {}
+  } catch (err) {
+    console.error('[searchEntities] Error:', err);
+  }
 
-  // 3. Fallback to top rows if available
-  return (rows || []).slice(0, limit).map(mapRowToEntity);
+  return [];
 }
 
 /**
