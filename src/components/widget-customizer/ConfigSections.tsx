@@ -423,12 +423,12 @@ export function BehaviorSection({ draft, onChange }: Props) {
       </div>
 
       {/* Template Messages Library & Quick Prompts Manager (Task 5) */}
-      <div style={{ ...cardStyle, marginTop: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>💬 Template Messages & Quick Prompts</div>
-            <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '2px' }}>
-              Clickable suggestion chips displayed to visitors when they open the chat. Clicking sends the prompt instantly.
+      <div style={{ ...cardStyle, marginTop: '8px', boxSizing: 'border-box', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>💬 Template Messages</div>
+            <div style={{ fontSize: '11px', color: '#64748B', marginTop: '2px', lineHeight: 1.3 }}>
+              Clickable suggestion chips displayed to visitors on chat open.
             </div>
           </div>
           <button
@@ -444,8 +444,8 @@ export function BehaviorSection({ draft, onChange }: Props) {
               set('templateMessages', [...current, newItem]);
             }}
             style={{
-              padding: '5px 10px',
-              fontSize: '11.5px',
+              padding: '5px 8px',
+              fontSize: '11px',
               fontWeight: 600,
               background: '#2F8FE0',
               color: '#FFFFFF',
@@ -453,6 +453,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
               borderRadius: '6px',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
           >
             + Add Prompt
@@ -460,11 +461,11 @@ export function BehaviorSection({ draft, onChange }: Props) {
         </div>
 
         {/* Preset quick loaders */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
-          <span style={{ fontSize: '11px', color: '#64748B', alignSelf: 'center' }}>Load Preset:</span>
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '10px', alignItems: 'center' }}>
+          <span style={{ fontSize: '10.5px', color: '#64748B', fontWeight: 500 }}>Presets:</span>
           {[
             {
-              name: '🎓 Education / LMS',
+              name: '🎓 LMS',
               prompts: [
                 { id: '1', label: 'Explore Programs', message: 'Which courses or programs do you offer?', icon: '🎓' },
                 { id: '2', label: 'Pricing & Tuition', message: 'What are the tuition rates and pricing options?', icon: '💰' },
@@ -473,7 +474,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
               ],
             },
             {
-              name: '🚗 Dealership / Auto',
+              name: '🚗 Auto',
               prompts: [
                 { id: '1', label: 'View Inventory', message: 'What vehicles do you currently have in stock?', icon: '🚗' },
                 { id: '2', label: 'Book Service', message: 'I would like to schedule an oil change or maintenance service.', icon: '🔧' },
@@ -482,7 +483,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
               ],
             },
             {
-              name: '💼 General Business',
+              name: '💼 Business',
               prompts: [
                 { id: '1', label: 'Our Services', message: 'What services does your company provide?', icon: '⚡' },
                 { id: '2', label: 'Pricing & Plans', message: 'What are your rates and pricing packages?', icon: '🏷️' },
@@ -496,8 +497,8 @@ export function BehaviorSection({ draft, onChange }: Props) {
               type="button"
               onClick={() => set('templateMessages', preset.prompts)}
               style={{
-                padding: '3px 8px',
-                fontSize: '11px',
+                padding: '3px 6px',
+                fontSize: '10.5px',
                 background: '#F1F5F9',
                 color: '#334155',
                 border: '1px solid #CBD5E1',
@@ -511,7 +512,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
         </div>
 
         {/* Template messages list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
           {(draft.behavior.templateMessages || []).map((item, idx) => (
             <div
               key={item.id || idx}
@@ -519,13 +520,17 @@ export function BehaviorSection({ draft, onChange }: Props) {
                 background: '#F8FAFC',
                 border: '1px solid #E2E8F0',
                 borderRadius: '8px',
-                padding: '10px',
+                padding: '8px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '6px',
+                boxSizing: 'border-box',
+                width: '100%',
+                maxWidth: '100%',
+                overflow: 'hidden',
               }}
             >
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', width: '100%', boxSizing: 'border-box' }}>
                 <input
                   type="text"
                   placeholder="Emoji"
@@ -535,7 +540,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
                     next[idx] = { ...next[idx], icon: e.target.value };
                     set('templateMessages', next);
                   }}
-                  style={{ width: '40px', padding: '6px', fontSize: '13px', borderRadius: '6px', border: '1px solid #CBD5E1', textAlign: 'center' }}
+                  style={{ width: '34px', minWidth: '34px', padding: '5px 2px', fontSize: '13px', borderRadius: '6px', border: '1px solid #CBD5E1', textAlign: 'center', boxSizing: 'border-box' }}
                 />
                 <input
                   type="text"
@@ -546,7 +551,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
                     next[idx] = { ...next[idx], label: e.target.value };
                     set('templateMessages', next);
                   }}
-                  style={{ flex: 1, padding: '6px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #CBD5E1' }}
+                  style={{ flex: 1, minWidth: 0, padding: '5px 8px', fontSize: '11.5px', fontWeight: 600, borderRadius: '6px', border: '1px solid #CBD5E1', boxSizing: 'border-box' }}
                 />
                 <button
                   type="button"
@@ -559,9 +564,10 @@ export function BehaviorSection({ draft, onChange }: Props) {
                     color: '#DC2626',
                     border: 'none',
                     borderRadius: '6px',
-                    padding: '6px 8px',
+                    padding: '5px 8px',
                     fontSize: '11px',
                     cursor: 'pointer',
+                    flexShrink: 0,
                   }}
                   title="Delete prompt"
                 >
@@ -577,7 +583,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
                   next[idx] = { ...next[idx], message: e.target.value };
                   set('templateMessages', next);
                 }}
-                style={{ width: '100%', padding: '6px 10px', fontSize: '11.5px', color: '#475569', borderRadius: '6px', border: '1px solid #CBD5E1' }}
+                style={{ width: '100%', minWidth: 0, padding: '5px 8px', fontSize: '11px', color: '#475569', borderRadius: '6px', border: '1px solid #CBD5E1', boxSizing: 'border-box' }}
               />
             </div>
           ))}

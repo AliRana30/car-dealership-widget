@@ -20,6 +20,88 @@ interface VoiceAgentTranscriptProps {
   onSelectTemplateMessage?: (message: string) => void;
 }
 
+function renderBoldAndText(text: string, keyPrefix: string): React.ReactNode {
+  const boldRegex = /\*\*([^*]+)\*\*/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = boldRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.substring(lastIndex, match.index));
+    }
+    nodes.push(
+      <strong key={`b-${keyPrefix}-${match.index}`} style={{ fontWeight: 600 }}>
+        {match[1]}
+      </strong>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.substring(lastIndex));
+  }
+
+  return nodes.length > 0 ? nodes : text;
+}
+
+function renderFormattedContent(text: string): React.ReactNode {
+  if (!text) return null;
+
+  const lines = text.split('\n');
+
+  return lines.map((line, lineIdx) => {
+    // Check if line contains markdown links [label](url)
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = linkRegex.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(renderBoldAndText(line.substring(lastIndex, match.index), `${lineIdx}-${lastIndex}`));
+      }
+      const label = match[1];
+      const url = match[2];
+      parts.push(
+        <a
+          key={`link-${lineIdx}-${match.index}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: 'var(--voice-widget-primary, #2F8FE0)',
+            textDecoration: 'underline',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+          onClick={(e) => {
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+              try {
+                window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url }, '*');
+                window.parent.postMessage({ type: 'voice-agent-navigate', url }, '*');
+              } catch (_) {}
+            }
+          }}
+        >
+          {label}
+        </a>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(renderBoldAndText(line.substring(lastIndex), `${lineIdx}-${lastIndex}`));
+    }
+
+    return (
+      <span key={`line-${lineIdx}`} style={{ display: 'block', minHeight: line.trim() === '' ? '6px' : undefined }}>
+        {parts.length > 0 ? parts : ' '}
+      </span>
+    );
+  });
+}
+
 export default function VoiceAgentTranscript({
   config,
   activeTab,
@@ -145,7 +227,7 @@ export default function VoiceAgentTranscript({
                     boxShadow: '0 2px 6px rgba(14,27,42,0.03)',
                   }}
                 >
-                  {msg.content}
+                  {renderFormattedContent(msg.content)}
                 </div>
               )}
 
@@ -272,7 +354,7 @@ export default function VoiceAgentTranscript({
                     {isUser ? branding.userMessageName : branding.agentMessageName}:
                   </span>{' '}
                   <span style={{ color: 'var(--voice-widget-text)', fontWeight: 'var(--voice-widget-font-weight-body)' }}>
-                    {msg.content}
+                    {renderFormattedContent(msg.content)}
                   </span>
                 </div>
                 {/* Visual results display in Voice Tab! */}

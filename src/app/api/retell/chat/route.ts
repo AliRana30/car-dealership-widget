@@ -268,10 +268,49 @@ Guidelines:
     };
   }
 
-  // Case B: Specific Single Item Detail Query (e.g. "tell me about mern stack course")
+  // Case B: Pricing, Tuition & Payment Inquiries (e.g. "What are the tuition rates and pricing options?")
+  const isPricingQuery = /(?:pricing|price|prices|cost|costs|tuition|rate|rates|fee|fees|how much|payment|options|subscription)/i.test(trimmed);
+  if (isPricingQuery && matchedRecords.length > 0) {
+    const priceRecords = matchedRecords.filter(r => r.price);
+    const priceLines = (priceRecords.length > 0 ? priceRecords : matchedRecords)
+      .slice(0, 5)
+      .map(item => {
+        const rawPrice = String(item.price || '').trim();
+        const cleanPrice = rawPrice ? (rawPrice.startsWith('$') ? rawPrice : `$${rawPrice}`) : 'Standard Rate';
+        const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
+        return `• ${link}: **${cleanPrice}**`;
+      })
+      .join('\n');
+
+    return {
+      text: `Here are the tuition rates and pricing options for ${businessName}:\n\n${priceLines}\n\nAll programs include lifetime access, project codebases, and a 30-day money-back guarantee. Would you like more details on a specific course?`,
+      navigationUrl: undefined
+    };
+  }
+
+  // Case C: Admissions, Enrollment & Requirements Inquiries (e.g. "How do I apply and what are the admission requirements?")
+  const isAdmissionsQuery = /(?:admission|admissions|enroll|enrollment|apply|application|requirements?|prerequisites?|how to join|how do i apply|register)/i.test(trimmed);
+  if (isAdmissionsQuery) {
+    return {
+      text: `Enrolling at ${businessName} is fast and straightforward! Simply browse our courses, select the program that fits your goals, and click **Enroll Now** on the course page for immediate access to all curriculum modules, code repositories, and student channels. Beginner tracks have no prerequisites.`,
+      navigationUrl: undefined
+    };
+  }
+
+  // Case D: Advisor, Instructor & Mentorship Inquiries (e.g. "Can I speak with an advisor or instructor?")
+  const isAdvisorQuery = /(?:advisor|adviser|instructor|instructors|teacher|counselor|mentor|mentorship|talk to|speak with|consultant|support team|human|person)/i.test(trimmed);
+  if (isAdvisorQuery) {
+    return {
+      text: `You can connect directly with our course instructors and dedicated advisors! We provide weekly live Q&A sessions, project code reviews, and community chat support for all learners. You can also reach our team anytime via the contact page.`,
+      navigationUrl: undefined
+    };
+  }
+
+  // Case E: Specific Single Item Detail Query (e.g. "tell me about mern stack course")
   if (matchedRecords.length === 1) {
     const item = matchedRecords[0];
-    const priceText = item.price ? ` (${item.price})` : '';
+    const rawPrice = String(item.price || '').trim();
+    const priceText = rawPrice ? ` (${rawPrice.startsWith('$') ? rawPrice : '$' + rawPrice})` : '';
     const descText = item.description ? item.description.substring(0, 180).trim() : '';
     const linkText = item.sourceUrl ? `\n\n[View Full Course Page](${item.sourceUrl})` : '';
     return {
@@ -280,12 +319,13 @@ Guidelines:
     };
   }
 
-  // Case C: Catalog / Multi-item Query (e.g. "which courses do you offer?", "all courses")
+  // Case F: Catalog / Multi-item Query (e.g. "which courses do you offer?", "all courses")
   if (matchedRecords.length > 1) {
     const topRecords = matchedRecords.slice(0, 6);
     const itemsList = topRecords
       .map(item => {
-        const price = item.price ? ` (${item.price})` : '';
+        const rawPrice = String(item.price || '').trim();
+        const price = rawPrice ? ` (${rawPrice.startsWith('$') ? rawPrice : '$' + rawPrice})` : '';
         const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
         const desc = item.description ? `: ${item.description.substring(0, 90).trim()}...` : '';
         return `• ${link}${price}${desc}`;
@@ -298,7 +338,7 @@ Guidelines:
     };
   }
 
-  // Case D: General Fallback
+  // Case G: General Fallback
   return {
     text: `I'm happy to help you with ${businessName}. We have courses, services, and live support available. What specific topic or program can I help you find?`,
     navigationUrl: undefined

@@ -194,11 +194,14 @@ The platform features built-in intelligence adapters tailored to diverse busines
 - **Template Messages & Starter Prompts Library**: Visual manager in customizer with quick-load presets for Education/LMS, Dealerships/Automotive, and General Business. Renders interactive prompt chips inside the chat.
 
 ### Embeddable Widget Bridge & Client Integration
-- **Single Script Embed**: Lightweight loader (`public/widget.js`) dynamically mounted on any client web page with a single `<script data-widget-id="...">` tag.
-- **Zero-Delay Instant Rendering**: Embed container mounts immediately with zero loading spinner delay.
-- **Session-Preserved Autonomous Navigation**: When agent triggers host navigation (`WIDGET_NAVIGATE`), widget state and chat message history are persisted across page transitions in `sessionStorage`, reopening automatically on the target page.
+- **Zero-Latency Embed Mounting**: Instant rendering without placeholder blocking spinners while dynamically hydrating tenant configurations in the background.
+- **Session-Preserved Host Navigation**: Restores active conversation transcripts across multi-page host transitions via `sessionStorage` and automatic reopen triggers.
+- **Template Messages & Starter Prompts**: Interactive inquiry chips for fast visitor engagement with customizable presets for LMS, Auto, and General Business.
+- **Specialized Intent Routing & Dynamic Fallbacks**: Zero-LLM fallback handlers accurately distinguish between Pricing/Tuition, Admissions/Requirements, and Mentorship/Instructor queries, delivering tailored answers rather than generic catalog dumps.
+- **Rich Markdown Hyperlinks & Clean Price Rendering**: In-bubble markdown parser with clickable `<a>` links and auto-sanitized single-symbol currency formatting (`$150`, not `$$150`).
 - **Catalog vs. Explicit Navigation Disambiguation**: General queries ("what courses/products do you offer?") stay in chat presenting top 5-6 cards with prices, details, and hyperlinks; explicit navigation requests ("take me to course X") execute host redirection.
 - **Sub-Second WebRTC Call Setup**: In-memory summary TTL caching, lightweight DB query projections, and SDK pre-warming accelerate voice call initiation to under 1.5 seconds.
+- **Mobile-Responsive Customizer**: Full fluid breakpoints for screens under 640px/900px, prevent horizontal overflow in template message inputs, and provide compact touch-friendly toolbars.
 - **Cross-Origin PostMessage Protocol**: Secure messaging bridge coordinating panel expansion, dimension resizing, audio stream state, and customizer live reloading.
 - **Standalone Embed Route**: Isolated iframe container (`/embed/[widgetId]`) with SSR hydration safeguards and domain whitelist enforcement.
 

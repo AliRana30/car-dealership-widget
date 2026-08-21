@@ -98,6 +98,7 @@ const TOGGLE_CSS = `
       min-width: 0 !important;
       border-right: none !important;
       flex: 1 !important;
+      overflow-x: hidden !important;
     }
     .customizer-preview-col {
       flex: 1 !important;
@@ -121,6 +122,47 @@ const TOGGLE_CSS = `
     }
     .customizer-hamburger-btn {
       display: flex !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .customizer-header {
+      padding: 0 8px !important;
+      height: 46px !important;
+    }
+    .customizer-back-link {
+      font-size: 12px !important;
+    }
+    .customizer-header-title {
+      font-size: 12.5px !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      max-width: 90px !important;
+    }
+    .customizer-header-actions {
+      gap: 6px !important;
+    }
+    .customizer-header-actions button {
+      padding: 0 8px !important;
+      height: 30px !important;
+      font-size: 11.5px !important;
+    }
+    .customizer-sidebar {
+      width: 46px !important;
+      min-width: 46px !important;
+    }
+    .customizer-sidebar .sidebar-header {
+      padding: 8px 4px !important;
+    }
+    .customizer-sidebar .sidebar-nav {
+      padding: 4px 4px !important;
+    }
+    .customizer-editor-col {
+      padding: 10px 8px 30px !important;
+    }
+    .mobile-tabs-container {
+      height: 40px !important;
     }
   }
 `;
@@ -371,15 +413,15 @@ export default function WidgetCustomizerApp() {
       <style dangerouslySetInnerHTML={{ __html: TOGGLE_CSS }} />
 
       {/* ── Top Bar ──────────────────────────────────── */}
-      <header style={styles.header}>
-        <div style={styles.headerLeft}>
-          <Link href="/dashboard" style={styles.backLink}>
+      <header style={styles.header} className="customizer-header">
+        <div style={styles.headerLeft} className="customizer-header-left">
+          <Link href="/dashboard" style={styles.backLink} className="customizer-back-link">
             ← Dashboard
           </Link>
           <div style={styles.headerDivider} />
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <img src="/logo.png" alt="Logo" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
-            <div style={styles.headerTitle}>Widget Customizer</div>
+            <div style={styles.headerTitle} className="customizer-header-title">Widget Customizer</div>
           </div>
         </div>
         <div style={styles.headerActions} className="customizer-header-actions">

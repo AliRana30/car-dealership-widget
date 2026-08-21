@@ -82,10 +82,16 @@ const IGNORED_METADATA_KEYS = new Set([
 ]);
 
 function formatPrice(price: string | number, currency?: string): string {
+  const str = String(price).trim();
+  if (!str) return '';
+  // If price already contains a currency prefix ($150, £90, €50, CA$100, etc.), return cleanly
+  if (/^[\$\£\€\₨\₹]/.test(str) || str.toLowerCase().startsWith('ca$') || str.toLowerCase().startsWith('a$') || str.toLowerCase().startsWith('usd')) {
+    return str;
+  }
   const symbol = currency
     ? { USD: '$', GBP: '£', EUR: '€', PKR: '₨', INR: '₹', CAD: 'CA$', AUD: 'A$' }[currency.toUpperCase()] || currency + ' '
     : '$';
-  return `${symbol}${price}`;
+  return `${symbol}${str}`;
 }
 
 function AvailabilityBadge({ value }: { value: string }) {
