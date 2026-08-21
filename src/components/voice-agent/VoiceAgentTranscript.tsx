@@ -229,12 +229,14 @@ export default function VoiceAgentTranscript({
                     background: isUser
                       ? 'var(--voice-widget-bg-user-bubble, var(--voice-widget-primary, #2F8FE0))'
                       : 'var(--voice-widget-bg-agent-bubble, #F8FAFC)',
-                    color: isUser ? '#FFFFFF' : 'var(--voice-widget-text, #0F172A)',
+                    color: isUser
+                      ? 'var(--voice-widget-text-user-bubble, #0F172A)'
+                      : 'var(--voice-widget-text, #0F172A)',
                     border: isUser ? 'none' : '1px solid var(--voice-widget-border, #E2E8F0)',
                     borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                     padding: '10px 14px',
                     fontSize: '13px',
-                    fontWeight: 400,
+                    fontWeight: 500,
                     lineHeight: '1.5',
                     boxShadow: '0 1px 3px rgba(14,27,42,0.03)',
                   }}

@@ -216,7 +216,7 @@ export default function VoiceAgentPanel({
             alignItems: 'center',
             gap: '10px',
             flex: 1,
-            minWidth: 0,
+            minWidth: hasCards ? '320px' : '100%',
             overflowY: 'auto',
             boxSizing: 'border-box',
           }}

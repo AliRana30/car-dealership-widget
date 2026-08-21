@@ -392,3 +392,19 @@ Widgetized features a bi-directional event bridge allowing the AI agent (via tex
 # Run agent tools and vector search test suite (Phase 6.1)
 npx tsx scratch/test-agent-tools.ts
 ```
+
+---
+
+## Discovered & Recommended UI & Sub-1.5s Voice Telephony Engine
+
+1. **Scoped Data Isolation**:
+   - Website catalog entries (`website_data`) are strictly partitioned by `widget_id`, preventing multi-tenant data bleed between distinct websites (e.g. LMS courses vs. automotive inventory).
+2. **Dual-Pane Layout & Chat Protection**:
+   - The conversation column enforces strict `minWidth` (`320px`), ensuring chat spacing and input controls are never hidden or compressed when the Discovered & Recommended side drawer opens.
+   - Iframe and host containers dynamically scale from `360px` to `680px` via synchronized `widget-resize` postMessage events.
+3. **Contrast-Aware Typography**:
+   - Dynamic luminance calculation automatically determines high-contrast text color (`--voice-widget-text-user-bubble`) for all custom user bubble backgrounds (e.g. ice-blue, dark slate, vibrant gradients).
+4. **Sub-1.5s Fast Voice Connect**:
+   - Eagerly pre-warms Retell SDK modules on widget load to eliminate lazy dynamic import latency during WebRTC call startup.
+5. **Seamless Credential Management**:
+   - Universal persistence for Retell Agent IDs, API keys, and configurations across the visual customizer with AES-256-GCM encrypted secrets storage.

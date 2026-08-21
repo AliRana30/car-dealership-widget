@@ -160,12 +160,15 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       }
     }, [mergedConfig.typography?.fontFamily]);
 
-    // Pre-warm Retell SDK when panel opens to eliminate call startup lag
+    // Pre-warm Retell SDK when panel mounts to eliminate call startup lag
+    const retellSdkClassRef = useRef<any>(null);
     useEffect(() => {
-      if (isOpen) {
-        import('retell-client-js-sdk').catch(() => {});
-      }
-    }, [isOpen]);
+      import('retell-client-js-sdk')
+        .then((mod) => {
+          retellSdkClassRef.current = mod.RetellWebClient;
+        })
+        .catch(() => {});
+    }, []);
 
     // Cache for voice transcript results to avoid redundant network calls
     const [voiceResults, setVoiceResults] = useState<Record<string, any[]>>({});
@@ -870,7 +873,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           setActiveSessionId(data.sessionId);
           callIdRef.current = data.callId;
 
-          const { RetellWebClient } = await import('retell-client-js-sdk');
+          const RetellWebClient = retellSdkClassRef.current || (await import('retell-client-js-sdk')).RetellWebClient;
           activeClient = new RetellWebClient();
           clientRef.current = activeClient;
 

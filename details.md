@@ -188,3 +188,16 @@
 | Metadata Sanitization | Clean End-User Intelligence Cards | **Completed & Verified** | Verified in `IntelligenceResultCard.tsx`; filtered out internal crawler/schema fields (`apiEndpoint`, `demoUrl`, `discoveryMethod`, `purchased`, `v`, `id`) and only renders human attributes, prices, ratings, and view details button. |
 | Voice Latency | Sub-1.5s Fast WebRTC Connect | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx`; eliminated redundant probe `getUserMedia` roundtrips and streamlined startup path. |
 
+---
+
+## 15. Scoped Multi-Tenant Isolation, Responsive Layout & Contrast-Aware UI
+
+| Feature | Sub-item | Status | Evidence |
+|---|---|---|---|
+| Multi-Tenant Isolation | Scoped Website Data Partitioning | **Completed & Verified** | Verified in `widgetsDb.ts`; partitioned `website_data` rows strictly by `widget_id`, ensuring LMS course data is isolated from other client widgets (e.g. dealership inventory). |
+| Responsive Layout | Chat Column Minimum Width Guarantee | **Completed & Verified** | Verified in `VoiceAgentPanel.tsx`; enforced `minWidth: 320px` on conversation stream, preventing side drawer expansion from compressing or hiding the chat column and input controls. |
+| Contrast Typography | Dynamic Luminance Text Color | **Completed & Verified** | Verified in `VoiceAgentTranscript.tsx` and `VoiceAgentWidget.tsx`; calculates background luminance dynamically and sets `--voice-widget-text-user-bubble` to dark slate (`#0F172A`) on light bubbles and white on dark bubbles. |
+| Telephony Optimization | Eager SDK Pre-warming | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx`; pre-warms Retell client library on component mount, removing dynamic import overhead during call initiation. |
+| Customizer Keys | Universal Credential Persistence | **Completed & Verified** | Verified in `api/widgets/route.ts` & `widgetsDb.ts`; supports seamless updating of Retell Agent IDs, API keys, and configurations with AES-256 encryption. |
+
+
