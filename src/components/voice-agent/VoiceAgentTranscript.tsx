@@ -230,15 +230,6 @@ export default function VoiceAgentTranscript({
                   {renderFormattedContent(msg.content)}
                 </div>
               )}
-
-              {/* Intelligence result cards — agent messages only */}
-              {!isUser && msg.results && msg.results.length > 0 && (
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {msg.results.map((result, ri) => (
-                    <LazyResultCard key={ri} result={result} />
-                  ))}
-                </div>
-              )}
             </div>
           );
         })}
@@ -357,14 +348,6 @@ export default function VoiceAgentTranscript({
                     {renderFormattedContent(msg.content)}
                   </span>
                 </div>
-                {/* Visual results display in Voice Tab! */}
-                {msg.results && msg.results.length > 0 && (
-                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px', margin: '4px 0' }}>
-                    {msg.results.map((result, ri) => (
-                      <LazyResultCard key={ri} result={result} />
-                    ))}
-                  </div>
-                )}
               </div>
             );
           })}

@@ -99,8 +99,9 @@ function corsHeaders(origin: string | null): Record<string, string> {
 function isExplicitNavigationIntent(query: string): boolean {
   const q = query.trim().toLowerCase();
   return (
-    /^(?:take me to|navigate to|open|go to|redirect to|launch|show me the page for|open the page for|visit|take me)\b/i.test(q) ||
-    /\b(?:page|url|website|tab|screen)\s+(?:please|now)?$/i.test(q)
+    /^(?:take me to|navigate me to|navigate to|open|go to|redirect me to|redirect to|bring me to|launch|show me the page for|show me the|open the page for|visit|take me|can you take me to|can you navigate me to|lead me to)\b/i.test(q) ||
+    /\b(?:navigate|navigation|redirect|redirecting|go to|open up|open page|open course)\b/i.test(q) ||
+    /\b(?:page|url|website|tab|screen)\s*(?:please|now)?$/i.test(q)
   );
 }
 
@@ -129,42 +130,73 @@ async function generateChatFallbackResponse(
   }
 
   // 1. Check for Information Pages (About Us, Policies, FAQ, Contact)
-  const isAboutQuery = /(?:about|who are you|mission|story|company|founder|developer|background|team|who built)/i.test(trimmed);
+  const isAboutQuery = /(?:about|abou\s*t|who are you|mission|story|company|founder|developer|background|team|who built)/i.test(trimmed);
   const isPolicyQuery = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(trimmed);
   const isFaqQuery = /(?:faq|frequently asked|questions|help)/i.test(trimmed);
   const isContactQuery = /(?:contact|reach out|email|phone|address|location|support)/i.test(trimmed);
 
   if (isAboutQuery) {
     let sourceUrl = '/about';
-    const urlMatch = relevantData?.match(/\[SourceURL:\s*([^\]]+)\]/i);
-    if (urlMatch) sourceUrl = urlMatch[1].trim();
+    const match = matchedRecords.find(r => /about/i.test(r.title || '') || /about/i.test(r.sourceUrl || ''));
+    if (match?.sourceUrl) sourceUrl = match.sourceUrl;
+    else {
+      const urlMatch = relevantData?.match(/\[(?:URL|SourceURL):\s*([^\]]*about[^\]]*)\]/i);
+      if (urlMatch) sourceUrl = urlMatch[1].trim();
+    }
 
     return {
-      text: `At ${businessName}, our mission is to make high-quality education and practical skills accessible to learners worldwide through hands-on instruction and modern technology.`,
+      text: isExplicit
+        ? `Navigating you to our About page now so you can learn more about ${businessName}!`
+        : `At ${businessName}, our mission is to make high-quality education and practical skills accessible to learners worldwide through hands-on instruction and modern technology.`,
       navigationUrl: isExplicit ? sourceUrl : undefined
     };
   }
 
   if (isPolicyQuery) {
     let sourceUrl = '/policy';
-    const urlMatch = relevantData?.match(/\[SourceURL:\s*([^\]]+)\]/i);
-    if (urlMatch) sourceUrl = urlMatch[1].trim();
+    const match = matchedRecords.find(r => /policy|terms|privacy/i.test(r.title || '') || /policy|terms/i.test(r.sourceUrl || ''));
+    if (match?.sourceUrl) sourceUrl = match.sourceUrl;
+    else {
+      const urlMatch = relevantData?.match(/\[(?:URL|SourceURL):\s*([^\]]*policy[^\]]*)\]/i);
+      if (urlMatch) sourceUrl = urlMatch[1].trim();
+    }
 
     return {
-      text: `Our policies at ${businessName} ensure bank-level 256-bit encryption, full GDPR compliance, and a 30-day refund window on course purchases. Your personal data is never shared with third parties.`,
+      text: isExplicit
+        ? `Opening our Policies & Terms page on your screen now!`
+        : `Our policies at ${businessName} ensure bank-level 256-bit encryption, full GDPR compliance, and a 30-day refund window on course purchases. Your personal data is never shared with third parties.`,
       navigationUrl: isExplicit ? sourceUrl : undefined
     };
   }
 
   if (isFaqQuery || isContactQuery) {
     let sourceUrl = isFaqQuery ? '/faq' : '/contact';
-    const urlMatch = relevantData?.match(/\[SourceURL:\s*([^\]]+)\]/i);
-    if (urlMatch) sourceUrl = urlMatch[1].trim();
+    const match = matchedRecords.find(r => (isFaqQuery ? /faq/i : /contact/i).test(r.title || '') || (isFaqQuery ? /faq/i : /contact/i).test(r.sourceUrl || ''));
+    if (match?.sourceUrl) sourceUrl = match.sourceUrl;
 
     return {
-      text: `You can find answers to common questions, support options, and direct contact details on our ${isFaqQuery ? 'FAQ' : 'contact'} page. Let me know what specific questions you have!`,
+      text: isExplicit
+        ? `Navigating you to our ${isFaqQuery ? 'FAQ' : 'Contact'} page now!`
+        : `You can find answers to common questions, support options, and direct contact details on our ${isFaqQuery ? 'FAQ' : 'contact'} page. Let me know what specific questions you have!`,
       navigationUrl: isExplicit ? sourceUrl : undefined
     };
+  }
+
+  // 1.5 Explicit Navigation to specific course or catalog
+  if (isExplicit && matchedRecords.length > 0) {
+    // Find best matching entity by query words
+    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'the', 'you'].includes(w));
+    const targetItem = matchedRecords.find(r => {
+      const t = (r.title || '').toLowerCase();
+      return queryWords.some(w => t.includes(w));
+    }) || matchedRecords[0];
+
+    if (targetItem?.sourceUrl) {
+      return {
+        text: `Opening the page for **${targetItem.title}** on your screen now! Let me know if you have any questions about it.`,
+        navigationUrl: targetItem.sourceUrl,
+      };
+    }
   }
 
   // 2. Try LLMs (OpenAI, Gemini, Groq) if API keys are available

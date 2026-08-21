@@ -692,10 +692,44 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       setChatMessages([initialMsg]);
       setTranscript([]);
       setVoiceResults({});
+      setDismissedCardTopic(null);
       setErrorMessage(null);
       setChatInput('');
       setChatTyping(false);
     }, [mergedConfig, activeSessionId, widgetId]);
+
+    const [dismissedCardTopic, setDismissedCardTopic] = useState<string | null>(null);
+
+    const activeCards = React.useMemo(() => {
+      if (activeTab === 'text') {
+        for (let i = chatMessages.length - 1; i >= 0; i--) {
+          const msg = chatMessages[i];
+          if (msg.role === 'agent' && msg.results && msg.results.length > 0) {
+            if (dismissedCardTopic === msg.content) return [];
+            return msg.results;
+          }
+        }
+      } else {
+        for (let i = transcript.length - 1; i >= 0; i--) {
+          const content = transcript[i].content;
+          if (content && voiceResults[content] && voiceResults[content].length > 0) {
+            if (dismissedCardTopic === content) return [];
+            return voiceResults[content];
+          }
+        }
+      }
+      return [];
+    }, [activeTab, chatMessages, transcript, voiceResults, dismissedCardTopic]);
+
+    // Send resize postMessage whenever cards expand or collapse
+    useEffect(() => {
+      if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'widget-resize',
+          expanded: activeCards.length > 0,
+        }, '*');
+      }
+    }, [activeCards.length]);
 
     const startCall = useCallback(async () => {
       if (callState !== 'idle' && callState !== 'ended' && callState !== 'error') {
@@ -784,26 +818,6 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           throw new Error(
             'Microphone access requires a secure context (HTTPS). Please ensure you are visiting via a secure connection.'
           );
-        }
-
-        updateState('permission_required');
-        try {
-          const probeStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          // Immediately stop and release probe tracks so WebRTC SDK gets clean exclusive access
-          probeStream.getTracks().forEach((track) => {
-            try {
-              track.stop();
-            } catch (_) {}
-          });
-        } catch (micErr) {
-          const errorName = micErr instanceof Error ? micErr.name : '';
-          if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
-            throw new Error('Microphone permission was denied. Please allow microphone access in your browser settings.');
-          } else if (errorName === 'NotFoundError' || errorName === 'DevicesNotFoundError') {
-            throw new Error('No microphone detected. Please connect a microphone and try again.');
-          } else {
-            throw new Error('Microphone access failed. Please ensure no other application is using it.');
-          }
         }
 
         updateState('connecting');
@@ -1540,6 +1554,8 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           transcriptEndRef={transcriptEndRef}
           parseStatusMessage={parseStatusMessage}
           onNewChat={handleNewChat}
+          cards={activeCards}
+          onDismissCards={() => setDismissedCardTopic('dismissed')}
         />
       </div>
     );

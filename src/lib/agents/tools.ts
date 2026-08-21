@@ -226,15 +226,31 @@ export async function getEntityDetails(
   if (!entityId || !widgetId) return null;
 
   const supabase = getSupabase();
-  const { data: row, error } = await supabase
+  const cleanKey = entityId.trim();
+
+  // 1. Try exact UUID match
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanKey)) {
+    const { data: row } = await supabase
+      .from('website_data')
+      .select('*')
+      .eq('id', cleanKey)
+      .maybeSingle();
+
+    if (row) return mapRowToEntity(row);
+  }
+
+  // 2. Try title match, URL match, or keyword match
+  const { data: rows } = await supabase
     .from('website_data')
     .select('*')
-    .eq('id', entityId)
-    .eq('widget_id', widgetId)
-    .maybeSingle();
+    .or(`title.ilike.%${cleanKey}%,source_url.ilike.%${cleanKey}%`)
+    .limit(5);
 
-  if (error || !row) return null;
-  return mapRowToEntity(row);
+  if (rows && rows.length > 0) {
+    return mapRowToEntity(rows[0]);
+  }
+
+  return null;
 }
 
 // ── Callable Tool Definitions for Retell AI and Vapi AI ──────────────────────
@@ -435,7 +451,7 @@ export async function executeAgentTool(
     }
 
     if (toolName === 'navigate_to_entity') {
-      const entityId = String(args.entityId || args.entity_id || args.id || '');
+      const entityId = String(args.entityId || args.entity_id || args.id || args.target || args.url || args.page || args.query || '').trim();
       if (!entityId) {
         return { success: false, error: 'Missing required argument: entityId' };
       }

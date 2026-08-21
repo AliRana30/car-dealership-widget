@@ -199,10 +199,11 @@ The platform features built-in intelligence adapters tailored to diverse busines
 - **Instant "New Chat" Session Reset**: Header button allowing visitors to start a fresh conversation, wipe cached transcript history, and immediately restore the starter prompt chips.
 - **Template Messages & Starter Prompts**: Interactive inquiry chips for fast visitor engagement with customizable presets for LMS, Auto, and General Business.
 - **Specialized Intent Routing & Dynamic Fallbacks**: Zero-LLM fallback handlers accurately distinguish between Pricing/Tuition, Admissions/Requirements, and Mentorship/Instructor queries, delivering tailored answers rather than generic catalog dumps.
-- **Rich Markdown Hyperlinks & Clean Price Rendering**: In-bubble markdown parser with clickable `<a>` links and auto-sanitized single-symbol currency formatting (`$150`, not `$$150`).
-- **Catalog vs. Explicit Navigation Disambiguation**: General queries ("what courses/products do you offer?") stay in chat presenting top 5-6 cards with prices, details, and hyperlinks; explicit navigation requests ("take me to course X") execute host redirection.
-- **Sub-Second WebRTC Call Setup**: In-memory summary TTL caching, lightweight DB query projections, and SDK pre-warming accelerate voice call initiation to under 1.5 seconds.
-- **Mobile-Responsive Customizer**: Full fluid breakpoints for screens under 640px/900px, prevent horizontal overflow in template message inputs, and provide compact touch-friendly toolbars.
+- **Real-Time Page Navigation Bridge**: Typo-tolerant natural language page navigation ("navigate me to about page", "take me to backend mastery course", "open policy page") with direct host URL redirection and live session resumption.
+- **Dedicated Offerings Drawer & Expanding Layout**: Structured catalog cards and recommendations display in an animated, dedicated side column expanding widget width smoothly from 360px to 680px on desktop without cluttering conversation bubbles.
+- **Clean End-User Intelligence Cards**: Sanitized metadata rendering filtering out internal crawler/schema keys (`apiEndpoint`, `demoUrl`, `discoveryMethod`, `purchased`, `v`, `id`) into clean title, description, price, star ratings, and view details buttons.
+- **Sub-Second WebRTC Call Setup**: In-memory summary TTL caching, lightweight DB query projections, single-pass permissions, and pre-warmed SDK modules accelerate voice call initiation to under 1.5 seconds.
+- **Mobile-Responsive Customizer**: Full fluid breakpoints for screens under 640px/900px, slide-in overlay drawers for color token editing, and touch-friendly toolbars.
 - **Cross-Origin PostMessage Protocol**: Secure messaging bridge coordinating panel expansion, dimension resizing, audio stream state, and customizer live reloading.
 - **Standalone Embed Route**: Isolated iframe container (`/embed/[widgetId]`) with SSR hydration safeguards and domain whitelist enforcement.
 

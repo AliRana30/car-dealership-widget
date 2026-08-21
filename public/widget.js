@@ -96,6 +96,11 @@
         resizeWidget(true);
         break;
 
+      case 'widget-resize':
+        isPanelExpanded = Boolean(data.expanded);
+        resizeWidget(true, isPanelExpanded);
+        break;
+
       case 'widget-close':
       case 'widget-new-chat':
         try {
@@ -103,6 +108,7 @@
         } catch (_) {}
         if (data.type === 'widget-close') {
           // Reset container to the launcher button dimensions
+          isPanelExpanded = false;
           resizeWidget(false);
         }
         break;
@@ -111,13 +117,17 @@
       case 'WIDGET_NAVIGATE':
       case 'widget-navigate':
       case 'navigate':
-        // Top-level host navigation bridge (Phase 9.4)
+        // Top-level host navigation bridge
         if (data.url && typeof data.url === 'string') {
           console.log('[Widgetized] Agent requested host page navigation to:', data.url);
           try {
             sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
           } catch (_) {}
-          window.location.href = data.url;
+          let target = data.url;
+          if (target.startsWith('/')) {
+            target = window.location.origin + target;
+          }
+          window.location.href = target;
         }
         break;
 
@@ -125,6 +135,8 @@
         break;
     }
   });
+
+  let isPanelExpanded = false;
 
   // Apply custom alignment positions from the widget configuration
   function applyPosition(config) {
@@ -166,8 +178,8 @@
     }
   }
 
-  // Adjust container size on open/close
-  function resizeWidget(isOpen) {
+  // Adjust container size on open/close and dynamic expansion
+  function resizeWidget(isOpen, isExpanded = isPanelExpanded) {
     if (widgetConfig && widgetConfig.mode === 'inline') return;
 
     const isMobile = window.innerWidth <= (widgetConfig?.responsive?.mobileBreakpoint || 860);
@@ -191,9 +203,10 @@
         container.style.right = '0';
         container.style.left = '0';
       } else {
-        // Desktop panel size
-        const panelWidth = widgetConfig?.panel?.width || 360;
-        const panelHeight = widgetConfig?.panel?.maxHeight || 480;
+        // Desktop panel size (dynamically expanded if intelligence cards are present)
+        const baseWidth = widgetConfig?.panel?.width || 360;
+        const panelWidth = isExpanded ? Math.min(680, window.innerWidth - 32) : baseWidth;
+        const panelHeight = widgetConfig?.panel?.maxHeight || 490;
         
         // Add safety margins for shadows and launcher overlap
         container.style.width = `${panelWidth + 40}px`;

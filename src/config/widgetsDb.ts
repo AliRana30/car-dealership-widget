@@ -978,12 +978,12 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
       filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
     }
 
-    // Select only lightweight text fields (exclude 1536-float embedding vectors)
+    // Select lightweight text fields + source_url
     const { data: records, error } = await supabase
       .from('website_data')
-      .select('title, entity_type, metadata, short_description, content')
+      .select('title, entity_type, metadata, short_description, content, source_url')
       .in('widget_id', filterWidgetIds)
-      .limit(35);
+      .limit(45);
 
     if (error || !records || records.length === 0) {
       contextSummaryCache.set(cacheKey, { summary: '', expiresAt: now + 300_000 });
@@ -991,7 +991,7 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
     }
 
     const catalogItems = records.filter(r => ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price));
-    const generalPages = records.filter(r => !catalogItems.includes(r) && !/policy|privacy|terms|cookie/i.test(r.title || ''));
+    const infoPages = records.filter(r => !catalogItems.includes(r));
 
     const parts: string[] = [];
     if (catalogItems.length > 0) {
@@ -1000,15 +1000,17 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
         const price = c.metadata?.price ? ` (${c.metadata.price})` : '';
         const level = c.metadata?.level ? ` [Level: ${c.metadata.level}]` : '';
         const desc = c.short_description || c.metadata?.description || (c.content ? c.content.substring(0, 100).replace(/\s+/g, ' ') : '');
-        parts.push(`• ${c.title}${price}${level}: ${desc}`);
+        const url = c.source_url ? ` [URL: ${c.source_url}]` : '';
+        parts.push(`• ${c.title}${price}${level}${url}: ${desc}`);
       });
     }
 
-    if (generalPages.length > 0) {
-      parts.push('\nGeneral Information:');
-      generalPages.slice(0, 4).forEach(g => {
+    if (infoPages.length > 0) {
+      parts.push('\nAvailable Website Pages & Routes:');
+      infoPages.slice(0, 8).forEach(g => {
         const desc = g.short_description || (g.content ? g.content.substring(0, 120).replace(/\s+/g, ' ').trim() : '');
-        parts.push(`• ${g.title}: ${desc}`);
+        const url = g.source_url ? ` [URL: ${g.source_url}]` : '';
+        parts.push(`• ${g.title}${url}: ${desc}`);
       });
     }
 

@@ -4,6 +4,7 @@ import VoiceAgentHeader from './VoiceAgentHeader';
 import VoiceAgentStatus from './VoiceAgentStatus';
 import VoiceAgentTranscript, { TranscriptMessage } from './VoiceAgentTranscript';
 import VoiceAgentControls from './VoiceAgentControls';
+import IntelligenceResultCard, { WebsiteDataResult } from './IntelligenceResultCard';
 
 interface VoiceAgentPanelProps {
   config: VoiceWidgetConfig;
@@ -32,6 +33,8 @@ interface VoiceAgentPanelProps {
   parseStatusMessage: (content: string) => { isStatus: boolean; text: string; statusType: string };
   onSelectTemplateMessage?: (message: string) => void;
   onNewChat?: () => void;
+  cards?: WebsiteDataResult[];
+  onDismissCards?: () => void;
 }
 
 export default function VoiceAgentPanel({
@@ -61,8 +64,11 @@ export default function VoiceAgentPanel({
   parseStatusMessage,
   onSelectTemplateMessage,
   onNewChat,
+  cards = [],
+  onDismissCards,
 }: VoiceAgentPanelProps) {
   const { panel, animation } = config;
+  const hasCards = Boolean(cards && cards.length > 0);
 
   const getAnimationStyles = (): React.CSSProperties => {
     if (config.mode === 'inline') return {};
@@ -86,7 +92,7 @@ export default function VoiceAgentPanel({
       style.transform = 'translateY(0) scale(1)';
     }
 
-    style.transition = `opacity ${animation.duration}ms ease, transform ${animation.duration}ms cubic-bezier(0.16, 1, 0.3, 1), visibility ${animation.duration}ms`;
+    style.transition = `opacity ${animation.duration}ms ease, transform ${animation.duration}ms cubic-bezier(0.16, 1, 0.3, 1), visibility ${animation.duration}ms, width 280ms cubic-bezier(0.16, 1, 0.3, 1)`;
     return style;
   };
 
@@ -121,18 +127,20 @@ export default function VoiceAgentPanel({
     };
     
     const offset = panel.offset || defaultOffset;
+    const baseWidth = typeof panel.width === 'number' ? panel.width : 360;
+    const calculatedWidth = hasCards ? Math.min(680, 720) : baseWidth;
 
     const style: React.CSSProperties = {
       position: 'fixed',
       zIndex: (launcher.zIndex ?? 1000) - 1,
-      width: typeof panel.width === 'number' ? `${panel.width}px` : panel.width,
+      width: hasCards ? `min(${calculatedWidth}px, calc(100vw - 32px))` : (typeof panel.width === 'number' ? `${panel.width}px` : panel.width),
       height: panel.height !== undefined ? (typeof panel.height === 'number' ? `${panel.height}px` : panel.height) : 'auto',
-      maxWidth: panel.maxWidth !== undefined ? (typeof panel.maxWidth === 'number' ? `${panel.maxWidth}px` : panel.maxWidth) : '100vw',
+      maxWidth: hasCards ? 'calc(100vw - 24px)' : (panel.maxWidth !== undefined ? (typeof panel.maxWidth === 'number' ? `${panel.maxWidth}px` : panel.maxWidth) : '100vw'),
       maxHeight: (() => {
         const verticalOffset = targetPos.startsWith('bottom') ? (offset.bottom || 0) : (offset.top || 0);
         const topGap = 24; // safe spacing from container edge
         const maxHp = `calc(100% - ${verticalOffset + topGap}px)`;
-        const calculatedMaxHeight = panel.maxHeight !== undefined ? panel.maxHeight : 400;
+        const calculatedMaxHeight = panel.maxHeight !== undefined ? panel.maxHeight : 490;
         return typeof calculatedMaxHeight === 'number'
           ? `min(${calculatedMaxHeight}px, ${maxHp})`
           : `min(${calculatedMaxHeight}, ${maxHp})`;
@@ -148,6 +156,7 @@ export default function VoiceAgentPanel({
       WebkitBackdropFilter: 'blur(20px)',
       boxSizing: 'border-box',
       fontFamily: config.typography.fontFamily,
+      transition: 'width 260ms cubic-bezier(0.16, 1, 0.3, 1), height 260ms ease',
     };
 
     if (targetPos.startsWith('bottom') && offset.bottom !== undefined) {
@@ -165,7 +174,7 @@ export default function VoiceAgentPanel({
     return style;
   };
 
-  const bodyPadding = config.mode === 'inline' ? '0' : '20px';
+  const bodyPadding = config.mode === 'inline' ? '0' : '16px';
 
   return (
     <div
@@ -180,57 +189,113 @@ export default function VoiceAgentPanel({
         showClose={config.mode === 'floating'}
         onNewChat={onNewChat}
       />
-      <div
-        style={{
-          padding: bodyPadding,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '12px',
-          flex: 1,
-          overflowY: 'auto',
-          boxSizing: 'border-box',
-        }}
-      >
-        <VoiceAgentStatus
-          config={config}
-          callState={callState}
-          activeTab={activeTab}
-          onTabChange={onTabChange}
-          isLoading={isLoading}
-          isActive={isActive}
-          errorMessage={errorMessage}
-          duration={duration}
-          isMuted={isMuted}
-          agentSpeaking={agentSpeaking}
-          userSpeaking={userSpeaking}
-          onStartCall={onStartCall}
-        />
 
-        <VoiceAgentTranscript
-          config={config}
-          activeTab={activeTab}
-          chatMessages={chatMessages}
-          chatTyping={chatTyping}
-          transcript={transcript}
-          transcriptEndRef={transcriptEndRef}
-          parseStatusMessage={parseStatusMessage}
-          onSelectTemplateMessage={onSelectTemplateMessage}
-        />
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', width: '100%', minHeight: 0 }}>
+        {/* Main Conversation Column */}
+        <div
+          style={{
+            padding: bodyPadding,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+            flex: 1,
+            minWidth: 0,
+            overflowY: 'auto',
+            boxSizing: 'border-box',
+          }}
+        >
+          <VoiceAgentStatus
+            config={config}
+            callState={callState}
+            activeTab={activeTab}
+            onTabChange={onTabChange}
+            isLoading={isLoading}
+            isActive={isActive}
+            errorMessage={errorMessage}
+            duration={duration}
+            isMuted={isMuted}
+            agentSpeaking={agentSpeaking}
+            userSpeaking={userSpeaking}
+            onStartCall={onStartCall}
+          />
 
-        <VoiceAgentControls
-          config={config}
-          activeTab={activeTab}
-          callState={callState}
-          isActive={isActive}
-          isMuted={isMuted}
-          onToggleMute={onToggleMute}
-          onStopCall={onStopCall}
-          chatInput={chatInput}
-          onChatInputChange={onChatInputChange}
-          onSendChatMessage={onSendChatMessage}
-          chatTyping={chatTyping}
-        />
+          <VoiceAgentTranscript
+            config={config}
+            activeTab={activeTab}
+            chatMessages={chatMessages}
+            chatTyping={chatTyping}
+            transcript={transcript}
+            transcriptEndRef={transcriptEndRef}
+            parseStatusMessage={parseStatusMessage}
+            onSelectTemplateMessage={onSelectTemplateMessage}
+          />
+
+          <VoiceAgentControls
+            config={config}
+            activeTab={activeTab}
+            callState={callState}
+            isActive={isActive}
+            isMuted={isMuted}
+            onToggleMute={onToggleMute}
+            onStopCall={onStopCall}
+            chatInput={chatInput}
+            onChatInputChange={onChatInputChange}
+            onSendChatMessage={onSendChatMessage}
+            chatTyping={chatTyping}
+          />
+        </div>
+
+        {/* Separate Dedicated Cards Section */}
+        {hasCards && (
+          <div
+            className="voice-widget-cards-pane"
+            style={{
+              width: '300px',
+              minWidth: '280px',
+              maxWidth: '320px',
+              borderLeft: '1px solid var(--voice-widget-border)',
+              background: 'rgba(14, 27, 42, 0.02)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '12px 14px',
+              boxSizing: 'border-box',
+              overflowY: 'auto',
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexShrink: 0 }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--voice-widget-primary)', letterSpacing: '0.06em' }}>
+                Featured Offerings ({cards.length})
+              </span>
+              {onDismissCards && (
+                <button
+                  type="button"
+                  onClick={onDismissCards}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    color: 'var(--voice-widget-text-muted)',
+                    fontWeight: 600,
+                    padding: '2px 4px',
+                  }}
+                  title="Hide offerings panel"
+                  aria-label="Hide offerings panel"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {cards.map((card, idx) => (
+                <IntelligenceResultCard key={card.id || idx} result={card} primaryColor="var(--voice-widget-primary, #2F8FE0)" />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
