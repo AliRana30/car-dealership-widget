@@ -4,6 +4,7 @@ import {
   WidgetConfigurationRecord,
   toConfigurationRecord,
   fromConfigurationRecord,
+  defaultVoiceWidgetConfig,
 } from './voiceWidget/default';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { embedTexts, embedText } from '@/lib/embeddings';
@@ -115,7 +116,7 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
     if (isUuid) {
       query = query.or(`id.eq.${normalizedSearchId},website_id.eq.${normalizedSearchId}`);
     } else {
-      query = query.or(`widget_id.eq.${normalizedSearchId},id.eq.${normalizedSearchId}`);
+      query = query.eq('widget_id', normalizedSearchId);
     }
     // Enforce user isolation when userId is provided
     if (userId) {
@@ -125,6 +126,26 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
     const { data: widgetRows, error } = await query.limit(1);
 
     if (error || !widgetRows || widgetRows.length === 0) {
+      if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk' || normalizedSearchId === 'myfrontdesk') {
+        return {
+          id: '00000000-0000-0000-0000-000000000000',
+          widgetId: 'default',
+          organizationId: '00000000-0000-0000-0000-000000000000',
+          name: 'Front Desk AI Agent',
+          status: 'active',
+          provider: (process.env.VAPI_API_KEY && !process.env.RETELL_API_KEY) ? 'vapi' : 'retell',
+          agentId: process.env.RETELL_AGENT_ID || '',
+          assistantId: process.env.VAPI_ASSISTANT_ID || '',
+          credentialSecretId: '',
+          websiteId: '00000000-0000-0000-0000-000000000000',
+          allowedDomains: ['*'],
+          config: defaultVoiceWidgetConfig,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          retellApiKey: process.env.RETELL_API_KEY || '',
+          vapiApiKey: process.env.VAPI_API_KEY || '',
+        };
+      }
       return null;
     }
 
