@@ -155,6 +155,8 @@ export const defaultVoiceWidgetConfig: VoiceWidgetConfig = {
     autoResetEndedTimeout: 5000,
     connectionTimeout: 15000,
     telemetryEnabled: true,
+    maxCallDurationMinutes: 10,
+    maxChatTurns: 30,
   },
 
   animation: {
@@ -412,6 +414,7 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       connectionTimeout: config.behavior?.connectionTimeout || 15000,
       autoResetEndedTimeout: config.behavior?.autoResetEndedTimeout || 5000,
       allowVoiceChat: config.behavior?.allowVoiceChat !== false,
+      maxCallDurationMinutes: config.behavior?.maxCallDurationMinutes ?? 10,
     },
     chat: {
       allowTextChat: config.behavior?.allowTextChat !== false,
@@ -419,6 +422,7 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       placeholderText: config.branding?.placeholderText || '',
       agentMessageName: config.branding?.agentMessageName || '',
       userMessageName: config.branding?.userMessageName || '',
+      maxChatTurns: config.behavior?.maxChatTurns ?? 30,
     },
     behavior: {
       showTranscript: config.behavior?.showTranscript !== false,
@@ -430,6 +434,8 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       allowAgentNavigation: config.behavior?.allowAgentNavigation === true,
       telemetryEnabled: config.behavior?.telemetryEnabled !== false,
       installationType: config.behavior?.installationType || 'javascript',
+      maxCallDurationMinutes: config.behavior?.maxCallDurationMinutes ?? 10,
+      maxChatTurns: config.behavior?.maxChatTurns ?? 30,
     },
     responsive: config.responsive || {},
   };
@@ -485,6 +491,8 @@ export function fromConfigurationRecord(record: WidgetConfigurationRecord): Voic
       connectionTimeout: record.call?.connectionTimeout || 15000,
       telemetryEnabled: !!record.behavior?.telemetryEnabled,
       installationType: record.behavior?.installationType || 'javascript',
+      maxCallDurationMinutes: (record.behavior as any)?.maxCallDurationMinutes ?? (record.call as any)?.maxCallDurationMinutes ?? 10,
+      maxChatTurns: (record.behavior as any)?.maxChatTurns ?? (record.chat as any)?.maxChatTurns ?? 30,
     },
     animation: record.call?.animation || {
       launcher: 'pulse',

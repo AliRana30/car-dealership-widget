@@ -13,6 +13,8 @@
 | Telephony Engine | Bi-Directional Audio Streaming | **Completed & Verified** | Verified live WebRTC audio capture, speaking indicators, volume meter animation, and mute toggle in `VoiceControlBar.tsx`. |
 | Telephony Engine | Partial Speech & Real-Time Transcripts | **Completed & Verified** | Word-by-word streaming transcript verified in `VoiceAgentPanel.tsx` and `useVoiceAgent.ts` via live socket events. |
 | Telephony Engine | Streaming Text Chat Fallback | **Completed & Verified** | Verified in `/api/retell/chat` and `VoiceAgentPanel.tsx`; returns 200 with formatted markdown, typing indicators, and result cards. |
+| Cost Protection | Server-Side Hard Call Duration Cap | **Completed & Verified** | Configurable via `maxCallDurationMinutes` (default: 10 min); enforced server-side via `callLimiter.ts` using Retell `client.call.stop` & Vapi API; verified in `scratch/test-duration-and-turn-caps.ts`. |
+| Cost Protection | Server-Side Hard Chat Turn Cap | **Completed & Verified** | Configurable via `maxChatTurns` (default: 30 turns); strictly enforced in `/api/retell/chat` via `chatLimiter.ts` with 0 upstream LLM calls past cap; verified in `scratch/test-duration-and-turn-caps.ts`. |
 
 ---
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getWidget, getWebsiteContextSummary } from '@/config/widgetsDb';
 import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
+import { registerCallTimeout } from '@/lib/voice/callLimiter';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -177,6 +178,15 @@ export async function POST(req: NextRequest) {
           throw new Error('Retell API response is missing accessToken or callId.');
         }
 
+        const maxCallDurationMinutes = widget.config?.behavior?.maxCallDurationMinutes ?? 10;
+        registerCallTimeout({
+          callId,
+          provider: 'retell',
+          apiKey,
+          maxDurationMinutes: maxCallDurationMinutes,
+          widgetId: widget.widgetId || widgetId,
+        });
+
         const sessionId = randomUUID();
         console.log(`[WIDGET_CALL_OBSERVABILITY] ${JSON.stringify({
           timestamp: new Date().toISOString(),
@@ -184,6 +194,7 @@ export async function POST(req: NextRequest) {
           provider: 'retell',
           sessionId,
           callId,
+          maxCallDurationMinutes,
           event: 'call_created'
         })}`);
 
@@ -193,6 +204,7 @@ export async function POST(req: NextRequest) {
             accessToken,
             callId,
             sessionId,
+            maxCallDurationMinutes,
           },
           { status: 200, headers }
         );
@@ -224,20 +236,25 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const maxCallDurationMinutes = widget.config?.behavior?.maxCallDurationMinutes ?? 10;
       const sessionId = randomUUID();
       console.log(`[WIDGET_CALL_OBSERVABILITY] ${JSON.stringify({
         timestamp: new Date().toISOString(),
         widgetId,
         provider: 'vapi',
         sessionId,
+        maxCallDurationMinutes,
         event: 'call_created'
       })}`);
 
-      const vapiAssistantOverrides = websiteContext ? {
-        variableValues: {
-          website_context: websiteContext
-        }
-      } : undefined;
+      const vapiAssistantOverrides: Record<string, any> = {
+        maxDurationSeconds: maxCallDurationMinutes * 60,
+      };
+      if (websiteContext) {
+        vapiAssistantOverrides.variableValues = {
+          website_context: websiteContext,
+        };
+      }
 
       // Vapi Web client SDK handles call signaling directly client-side via WebRTC
       // utilizing the Public API Key and Assistant ID.
@@ -248,6 +265,7 @@ export async function POST(req: NextRequest) {
           vapiAssistantId: assistantId,
           vapiAssistantOverrides,
           sessionId,
+          maxCallDurationMinutes,
         },
         { status: 200, headers }
       );

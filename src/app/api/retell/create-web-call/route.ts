@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 import { getWidget, getWebsiteContextSummary } from '@/config/widgetsDb';
+import { registerCallTimeout } from '@/lib/voice/callLimiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,16 @@ export async function POST(req: NextRequest) {
       throw new Error('Retell API response is missing accessToken or callId.');
     }
 
+    // Register server-side call duration cap
+    const maxCallDurationMinutes = widget?.config?.behavior?.maxCallDurationMinutes ?? 10;
+    registerCallTimeout({
+      callId,
+      provider: 'retell',
+      apiKey,
+      maxDurationMinutes: maxCallDurationMinutes,
+      widgetId: widget?.widgetId || widgetId,
+    });
+
     const sessionId = randomUUID();
 
     return NextResponse.json({
@@ -73,6 +84,7 @@ export async function POST(req: NextRequest) {
       accessToken,
       callId,
       sessionId,
+      maxCallDurationMinutes,
     });
   } catch (err: any) {
     console.error('[api/retell/create-web-call] Error:', err);

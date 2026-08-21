@@ -15,6 +15,7 @@ import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords, WebsiteDataRecord } from '@/config/widgetsDb';
 import { generateBaseSystemPrompt } from '@/lib/agents/prompts';
+import { checkAndIncrementChatTurns } from '@/lib/chat/chatLimiter';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -359,6 +360,31 @@ export async function POST(req: NextRequest) {
   const agentId = (widget.agentId || process.env.RETELL_AGENT_ID || '').trim();
   // Check if a specific chat agent has been configured in the config overrides, or fallback to main agentId
   const chatAgentId = (widget.config?.behavior as any)?.chatAgentId || undefined;
+
+  // ── Enforce Hard Server-Side Chat Turn Limits (Task C.1) ─────────────────
+  const maxChatTurns = widget.config?.behavior?.maxChatTurns ?? 30;
+  const sessionTurnKey = chatId || sessionId || ip;
+  const turnCheck = checkAndIncrementChatTurns(sessionTurnKey, maxChatTurns);
+
+  if (!turnCheck.allowed) {
+    const cappedMessage = turnCheck.message || 'You have reached the maximum message limit for this chat session. Please contact our team directly for further assistance.';
+    console.log(`[SERVER_CHAT_CAP] Session ${sessionTurnKey} exceeded max chat turns (${maxChatTurns}). Rejecting LLM generation and returning capped response.`);
+
+    return NextResponse.json(
+      {
+        chatId: chatId || `chat_${Date.now()}`,
+        messages: [
+          { role: 'user', content: content.trim() },
+          { role: 'agent', content: cappedMessage },
+        ],
+        sessionId,
+        capped: true,
+        turnCount: turnCheck.currentTurn,
+        maxTurns: turnCheck.maxTurns,
+      },
+      { status: 200, headers }
+    );
+  }
 
   if (!apiKey || !agentId) {
     return NextResponse.json(

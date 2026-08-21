@@ -310,7 +310,25 @@ npx tsx scratch/test-all-phase-5.ts
 
 # Run universal chat intent, navigation & constraint test suite
 npx tsx scratch/test-universal-chat-engine.ts
+
+# Run hard duration and chat turn caps test suite (Task C.1)
+npx tsx scratch/test-duration-and-turn-caps.ts
 ```
+
+---
+
+## Hard Duration & Turn Caps (Cost & Abuse Protection)
+
+Widgetized enforces strict, unavoidable server-side rate and duration boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
+
+1. **Server-Side Hard Call Duration Cap**:
+   - Configurable per widget under the **Behavior** settings via `maxCallDurationMinutes` (default: 10 minutes, tunable from 1–60 min).
+   - Enforced by `src/lib/voice/callLimiter.ts`: An active server-side timeout monitors the live call and terminates it directly via provider APIs (`client.call.stop` for Retell, `DELETE /call/:id` or `maxDurationSeconds` for Vapi) when the cap is reached—ensuring a rogue or altered client cannot keep an audio stream open indefinitely.
+2. **Server-Side Hard Chat Turn Cap**:
+   - Configurable per widget under **Behavior** via `maxChatTurns` (default: 30 user message turns).
+   - Enforced directly in `/api/retell/chat` by `src/lib/chat/chatLimiter.ts`: When a session exceeds its configured turn limit, the server immediately stops all upstream LLM generations, embedding lookups, and third-party API calls, returning a fixed contact redirect message (*"You have reached the maximum message limit for this chat session. Please contact our team directly for further assistance."*).
+3. **Pre-Filled Baseline Protection**:
+   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
 
 ---
 

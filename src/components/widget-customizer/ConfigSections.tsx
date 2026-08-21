@@ -258,6 +258,52 @@ export function BehaviorSection({ draft, onChange }: Props) {
           </label>
         </div>
       </div>
+
+      {/* Hard Duration & Turn Caps (Cost & Abuse Protection) */}
+      <div style={{
+        marginTop: '6px',
+        padding: '12px',
+        borderRadius: '8px',
+        border: '1px solid #E2E8F0',
+        background: '#F8FAFC',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
+      }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>
+          Session Limits &amp; Cost Protection
+        </div>
+
+        <div>
+          <label style={labelStyle}>Max Voice Call Duration (Minutes)</label>
+          <input
+            type="number"
+            min={1}
+            max={60}
+            value={draft.behavior.maxCallDurationMinutes ?? 10}
+            onChange={(e) => set('maxCallDurationMinutes', Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 10)))}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Hard server-side limit. Live voice calls are automatically terminated when this duration is reached (default: 10 min).
+          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Max Chat Turns per Session</label>
+          <input
+            type="number"
+            min={5}
+            max={100}
+            value={draft.behavior.maxChatTurns ?? 30}
+            onChange={(e) => set('maxChatTurns', Math.max(5, Math.min(100, parseInt(e.target.value, 10) || 30)))}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Maximum user message turns allowed in a chat session before capping and directing visitor to direct contact (default: 30 turns).
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

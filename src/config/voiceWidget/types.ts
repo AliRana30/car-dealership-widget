@@ -313,6 +313,10 @@ export interface VoiceWidgetBehaviorConfig {
   connectionTimeout: number;
   telemetryEnabled: boolean;
   installationType?: string;
+  /** Hard server-side maximum call duration in minutes (default: 10) */
+  maxCallDurationMinutes?: number;
+  /** Hard server-side maximum chat turns per session (default: 30) */
+  maxChatTurns?: number;
 }
 
 // -------------------------------------------------------
