@@ -408,3 +408,17 @@ npx tsx scratch/test-agent-tools.ts
    - Eagerly pre-warms Retell SDK modules on widget load to eliminate lazy dynamic import latency during WebRTC call startup.
 5. **Seamless Credential Management**:
    - Universal persistence for Retell Agent IDs, API keys, and configurations across the visual customizer with AES-256-GCM encrypted secrets storage.
+
+---
+
+## Retell Voice Engine, Host Navigation Persistence & Intent Classification
+
+1. **Persistent In-Session Navigation State**:
+   - When autonomous or user navigation occurs (e.g. browsing to `/courses`, `/about`, `/policy`), `sessionStorage` preserves the widget open state (`myfrontdesk_open_`) and conversational history (`myfrontdesk_chat_`), ensuring the chat never terminates or resets unexpectedly between host page reloads.
+2. **Distinct Voice vs. Text Chat Architecture**:
+   - **Voice Telephony**: Connects via WebRTC to Retell Voice Agent (`agent_de685808e8532318607de0b0c8`) using the ultra-low latency Retell SDK client, dynamically injecting real-time `website_context` into the LLM runtime.
+   - **Text Chat**: Handled via `/api/retell/chat` with structured semantic fallback, catalog matching, and instant recommendation card generation.
+3. **Optimized Catalog Ranking & Directory Filtering**:
+   - Individual offering items (`/course/:id`, `/product/:id`) with concrete pricing and image banners are prioritized over broad directory pages (e.g. `/courses`), ensuring full catalog coverage including MERN Stack, Backend Mastery, and Leetcode Mastery.
+4. **Strict Intent Boundary Classification**:
+   - Explicit priority matching for admissions, enrollment, tuition, pricing, policies, and specific course queries with word boundary protection to prevent false positive triggers.

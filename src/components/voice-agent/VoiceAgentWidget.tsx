@@ -69,7 +69,8 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         const sp = new URLSearchParams(window.location.search);
         if (sp.get('open') === '1' || Boolean(sp.get('widget_resume'))) return true;
         try {
-          sessionStorage.removeItem(`myfrontdesk_reopen_${widgetId || 'default'}`);
+          const wasOpen = sessionStorage.getItem(`myfrontdesk_open_${widgetId || 'default'}`);
+          if (wasOpen === '1') return true;
         } catch (_) {}
       }
       return false;
@@ -80,6 +81,14 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         setIsOpen(true);
       }
     }, [initialOpen]);
+
+    // Save isOpen state to sessionStorage whenever it changes
+    useEffect(() => {
+      if (typeof window === 'undefined') return;
+      try {
+        sessionStorage.setItem(`myfrontdesk_open_${widgetId || 'default'}`, isOpen ? '1' : '0');
+      } catch (_) {}
+    }, [isOpen, widgetId]);
 
     const [callState, setCallState] = useState<CallState>('idle');
     const [isMuted, setIsMuted] = useState(false);
@@ -101,27 +110,24 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       setActiveTab(mergedConfig.behavior.defaultTab);
     }, [mergedConfig.behavior.defaultTab]);
 
-    // Restore cached chat messages only when resuming an active session (e.g. host navigation)
+    // Restore cached chat messages on initial mount across host page navigation
     useEffect(() => {
       if (typeof window === 'undefined') return;
-      const sp = new URLSearchParams(window.location.search);
-      const isResuming = Boolean(sp.get('widget_resume'));
       const key = `myfrontdesk_chat_${widgetId || 'default'}`;
-
-      if (isResuming) {
-        try {
-          const saved = sessionStorage.getItem(key);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-              setChatMessages(parsed.messages);
-              if (parsed.chatId) setChatId(parsed.chatId);
-              if (parsed.activeTab) setActiveTab(parsed.activeTab);
-              return;
-            }
+      try {
+        const saved = sessionStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const ageMs = Date.now() - (parsed.timestamp || 0);
+          // If session is recent (< 30 min), restore messages seamlessly
+          if (Array.isArray(parsed.messages) && parsed.messages.length > 0 && ageMs < 30 * 60 * 1000) {
+            setChatMessages(parsed.messages);
+            if (parsed.chatId) setChatId(parsed.chatId);
+            if (parsed.activeTab) setActiveTab(parsed.activeTab);
+            return;
           }
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
 
       // Default fresh welcome message
       setChatMessages([{ role: 'agent', content: mergedConfig.branding.welcomeMessage || "Hi! How can I help you today?" }]);

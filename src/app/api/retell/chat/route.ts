@@ -122,18 +122,27 @@ async function generateChatFallbackResponse(
 
   const isExplicit = isExplicitNavigationIntent(content);
   const trimmed = content.trim().toLowerCase();
-  const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmed);
+  const isGreeting = /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|start|help)$/i.test(trimmed);
   if (isGreeting) {
     return {
-      text: `Hello! I'm your AI front desk receptionist for ${businessName}. How can I help you today? Feel free to ask about our courses, pricing, policies, or services.`
+      text: `Hello! I'm your AI front desk receptionist for ${businessName}. How can I help you today? Feel free to ask about our courses, pricing, admissions, or policies.`
     };
   }
 
-  // 1. Check for Information Pages (About Us, Policies, FAQ, Contact)
-  const isAboutQuery = /(?:about|abou\s*t|who are you|mission|story|company|founder|developer|background|team|who built)/i.test(trimmed);
-  const isPolicyQuery = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(trimmed);
-  const isFaqQuery = /(?:faq|frequently asked|questions|help)/i.test(trimmed);
-  const isContactQuery = /(?:contact|reach out|email|phone|address|location|support)/i.test(trimmed);
+  // 1. Check for Admissions & Enrollment Intent FIRST (e.g. "How do I apply?", "Admission requirements?")
+  const isAdmissionsQuery = /\b(?:admission|admissions|enroll|enrollment|apply|application|requirements?|prerequisites?|how to join|how do i apply|register)\b/i.test(trimmed);
+  if (isAdmissionsQuery) {
+    return {
+      text: `Enrolling at ${businessName} is fast and straightforward! Simply browse our courses, select the program that fits your goals (such as **MERN Stack Development**, **Backend Mastery**, or **Leetcode Mastery**), and click **Enroll Now** on the course page for immediate access to curriculum modules, codebases, and student channels. Beginner tracks have no prerequisites.`,
+      navigationUrl: undefined
+    };
+  }
+
+  // 2. Check for Information Pages (About Us, Policies, FAQ, Contact)
+  const isAboutQuery = /\b(?:about|who\s+are\s+you|mission|story|company|founder|developer|background|team|who\s+built)\b/i.test(trimmed);
+  const isPolicyQuery = /\b(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)\b/i.test(trimmed);
+  const isFaqQuery = /\b(?:faq|frequently asked|questions?|help center)\b/i.test(trimmed);
+  const isContactQuery = /\b(?:contact|reach out|email|phone|address|location|support team|talk to advisor|speak with advisor)\b/i.test(trimmed);
 
   if (isAboutQuery) {
     let sourceUrl = '/about';
@@ -147,7 +156,7 @@ async function generateChatFallbackResponse(
     return {
       text: isExplicit
         ? `Navigating you to our About page now so you can learn more about ${businessName}!`
-        : `At ${businessName}, our mission is to make high-quality education and practical skills accessible to learners worldwide through hands-on instruction and modern technology.`,
+        : `At ${businessName}, our mission is to make high-quality education and practical engineering skills accessible to learners worldwide through hands-on instruction and modern technology.`,
       navigationUrl: isExplicit ? sourceUrl : undefined
     };
   }
@@ -316,24 +325,6 @@ Guidelines:
 
     return {
       text: `Here are the tuition rates and pricing options for ${businessName}:\n\n${priceLines}\n\nAll programs include lifetime access, project codebases, and a 30-day money-back guarantee. Would you like more details on a specific course?`,
-      navigationUrl: undefined
-    };
-  }
-
-  // Case C: Admissions, Enrollment & Requirements Inquiries (e.g. "How do I apply and what are the admission requirements?")
-  const isAdmissionsQuery = /(?:admission|admissions|enroll|enrollment|apply|application|requirements?|prerequisites?|how to join|how do i apply|register)/i.test(trimmed);
-  if (isAdmissionsQuery) {
-    return {
-      text: `Enrolling at ${businessName} is fast and straightforward! Simply browse our courses, select the program that fits your goals, and click **Enroll Now** on the course page for immediate access to all curriculum modules, code repositories, and student channels. Beginner tracks have no prerequisites.`,
-      navigationUrl: undefined
-    };
-  }
-
-  // Case D: Advisor, Instructor & Mentorship Inquiries (e.g. "Can I speak with an advisor or instructor?")
-  const isAdvisorQuery = /(?:advisor|adviser|instructor|instructors|teacher|counselor|mentor|mentorship|talk to|speak with|consultant|support team|human|person)/i.test(trimmed);
-  if (isAdvisorQuery) {
-    return {
-      text: `You can connect directly with our course instructors and dedicated advisors! We provide weekly live Q&A sessions, project code reviews, and community chat support for all learners. You can also reach our team anytime via the contact page.`,
       navigationUrl: undefined
     };
   }

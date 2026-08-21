@@ -200,4 +200,17 @@
 | Telephony Optimization | Eager SDK Pre-warming | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx`; pre-warms Retell client library on component mount, removing dynamic import overhead during call initiation. |
 | Customizer Keys | Universal Credential Persistence | **Completed & Verified** | Verified in `api/widgets/route.ts` & `widgetsDb.ts`; supports seamless updating of Retell Agent IDs, API keys, and configurations with AES-256 encryption. |
 
+---
+
+## 16. Retell Telephony, Navigation Persistence & Intent Classification
+
+| Feature | Sub-item | Status | Evidence |
+|---|---|---|---|
+| Retell Voice Telephony | WebRTC Voice Call Creation | **Completed & Verified** | Verified in `api/widgets/create-call/route.ts`; successfully connects to active Retell Agent (`agent_de685808e8532318607de0b0c8`) returning HTTP 200 and WebRTC access tokens. |
+| Navigation Persistence | In-Session Open State & Message Cache | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx`; `sessionStorage` tracks open state and chat messages across browser page navigations without resetting the session. |
+| Catalog Prioritization | Individual Offering Ranking | **Completed & Verified** | Verified in `widgetsDb.ts`; prioritizes concrete priced items (`/course/:id`, `/product/:id`) above broad index pages (`/courses`), guaranteeing full course discovery (MERN Stack, Backend Mastery, Leetcode). |
+| Intent Classification | Strict Intent Boundaries | **Completed & Verified** | Verified in `retell/chat/route.ts`; fixed word boundary matching for admissions, pricing, and about queries, preventing false positive intercept of admissions inquiries. |
+| Database Scoping | Comprehensive Test Row Cleanup | **Completed & Verified** | Verified in Supabase database; purged all test vehicle and dummy rows from `front-desk` widget, preserving strictly LMS records. |
+
+
 

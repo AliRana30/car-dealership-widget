@@ -1,8 +1,12 @@
+import fs from 'fs';
+if (fs.existsSync('.env')) {
+  process.loadEnvFile('.env');
+}
 import { POST } from '../src/app/api/retell/chat/route';
 import { NextRequest } from 'next/server';
 
 async function testDirectHandler() {
-  const widgetId = 'cfbfa598-6c36-4447-9b27-173dbefa8e55';
+  const widgetId = 'front-desk';
   const queries = [
     'can you tell me which courses do you have/',
     'can you show me the mern sstack course?',
@@ -40,6 +44,25 @@ async function testDirectHandler() {
     console.log('Navigation URL:', data.navigationUrl || 'None');
     console.log('Action:', JSON.stringify(data.action));
   }
+
+  console.log(`\n========================================`);
+  console.log(`Testing /api/widgets/create-call`);
+  console.log(`========================================`);
+  const { POST: createCallPost } = await import('../src/app/api/widgets/create-call/route');
+  const callReq = new NextRequest('http://localhost:3000/api/widgets/create-call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ widgetId: 'front-desk' }),
+  });
+  const start = Date.now();
+  const callRes = await createCallPost(callReq);
+  const dur = Date.now() - start;
+  const callData = await callRes.json();
+  console.log(`Create Call Status: ${callRes.status} (elapsed: ${dur}ms)`);
+  console.log('Provider:', callData.provider);
+  console.log('Call ID:', callData.callId);
+  console.log('Access Token exists:', Boolean(callData.accessToken));
+  if (callData.error) console.log('Error:', callData);
 }
 
 testDirectHandler().catch(console.error);

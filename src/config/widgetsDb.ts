@@ -877,7 +877,16 @@ export async function getRelevantWebsiteRecords(
         exactTitleMatch = true;
       }
 
-      if (hasPricingOrMedia) score += 30;
+      const isDirectoryPage = record.source_url && /\/(courses|products|services|catalog|inventory|shop|all)\/?$/i.test(record.source_url) && !itemPrice;
+      if (isDirectoryPage) {
+        score -= 60; // Directory/category page ranks below individual items
+      }
+
+      if (itemPrice !== null && itemPrice > 0) {
+        score += 80; // Definite priced item gets priority
+      }
+
+      if (hasPricingOrMedia) score += 40;
 
       return { record, score, itemPrice, rating, exactTitleMatch };
     });
@@ -900,10 +909,10 @@ export async function getRelevantWebsiteRecords(
       candidateList.sort((a, b) => b.score - a.score);
     }
 
-    return candidateList.slice(0, limit).map(s => {
+    return candidateList.slice(0, Math.max(limit, 6)).map(s => {
       const r = s.record;
       const meta = (r.metadata || {}) as Record<string, any>;
-      const result: WebsiteDataRecord = { entityType: r.entity_type };
+      const result: WebsiteDataRecord & { category?: string; level?: string; metadata?: any } = { entityType: r.entity_type };
       if (r.title) result.title = r.title;
       
       if (r.short_description) {
@@ -928,7 +937,10 @@ export async function getRelevantWebsiteRecords(
       if (meta.reviews !== undefined) {
         result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
       }
+      if (meta.category || meta.tags) result.category = String(meta.category || meta.tags).trim();
+      if (meta.level) result.level = String(meta.level).trim();
       if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
+      result.metadata = meta;
       if (r.source_url) result.sourceUrl = r.source_url;
       return result;
     });
