@@ -73,15 +73,15 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
 
     return (
       <svg
-        width={buttonSize * 0.4}
-        height={buttonSize * 0.4}
+        width={buttonSize * 0.42}
+        height={buttonSize * 0.42}
         viewBox="0 0 24 24"
         fill="none"
         stroke={launcher.iconColor || 'white'}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
-        style={{ display: 'inline-block', verticalAlign: 'middle' }}
+        style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
       >
         {paths.map((p, i) => (
           <path key={i} d={p} />
@@ -192,7 +192,7 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
   // Determine button width and padding based on variant
   const isPill = launcher.variant === 'pill';
   const isIconLabel = launcher.variant === 'icon-label';
-  const hasText = (isPill || isIconLabel) && launcher.label?.text;
+  const hasText = (isPill || isIconLabel) && Boolean(launcher.label?.text);
 
   const buttonStyle: React.CSSProperties = {
     height: `${buttonSize}px`,
@@ -211,13 +211,14 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
     pointerEvents: 'auto',
     boxSizing: 'border-box',
     color: launcher.iconColor || 'white',
-    fontSize: '14.5px',
+    fontSize: '14px',
     fontWeight: 600,
     outline: 'none',
+    whiteSpace: 'nowrap',
   };
 
   if (hasText) {
-    buttonStyle.padding = '0 20px';
+    buttonStyle.padding = '0 16px';
     buttonStyle.width = 'auto';
     buttonStyle.minWidth = `${buttonSize}px`;
     buttonStyle.gap = '8px';
@@ -247,7 +248,7 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
           <>
             {!isPill && renderIcon(buttonSize)}
             {hasText && (
-              <span className="voice-widget-launcher-text">
+              <span className="voice-widget-launcher-text" style={{ whiteSpace: 'nowrap' }}>
                 {launcher.label.text}
               </span>
             )}

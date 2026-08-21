@@ -132,11 +132,13 @@ export default function VoiceAgentHeader({
         )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--voice-widget-text, #0F172A)', lineHeight: 1.2 }}>
-            {branding.assistantName}
+            {branding.assistantName || 'AI Assistant'}
           </span>
-          <span style={{ fontSize: '10.5px', color: 'var(--voice-widget-text-muted, #64748B)', marginTop: '2px' }}>
-            Online • Instant Navigation
-          </span>
+          {branding.subtitle && (
+            <span style={{ fontSize: '10.5px', color: 'var(--voice-widget-text-muted, #64748B)', marginTop: '2px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {branding.subtitle}
+            </span>
+          )}
         </div>
       </div>
 

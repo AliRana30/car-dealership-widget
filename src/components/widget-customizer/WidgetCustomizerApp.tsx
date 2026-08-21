@@ -244,7 +244,6 @@ export default function WidgetCustomizerApp() {
       const p = new URLSearchParams(window.location.search);
       const id = p.get('id');
       if (id) return id;
-      return `widget-${Math.random().toString(36).substring(2, 8)}`;
     }
     return 'front-desk';
   });
@@ -258,7 +257,7 @@ export default function WidgetCustomizerApp() {
         return id.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
       }
     }
-    return 'Voice Agent';
+    return 'Front Desk';
   });
   const [retellApiKey, setRetellApiKey] = useState('');
   const [vapiApiKey, setVapiApiKey] = useState('');
@@ -276,16 +275,14 @@ export default function WidgetCustomizerApp() {
     }
   }, []);
 
-  // Fetch on mount if id is in query params
+  // Fetch on mount (defaults to front-desk if not in query params)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    const idParam = params.get('id');
-    if (!idParam) return;
+    const targetId = params.get('id') || 'front-desk';
 
     async function loadWidget() {
       try {
-        if (!idParam) return;
         const fetchFn = typeof window !== 'undefined' && window.fetch ? window.fetch.bind(window) : null;
         if (!fetchFn) {
           console.warn('loadWidget: window.fetch is not available.');
@@ -293,7 +290,7 @@ export default function WidgetCustomizerApp() {
         }
 
         // 1. Fetch widget metadata/keys
-        const resMeta = await fetchFn(`/api/widgets?id=${encodeURIComponent(idParam)}`);
+        const resMeta = await fetchFn(`/api/widgets?id=${encodeURIComponent(targetId)}`);
         if (resMeta && resMeta.ok) {
           const metaData = await resMeta.json().catch(() => null);
           if (metaData) {
@@ -313,7 +310,7 @@ export default function WidgetCustomizerApp() {
         }
 
         // 2. Fetch exact widget configuration
-        const resConfig = await fetchFn(`/api/widgets/${encodeURIComponent(idParam)}/configuration`);
+        const resConfig = await fetchFn(`/api/widgets/${encodeURIComponent(targetId)}/configuration`);
         if (resConfig && resConfig.ok) {
           const configRecord = await resConfig.json().catch(() => null);
           if (configRecord) {

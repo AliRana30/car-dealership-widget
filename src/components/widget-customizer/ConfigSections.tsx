@@ -188,14 +188,25 @@ export function LauncherSection({ draft, onChange }: Props) {
   const set = (key: keyof typeof draft.launcher, val: any) =>
     onChange({ launcher: { ...draft.launcher, [key]: val } as any });
 
+  const setLabel = (key: string, val: any) =>
+    onChange({
+      launcher: {
+        ...draft.launcher,
+        label: {
+          ...(draft.launcher.label || { show: false, text: 'Talk to Agent', position: 'left' }),
+          [key]: val,
+        },
+      } as any,
+    });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div>
         <label style={labelStyle}>Variant</label>
         <select value={draft.launcher.variant} onChange={(e) => set('variant', e.target.value)} style={inputStyle}>
           <option value="icon">Icon Only</option>
-          <option value="icon-label">Icon + Label</option>
-          <option value="pill">Pill (text)</option>
+          <option value="icon-label">Icon + Text Label</option>
+          <option value="pill">Pill (Text only)</option>
         </select>
       </div>
       <div>
@@ -206,6 +217,29 @@ export function LauncherSection({ draft, onChange }: Props) {
           ))}
         </select>
       </div>
+      <div>
+        <label style={labelStyle}>Button Label Text</label>
+        <input
+          type="text"
+          placeholder="Talk to Agent"
+          value={draft.launcher.label?.text || ''}
+          onChange={(e) => setLabel('text', e.target.value)}
+          style={inputStyle}
+        />
+      </div>
+      {draft.launcher.variant === 'icon' && (
+        <div style={rowStyle}>
+          <span style={labelStyle}>Show Floating Label Pill</span>
+          <label className="cust-toggle">
+            <input
+              type="checkbox"
+              checked={draft.launcher.label?.show || false}
+              onChange={(e) => setLabel('show', e.target.checked)}
+            />
+            <span />
+          </label>
+        </div>
+      )}
       <div>
         <label style={labelStyle}>Position</label>
         <select value={draft.launcher.position} onChange={(e) => set('position', e.target.value)} style={inputStyle}>
@@ -229,6 +263,16 @@ export function LauncherSection({ draft, onChange }: Props) {
           <option value="medium">Medium</option>
           <option value="large">Large</option>
         </select>
+      </div>
+      <div>
+        <label style={labelStyle}>Custom Logo URL (Optional)</label>
+        <input
+          type="text"
+          placeholder="https://example.com/logo.png"
+          value={draft.launcher.logoSrc || ''}
+          onChange={(e) => set('logoSrc', e.target.value)}
+          style={inputStyle}
+        />
       </div>
       <div style={rowStyle}>
         <span style={labelStyle}>Pulse Animation</span>

@@ -358,7 +358,7 @@ export default function VoiceAgentTranscript({
                       color: isUser ? 'var(--voice-widget-wave-user, #22C55E)' : 'var(--voice-widget-primary, #2F8FE0)',
                     }}
                   >
-                    {isUser ? branding.userMessageName : branding.agentMessageName}:
+                    {isUser ? (branding.userMessageName || 'You') : (branding.agentMessageName || branding.assistantName || 'Agent')}:
                   </span>{' '}
                   <span style={{ color: 'var(--voice-widget-text)', fontWeight: 'var(--voice-widget-font-weight-body)' }}>
                     {renderFormattedContent(msg.content)}
