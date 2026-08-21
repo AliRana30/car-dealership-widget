@@ -209,49 +209,68 @@ export default function VoiceAgentStatus({
         <div
           style={{
             display: 'flex',
-            background: 'rgba(14,27,42,0.06)',
-            padding: '4px',
-            borderRadius: '12px',
+            background: '#F1F5F9',
+            padding: '3px',
+            borderRadius: '10px',
             width: '100%',
-            maxWidth: config.mode === 'inline' ? '240px' : '100%',
+            maxWidth: config.mode === 'inline' ? '260px' : '100%',
             marginBottom: '4px',
+            border: '1px solid #E2E8F0',
           }}
         >
           <button
-            onClick={() => onTabChange('voice')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: '8px',
-              background: activeTab === 'voice' ? '#FFFFFF' : 'transparent',
-              border: 'none',
-              color: activeTab === 'voice' ? 'var(--voice-widget-text)' : 'var(--voice-widget-text-muted)',
-              fontWeight: 600,
-              fontSize: '13px',
-              cursor: 'pointer',
-              boxShadow: activeTab === 'voice' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            Voice Chat
-          </button>
-          <button
+            type="button"
             onClick={() => onTabChange('text')}
             style={{
               flex: 1,
-              padding: '8px 12px',
+              padding: '6px 12px',
               borderRadius: '8px',
               background: activeTab === 'text' ? '#FFFFFF' : 'transparent',
               border: 'none',
-              color: activeTab === 'text' ? 'var(--voice-widget-text)' : 'var(--voice-widget-text-muted)',
-              fontWeight: 600,
-              fontSize: '13px',
+              color: activeTab === 'text' ? '#0F172A' : '#64748B',
+              fontWeight: 700,
+              fontSize: '12px',
               cursor: 'pointer',
-              boxShadow: activeTab === 'text' ? '0 2px 8px rgba(14,27,42,0.08)' : 'none',
-              transition: 'all 0.2s ease',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxShadow: activeTab === 'text' ? '0 1px 4px rgba(14,27,42,0.08)' : 'none',
+              transition: 'all 0.15s ease',
             }}
           >
-            Text Chat
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span>Text Chat</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onTabChange('voice')}
+            style={{
+              flex: 1,
+              padding: '6px 12px',
+              borderRadius: '8px',
+              background: activeTab === 'voice' ? '#FFFFFF' : 'transparent',
+              border: 'none',
+              color: activeTab === 'voice' ? '#0F172A' : '#64748B',
+              fontWeight: 700,
+              fontSize: '12px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxShadow: activeTab === 'voice' ? '0 1px 4px rgba(14,27,42,0.08)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+            </svg>
+            <span>Voice Agent</span>
           </button>
         </div>
       )}

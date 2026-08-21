@@ -8,11 +8,28 @@ interface VoiceAgentHeaderProps {
   onClose?: () => void;
   showClose: boolean;
   onNewChat?: () => void;
+  cardCount?: number;
+  onToggleCards?: () => void;
+  isCardsOpen?: boolean;
+  isMuted?: boolean;
+  onToggleMute?: () => void;
 }
 
 const CLOSE_ICON_PATH = ['M18 6L6 18', 'M6 6l12 12'];
 
-export default function VoiceAgentHeader({ config, isActive, isLoading, onClose, showClose, onNewChat }: VoiceAgentHeaderProps) {
+export default function VoiceAgentHeader({
+  config,
+  isActive,
+  isLoading,
+  onClose,
+  showClose,
+  onNewChat,
+  cardCount = 0,
+  onToggleCards,
+  isCardsOpen = true,
+  isMuted = false,
+  onToggleMute,
+}: VoiceAgentHeaderProps) {
   const { branding, panel, avatar } = config;
   const [imageError, setImageError] = useState(false);
 
@@ -37,17 +54,17 @@ export default function VoiceAgentHeader({ config, isActive, isLoading, onClose,
     ? 'var(--voice-widget-wave-user, #22C55E)'
     : isLoading
     ? 'var(--voice-widget-accent, #D9714B)'
-    : 'rgba(14,27,42,0.2)';
+    : '#22C55E';
 
   return (
     <div
       style={{
         padding: '12px 16px',
-        borderBottom: '1px solid var(--voice-widget-border)',
+        borderBottom: '1px solid var(--voice-widget-border, #E2E8F0)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: 'rgba(14, 27, 42, 0.02)',
+        background: '#FFFFFF',
         fontFamily: config.typography.fontFamily,
       }}
     >
@@ -114,64 +131,103 @@ export default function VoiceAgentHeader({ config, isActive, isLoading, onClose,
           />
         )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--voice-widget-text)', lineHeight: 1.2 }}>
+          <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--voice-widget-text, #0F172A)', lineHeight: 1.2 }}>
             {branding.assistantName}
           </span>
-          {showAvatar && (
-            <span style={{ fontSize: '10.5px', color: 'var(--voice-widget-text-muted)', marginTop: '2px' }}>
-              {isActive ? 'Online' : 'Agent'}
-            </span>
-          )}
+          <span style={{ fontSize: '10.5px', color: 'var(--voice-widget-text-muted, #64748B)', marginTop: '2px' }}>
+            Online • Instant Navigation
+          </span>
         </div>
       </div>
 
-      {/* Right Header Actions (New Chat + Close Button) */}
+      {/* Right Header Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* Sound toggle if audio active */}
+        {onToggleMute && (
+          <button
+            type="button"
+            onClick={onToggleMute}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: isMuted ? '#EF4444' : '#64748B',
+              padding: '4px 6px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            title={isMuted ? 'Unmute' : 'Mute'}
+            aria-label="Toggle mute"
+          >
+            {isMuted ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+              </svg>
+            )}
+          </button>
+        )}
+
+        {/* Cards (X) toggle pill button */}
+        {cardCount > 0 && onToggleCards && (
+          <button
+            type="button"
+            onClick={onToggleCards}
+            style={{
+              background: isCardsOpen ? '#ECFDF5' : '#F1F5F9',
+              color: isCardsOpen ? '#059669' : '#64748B',
+              border: `1px solid ${isCardsOpen ? '#A7F3D0' : '#E2E8F0'}`,
+              borderRadius: '16px',
+              padding: '3px 9px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.15s ease',
+            }}
+            title="Toggle recommended cards"
+            aria-label="Toggle recommended cards"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 12 17 22 12" />
+            </svg>
+            <span>Cards ({cardCount})</span>
+          </button>
+        )}
+
+        {/* New Chat / Reload */}
         {onNewChat && (
           <button
             type="button"
             onClick={onNewChat}
             style={{
-              background: 'rgba(14, 27, 42, 0.05)',
-              border: '1px solid var(--voice-widget-border)',
+              background: 'transparent',
+              border: 'none',
               borderRadius: '6px',
               cursor: 'pointer',
-              color: 'var(--voice-widget-text-muted)',
+              color: '#64748B',
               display: 'flex',
               alignItems: 'center',
-              gap: '4px',
-              padding: '4px 8px',
-              fontSize: '11px',
-              fontWeight: 600,
-              transition: 'all 0.15s ease',
+              padding: '4px',
             }}
-            title="Start a new conversation"
-            aria-label="Start a new conversation"
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--voice-widget-primary, #2F8FE0)';
-              e.currentTarget.style.color = '#FFFFFF';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(14, 27, 42, 0.05)';
-              e.currentTarget.style.color = 'var(--voice-widget-text-muted)';
-            }}
+            title="Start new conversation"
+            aria-label="Start new conversation"
           >
-            <svg
-              width={12}
-              height={12}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19" />
             </svg>
-            <span>New Chat</span>
           </button>
         )}
 
+        {/* Close Button */}
         {showClose && panel.showCloseButton && onClose && (
           <button
             onClick={onClose}
@@ -179,28 +235,14 @@ export default function VoiceAgentHeader({ config, isActive, isLoading, onClose,
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: 'var(--voice-widget-text-muted)',
+              color: '#64748B',
               display: 'flex',
               padding: '4px',
-              opacity: 0.7,
-              transition: 'opacity 0.2s',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
             title="Close panel"
             aria-label="Close panel"
           >
-            <svg
-              width={16}
-              height={16}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ display: 'inline-block', verticalAlign: 'middle' }}
-            >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               {CLOSE_ICON_PATH.map((p, i) => (
                 <path key={i} d={p} />
               ))}

@@ -197,6 +197,18 @@ export default function VoiceAgentTranscript({
           }
 
           const isUser = msg.role === 'user';
+          const isNavConfirm = msg.role === 'agent' && (
+            msg.content.toLowerCase().startsWith('navigated to') ||
+            msg.content.toLowerCase().startsWith('opening the page') ||
+            msg.content.toLowerCase().startsWith('opening our')
+          );
+
+          // Extract navigated target name if present
+          let navTarget = '';
+          if (isNavConfirm) {
+            const m = msg.content.match(/(?:navigated to|opening the page for|opening our)\s+([^.]+)/i);
+            if (m) navTarget = m[1].replace(/\*\*/g, '').trim();
+          }
 
           return (
             <div
@@ -206,7 +218,7 @@ export default function VoiceAgentTranscript({
                 flexDirection: 'column',
                 alignItems: isUser ? 'flex-end' : 'flex-start',
                 width: '100%',
-                gap: '4px',
+                gap: '3px',
               }}
             >
               {/* Chat bubble */}
@@ -215,19 +227,39 @@ export default function VoiceAgentTranscript({
                   style={{
                     maxWidth: '85%',
                     background: isUser
-                      ? 'var(--voice-widget-bg-user-bubble, var(--voice-widget-primary))'
-                      : 'var(--voice-widget-bg-agent-bubble, #FFFFFF)',
-                    color: isUser ? 'var(--voice-widget-text-user-bubble, #0E1B2A)' : 'var(--voice-widget-text, #0E1B2A)',
-                    border: isUser ? 'none' : '1px solid var(--voice-widget-border)',
-                    borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
-                    padding: '8px 12px',
-                    fontSize: 'var(--voice-widget-font-sm)',
-                    fontWeight: 'var(--voice-widget-font-weight-body)',
-                    lineHeight: 'var(--voice-widget-line-height)',
-                    boxShadow: '0 2px 6px rgba(14,27,42,0.03)',
+                      ? 'var(--voice-widget-bg-user-bubble, var(--voice-widget-primary, #2F8FE0))'
+                      : 'var(--voice-widget-bg-agent-bubble, #F8FAFC)',
+                    color: isUser ? '#FFFFFF' : 'var(--voice-widget-text, #0F172A)',
+                    border: isUser ? 'none' : '1px solid var(--voice-widget-border, #E2E8F0)',
+                    borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                    padding: '10px 14px',
+                    fontSize: '13px',
+                    fontWeight: 400,
+                    lineHeight: '1.5',
+                    boxShadow: '0 1px 3px rgba(14,27,42,0.03)',
                   }}
                 >
                   {renderFormattedContent(msg.content)}
+
+                  {/* Navigation Confirmation Badge */}
+                  {isNavConfirm && navTarget && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      marginTop: '8px',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      background: '#ECFDF5',
+                      border: '1px solid #A7F3D0',
+                      color: '#059669',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                    }}>
+                      <span>✓</span>
+                      <span>Navigated to: {navTarget}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

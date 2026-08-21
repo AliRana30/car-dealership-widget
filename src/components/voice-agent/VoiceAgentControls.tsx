@@ -13,6 +13,7 @@ interface VoiceAgentControlsProps {
   onChatInputChange: (val: string) => void;
   onSendChatMessage: (e: React.FormEvent) => void;
   chatTyping: boolean;
+  onSwitchToVoice?: () => void;
 }
 
 const MIC_ON_PATH = [
@@ -49,6 +50,7 @@ export default function VoiceAgentControls({
   onChatInputChange,
   onSendChatMessage,
   chatTyping,
+  onSwitchToVoice,
 }: VoiceAgentControlsProps) {
   const { branding, behavior } = config;
 
@@ -58,44 +60,77 @@ export default function VoiceAgentControls({
         onSubmit={onSendChatMessage}
         style={{
           display: 'flex',
+          alignItems: 'center',
           gap: '8px',
           width: '100%',
-          marginTop: '12px',
+          marginTop: '6px',
+          background: '#FFFFFF',
+          border: '1px solid #E2E8F0',
+          borderRadius: '24px',
+          padding: '4px 6px 4px 14px',
+          boxShadow: '0 1px 4px rgba(14,27,42,0.04)',
+          boxSizing: 'border-box',
         }}
       >
         <input
           type="text"
           value={chatInput}
           onChange={(e) => onChatInputChange(e.target.value)}
-          placeholder={branding.placeholderText}
+          placeholder={branding.placeholderText || "Ask a question or say 'navigate to...'"}
           disabled={chatTyping}
           style={{
             flex: 1,
-            padding: '10px 14px',
-            borderRadius: '10px',
-            border: '1px solid var(--voice-widget-border-input, var(--voice-widget-border))',
-            fontSize: 'var(--voice-widget-font-sm)',
-            fontWeight: 'var(--voice-widget-font-weight-body)',
+            padding: '8px 0',
+            border: 'none',
             outline: 'none',
-            color: 'var(--voice-widget-text)',
-            background: 'white',
+            fontSize: '13px',
+            color: 'var(--voice-widget-text, #0F172A)',
+            background: 'transparent',
           }}
         />
+        {onSwitchToVoice && (
+          <button
+            type="button"
+            onClick={onSwitchToVoice}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: '#F1F5F9',
+              color: '#64748B',
+              border: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+            title="Switch to Voice Agent"
+            aria-label="Switch to Voice Agent"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+            </svg>
+          </button>
+        )}
         <button
           type="submit"
           disabled={chatTyping || !chatInput.trim()}
           style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '10px',
-            background: chatInput.trim() && !chatTyping ? 'var(--voice-widget-primary, #2F8FE0)' : 'rgba(14,27,42,0.1)',
-            color: chatInput.trim() && !chatTyping ? 'white' : 'var(--voice-widget-text-muted)',
+            width: '34px',
+            height: '34px',
+            borderRadius: '50%',
+            background: chatInput.trim() && !chatTyping ? 'var(--voice-widget-primary, #2F8FE0)' : '#E2E8F0',
+            color: chatInput.trim() && !chatTyping ? '#FFFFFF' : '#94A3B8',
             border: 'none',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: chatInput.trim() && !chatTyping ? 'pointer' : 'default',
-            transition: 'all 0.2s ease',
+            transition: 'all 0.15s ease',
+            flexShrink: 0,
           }}
           title="Send message"
           aria-label="Send message"

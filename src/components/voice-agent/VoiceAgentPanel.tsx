@@ -68,7 +68,8 @@ export default function VoiceAgentPanel({
   onDismissCards,
 }: VoiceAgentPanelProps) {
   const { panel, animation } = config;
-  const hasCards = Boolean(cards && cards.length > 0);
+  const [isCardsCollapsed, setIsCardsCollapsed] = React.useState(false);
+  const hasCards = Boolean(cards && cards.length > 0 && !isCardsCollapsed);
 
   const getAnimationStyles = (): React.CSSProperties => {
     if (config.mode === 'inline') return {};
@@ -148,7 +149,7 @@ export default function VoiceAgentPanel({
       display: 'flex',
       flexDirection: 'column',
       background: 'var(--voice-widget-bg-panel, var(--voice-widget-bg, rgba(255, 255, 255, 0.98)))',
-      border: panel.border !== undefined ? panel.border : '1px solid var(--voice-widget-border)',
+      border: panel.border !== undefined ? panel.border : '1px solid var(--voice-widget-border, #E2E8F0)',
       borderRadius: panel.borderRadius !== undefined ? (typeof panel.borderRadius === 'number' ? `${panel.borderRadius}px` : panel.borderRadius) : 'var(--voice-widget-radius-panel)',
       boxShadow: panel.shadow !== undefined ? panel.shadow : 'var(--voice-widget-shadow)',
       overflow: 'hidden',
@@ -176,6 +177,16 @@ export default function VoiceAgentPanel({
 
   const bodyPadding = config.mode === 'inline' ? '0' : '16px';
 
+  const handleNavigate = (url: string) => {
+    if (typeof window !== 'undefined') {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'voice-agent-navigate', url }, '*');
+      } else {
+        window.location.href = url;
+      }
+    }
+  };
+
   return (
     <div
       className="voice-widget-panel-container"
@@ -188,6 +199,11 @@ export default function VoiceAgentPanel({
         onClose={onClose}
         showClose={config.mode === 'floating'}
         onNewChat={onNewChat}
+        cardCount={cards.length}
+        isCardsOpen={!isCardsCollapsed}
+        onToggleCards={() => setIsCardsCollapsed(prev => !prev)}
+        isMuted={isMuted}
+        onToggleMute={onToggleMute}
       />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', width: '100%', minHeight: 0 }}>
@@ -243,10 +259,11 @@ export default function VoiceAgentPanel({
             onChatInputChange={onChatInputChange}
             onSendChatMessage={onSendChatMessage}
             chatTyping={chatTyping}
+            onSwitchToVoice={() => onTabChange('voice')}
           />
         </div>
 
-        {/* Separate Dedicated Cards Section */}
+        {/* Separate Dedicated "Discovered & Recommended" Cards Section */}
         {hasCards && (
           <div
             className="voice-widget-cards-pane"
@@ -254,8 +271,8 @@ export default function VoiceAgentPanel({
               width: '300px',
               minWidth: '280px',
               maxWidth: '320px',
-              borderLeft: '1px solid var(--voice-widget-border)',
-              background: 'rgba(14, 27, 42, 0.02)',
+              borderLeft: '1px solid var(--voice-widget-border, #E2E8F0)',
+              background: '#F8FAFC',
               display: 'flex',
               flexDirection: 'column',
               padding: '12px 14px',
@@ -264,35 +281,75 @@ export default function VoiceAgentPanel({
               flexShrink: 0,
             }}
           >
+            {/* Header: Discovered & Recommended */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexShrink: 0 }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--voice-widget-primary)', letterSpacing: '0.06em' }}>
-                Featured Offerings ({cards.length})
-              </span>
-              {onDismissCards && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#059669', fontSize: '13px' }}>🧭</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.01em' }}>
+                  Discovered & Recommended
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{
+                  background: '#ECFDF5', color: '#059669',
+                  padding: '2px 8px', borderRadius: '12px',
+                  fontSize: '10px', fontWeight: 700,
+                }}>
+                  {cards.length} {cards.length === 1 ? 'item' : 'items'}
+                </span>
                 <button
                   type="button"
-                  onClick={onDismissCards}
+                  onClick={() => setIsCardsCollapsed(true)}
                   style={{
                     background: 'transparent',
                     border: 'none',
                     cursor: 'pointer',
                     fontSize: '11px',
-                    color: 'var(--voice-widget-text-muted)',
-                    fontWeight: 600,
-                    padding: '2px 4px',
+                    color: '#94A3B8',
+                    padding: '2px',
                   }}
-                  title="Hide offerings panel"
-                  aria-label="Hide offerings panel"
+                  title="Close cards panel"
+                  aria-label="Close cards panel"
                 >
                   ✕
                 </button>
-              )}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Cards Scroll List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
               {cards.map((card, idx) => (
                 <IntelligenceResultCard key={card.id || idx} result={card} primaryColor="var(--voice-widget-primary, #2F8FE0)" />
               ))}
+            </div>
+
+            {/* Footer Navigation Links */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              paddingTop: '10px', marginTop: '8px', borderTop: '1px solid #E2E8F0',
+              fontSize: '11px', flexShrink: 0,
+            }}>
+              <button
+                type="button"
+                onClick={() => handleNavigate('/courses')}
+                style={{
+                  background: 'none', border: 'none', padding: 0,
+                  color: 'var(--voice-widget-primary, #2F8FE0)',
+                  fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                View All Courses →
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNavigate('/policy')}
+                style={{
+                  background: 'none', border: 'none', padding: 0,
+                  color: '#64748B', cursor: 'pointer',
+                }}
+              >
+                Policies
+              </button>
             </div>
           </div>
         )}

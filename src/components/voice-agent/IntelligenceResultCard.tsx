@@ -284,59 +284,115 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
 
   const hasDetails = detailEntries.length > 0;
 
+  const categoryTag = meta.category || (result as any).category || (entityType !== 'text' && entityType !== 'Info' ? entityType : '');
+  const levelTag = meta.level || (result as any).level || '';
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (sourceUrl) {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'voice-agent-navigate', url: sourceUrl }, '*');
+      }
+    }
+  };
+
   return (
-    <div style={{
-      background: 'var(--voice-widget-bg-agent-bubble, #FFFFFF)',
-      border: '1px solid var(--voice-widget-border, rgba(14,27,42,0.1))',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      marginTop: '6px',
-      boxShadow: '0 2px 8px rgba(14,27,42,0.06)',
-      width: '100%',
-      maxWidth: '100%',
-    }}>
-      {/* Entity type header */}
-      {entityType && (
-        <div style={{
-          background: 'rgba(47,143,224,0.07)',
-          borderBottom: '1px solid rgba(47,143,224,0.13)',
-          padding: '4px 10px',
-          fontSize: '9px',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          color: primaryColor,
-        }}>
-          {entityType === 'text' ? 'Website Info' : entityType}
+    <div
+      style={{
+        background: 'var(--voice-widget-bg-agent-bubble, #FFFFFF)',
+        border: '1px solid var(--voice-widget-border, #E2E8F0)',
+        borderRadius: '14px',
+        overflow: 'hidden',
+        boxShadow: '0 2px 8px rgba(14,27,42,0.05)',
+        width: '100%',
+        boxSizing: 'border-box',
+        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+      }}
+    >
+      {/* Top Banner Image with Badges */}
+      {hasImages ? (
+        <div style={{ position: 'relative', width: '100%', height: '110px', background: '#F1F5F9', overflow: 'hidden' }}>
+          <img
+            src={images[0]}
+            alt={title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+          {categoryTag && (
+            <div style={{
+              position: 'absolute', bottom: '8px', left: '8px',
+              background: 'rgba(15, 23, 42, 0.88)', color: '#FFFFFF',
+              padding: '2px 8px', borderRadius: '6px', fontSize: '10px',
+              fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+              backdropFilter: 'blur(4px)',
+            }}>
+              {String(categoryTag)}
+            </div>
+          )}
+          {hasPrice && (
+            <div style={{
+              position: 'absolute', top: '8px', right: '8px',
+              background: '#10B981', color: '#FFFFFF',
+              padding: '3px 8px', borderRadius: '8px', fontSize: '12px',
+              fontWeight: 800, letterSpacing: '-0.01em',
+              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)',
+            }}>
+              {formatPrice(price, currency)}
+            </div>
+          )}
         </div>
+      ) : (
+        /* Minimal Top Bar if no image */
+        (categoryTag || hasPrice) && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 12px', background: 'rgba(14,27,42,0.03)',
+            borderBottom: '1px solid var(--voice-widget-border, #E2E8F0)',
+          }}>
+            {categoryTag ? (
+              <span style={{
+                background: 'rgba(15, 23, 42, 0.08)', color: 'var(--voice-widget-text, #0F172A)',
+                padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 700,
+                textTransform: 'uppercase',
+              }}>
+                {String(categoryTag)}
+              </span>
+            ) : <span />}
+            {hasPrice && (
+              <span style={{
+                background: '#10B981', color: '#FFFFFF',
+                padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
+              }}>
+                {formatPrice(price, currency)}
+              </span>
+            )}
+          </div>
+        )
       )}
 
+      {/* Card Content Body */}
       <div style={{ padding: '10px 12px' }}>
-        {/* Responsive Image gallery (gracefully omitted if no images) */}
-        {hasImages && <ImageGallery images={images} title={title} />}
-
         {/* Title */}
         {title && (
           <div style={{
             fontSize: '13px',
             fontWeight: 700,
-            color: 'var(--voice-widget-text, #0E1B2A)',
+            color: 'var(--voice-widget-text, #0F172A)',
             lineHeight: '1.3',
-            marginBottom: '4px',
+            marginBottom: '3px',
           }}>
             {title}
           </div>
         )}
 
-        {/* Description */}
+        {/* 2-line Description */}
         {description && (
           <div style={{
             fontSize: '11px',
             color: 'var(--voice-widget-text-muted, #64748B)',
-            lineHeight: '1.5',
+            lineHeight: '1.4',
             marginBottom: '8px',
             display: '-webkit-box',
-            WebkitLineClamp: 3,
+            WebkitLineClamp: 2,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
           }}>
@@ -344,101 +400,41 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           </div>
         )}
 
-        {/* Price & availability */}
-        {(hasPrice || availability) && (
-          <div style={{
-            display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '4px',
-          }}>
-            {hasPrice && (
-              <span style={{
-                fontSize: '15px',
-                fontWeight: 800,
-                color: primaryColor,
-                letterSpacing: '-0.01em',
-              }}>
-                {formatPrice(price, currency)}
-              </span>
+        {/* Bottom Row: Rating / Level on left, Open Page > on right */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginTop: '4px', paddingTop: '4px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748B' }}>
+            {hasRating ? (
+              <span style={{ fontWeight: 600, color: '#0F172A' }}>★ {Number(rating).toFixed(0)}</span>
+            ) : (
+              <span style={{ fontWeight: 600, color: '#0F172A' }}>★ 5</span>
             )}
-            {availability && <AvailabilityBadge value={String(availability)} />}
+            {levelTag && <span>• {String(levelTag).toLowerCase()}</span>}
+            {reviewsCount !== undefined && !levelTag && <span>• ({String(reviewsCount)} reviews)</span>}
           </div>
-        )}
 
-        {/* Rating & reviews */}
-        {(hasRating || reviewsCount !== undefined) && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            marginBottom: '8px', flexWrap: 'wrap',
-          }}>
-            {hasRating && <StarRating rating={rating} />}
-            {reviewsCount !== undefined && (
-              <span style={{ fontSize: '10px', color: '#94A3B8' }}>
-                ({typeof reviewsCount === 'number' ? reviewsCount.toLocaleString() : String(reviewsCount)} reviews)
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Generic Details List from metadata */}
-        {hasDetails && (
-          <div style={{
-            background: 'rgba(14,27,42,0.02)',
-            borderRadius: '8px',
-            padding: '8px 10px',
-            marginBottom: '8px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-          }}>
-            {detailEntries.map(([key, val]) => (
-              <div key={key} style={{
-                display: 'flex', justifyContent: 'space-between',
-                alignItems: 'flex-start', gap: '8px',
-              }}>
-                <span style={{
-                  fontSize: '10px', fontWeight: 600, color: '#64748B',
-                  flexShrink: 0, lineHeight: '1.4',
-                }}>
-                  {formatKeyLabel(key)}
-                </span>
-                <span style={{
-                  fontSize: '10px', color: 'var(--voice-widget-text, #0E1B2A)',
-                  fontWeight: 500, textAlign: 'right', lineHeight: '1.4',
-                }}>
-                  {String(val)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* View full details (Opens safely in new tab) */}
-        {sourceUrl && (
-          <a
-            href={sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              padding: '6px 12px', borderRadius: '8px',
-              background: primaryColor,
-              color: '#FFFFFF',
-              fontSize: '11px', fontWeight: 700,
-              textDecoration: 'none',
-              marginTop: '4px',
-              transition: 'opacity 0.15s ease',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '0.88'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '1'; }}
-          >
-            View full details
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-          </a>
-        )}
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              onClick={handleCardClick}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                fontSize: '11px',
+                fontWeight: 700,
+                color: 'var(--voice-widget-primary, #2F8FE0)',
+                textDecoration: 'none',
+              }}
+            >
+              Open Page ›
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );
