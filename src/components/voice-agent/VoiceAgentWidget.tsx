@@ -155,8 +155,32 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     const sessionIdRef = useRef<string | null>(null);
     const callIdRef = useRef<string | null>(null);
     const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const initialSilenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hasUserSpokenRef = useRef(false);
     const isStartingRef = useRef(false);
     const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+    // Initial silence watchdog speech activity detector (Task C.2)
+    const notifySpeechActivity = useCallback(() => {
+      if (!hasUserSpokenRef.current) {
+        hasUserSpokenRef.current = true;
+        if (initialSilenceTimerRef.current) {
+          clearTimeout(initialSilenceTimerRef.current);
+          initialSilenceTimerRef.current = null;
+        }
+        if (callIdRef.current && sessionIdRef.current) {
+          fetch('/api/retell/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: sessionIdRef.current,
+              callId: callIdRef.current,
+              event: 'user_speech_detected',
+            }),
+          }).catch(() => {});
+        }
+      }
+    }, []);
 
     // Demo/mock simulation refs and cleanup helper
     const demoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -171,12 +195,15 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       }
     }, []);
 
-    // Clean up call on unmount (including demo timers)
+    // Clean up call on unmount (including demo timers & silence watchdogs)
     useEffect(() => {
       return () => {
         demoTimersRef.current.forEach(clearTimeout);
         if (demoIntervalRef.current) {
           clearInterval(demoIntervalRef.current);
+        }
+        if (initialSilenceTimerRef.current) {
+          clearTimeout(initialSilenceTimerRef.current);
         }
       };
     }, []);
@@ -321,6 +348,10 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
     // Helper to safely stop calls on either Retell or Vapi
     const safeStopCurrentCall = useCallback(() => {
+      if (initialSilenceTimerRef.current) {
+        clearTimeout(initialSilenceTimerRef.current);
+        initialSilenceTimerRef.current = null;
+      }
       if (clientRef.current) {
         try {
           if (providerRef.current === 'vapi') {
@@ -507,6 +538,12 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       if (isStartingRef.current) return;
       isStartingRef.current = true;
 
+      hasUserSpokenRef.current = false;
+      if (initialSilenceTimerRef.current) {
+        clearTimeout(initialSilenceTimerRef.current);
+        initialSilenceTimerRef.current = null;
+      }
+
       setActiveTab('voice');
       updateState('connecting');
       setErrorMessage(null);
@@ -651,6 +688,8 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           activeClient = new RetellWebClient();
           clientRef.current = activeClient;
 
+          const initialSilenceSec = Number(data.initialSilenceTimeoutSeconds || mergedConfig.behavior.initialSilenceTimeoutSeconds || 15);
+
           activeClient.on('call_started', () => {
             if (connectionTimeoutRef.current) {
               clearTimeout(connectionTimeoutRef.current);
@@ -658,9 +697,24 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             }
             updateState('connected');
             sendTelemetry('call_start');
+
+            // Start initial silence watchdog (Task C.2)
+            if (initialSilenceTimerRef.current) clearTimeout(initialSilenceTimerRef.current);
+            initialSilenceTimerRef.current = setTimeout(() => {
+              if (!hasUserSpokenRef.current && clientRef.current === activeClient) {
+                console.warn(`[SILENCE_AUTO_HANGUP] No user speech detected within ${initialSilenceSec}s. Terminating call.`);
+                safeStopCurrentCall();
+                setErrorMessage('Call ended due to inactivity.');
+                sendTelemetry('call_end', 'initial_silence_timeout');
+              }
+            }, initialSilenceSec * 1000);
           });
 
           activeClient.on('call_ended', () => {
+            if (initialSilenceTimerRef.current) {
+              clearTimeout(initialSilenceTimerRef.current);
+              initialSilenceTimerRef.current = null;
+            }
             updateState('ended');
             sendTelemetry('call_end');
             setAgentSpeaking(false);
@@ -683,6 +737,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           });
 
           activeClient.on('user_start_talking', () => {
+            notifySpeechActivity();
             setUserSpeaking(true);
             setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
           });
@@ -695,6 +750,9 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           activeClient.on('update', (update: { transcript?: TranscriptMessage[] }) => {
             if (update && update.transcript) {
               setTranscript(update.transcript);
+              if (update.transcript.some((m) => m.role === 'user' && m.content?.trim())) {
+                notifySpeechActivity();
+              }
             }
           });
 
@@ -751,6 +809,8 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
           let agentSpeakingTimeout: NodeJS.Timeout | null = null;
 
+          const initialSilenceSec = Number(data.initialSilenceTimeoutSeconds || mergedConfig.behavior.initialSilenceTimeoutSeconds || 15);
+
           activeClient.on('call-start', () => {
             if (connectionTimeoutRef.current) {
               clearTimeout(connectionTimeoutRef.current);
@@ -758,9 +818,24 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             }
             updateState('connected');
             sendTelemetry('call_start');
+
+            // Start initial silence watchdog (Task C.2)
+            if (initialSilenceTimerRef.current) clearTimeout(initialSilenceTimerRef.current);
+            initialSilenceTimerRef.current = setTimeout(() => {
+              if (!hasUserSpokenRef.current && clientRef.current === activeClient) {
+                console.warn(`[SILENCE_AUTO_HANGUP] No user speech detected within ${initialSilenceSec}s. Terminating call.`);
+                safeStopCurrentCall();
+                setErrorMessage('Call ended due to inactivity.');
+                sendTelemetry('call_end', 'initial_silence_timeout');
+              }
+            }, initialSilenceSec * 1000);
           });
 
           activeClient.on('call-end', () => {
+            if (initialSilenceTimerRef.current) {
+              clearTimeout(initialSilenceTimerRef.current);
+              initialSilenceTimerRef.current = null;
+            }
             if (agentSpeakingTimeout) {
               clearTimeout(agentSpeakingTimeout);
               agentSpeakingTimeout = null;
@@ -780,6 +855,9 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             if (message.type === 'transcript') {
               const role = message.role === 'assistant' ? 'agent' : 'user';
               const content = message.transcript;
+              if (role === 'user' && content?.trim()) {
+                notifySpeechActivity();
+              }
               
               setTranscript((prev) => {
                 const filtered = prev.filter((m) => !m.isPartial);
@@ -793,6 +871,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           });
 
           activeClient.on('speech-start', () => {
+            notifySpeechActivity();
             setUserSpeaking(true);
             setAgentSpeaking(false);
             setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));

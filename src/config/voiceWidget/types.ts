@@ -317,6 +317,8 @@ export interface VoiceWidgetBehaviorConfig {
   maxCallDurationMinutes?: number;
   /** Hard server-side maximum chat turns per session (default: 30) */
   maxChatTurns?: number;
+  /** Initial silence auto-hangup window in seconds if caller never speaks (default: 15) */
+  initialSilenceTimeoutSeconds?: number;
 }
 
 // -------------------------------------------------------

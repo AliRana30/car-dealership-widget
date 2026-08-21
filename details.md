@@ -15,6 +15,7 @@
 | Telephony Engine | Streaming Text Chat Fallback | **Completed & Verified** | Verified in `/api/retell/chat` and `VoiceAgentPanel.tsx`; returns 200 with formatted markdown, typing indicators, and result cards. |
 | Cost Protection | Server-Side Hard Call Duration Cap | **Completed & Verified** | Configurable via `maxCallDurationMinutes` (default: 10 min); enforced server-side via `callLimiter.ts` using Retell `client.call.stop` & Vapi API; verified in `scratch/test-duration-and-turn-caps.ts`. |
 | Cost Protection | Server-Side Hard Chat Turn Cap | **Completed & Verified** | Configurable via `maxChatTurns` (default: 30 turns); strictly enforced in `/api/retell/chat` via `chatLimiter.ts` with 0 upstream LLM calls past cap; verified in `scratch/test-duration-and-turn-caps.ts`. |
+| Cost Protection | Silence-Based Auto-Hangup | **Completed & Verified** | Tunable constant `DEFAULT_INITIAL_SILENCE_TIMEOUT_SECONDS = 15` and widget config `initialSilenceTimeoutSeconds`; automatically terminates call server-side if caller stays silent in the initial window; speech detection permanently disarms watchdog for conversational pauses; verified in `scratch/test-silence-auto-hangup.ts`. |
 
 ---
 

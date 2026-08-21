@@ -313,13 +313,16 @@ npx tsx scratch/test-universal-chat-engine.ts
 
 # Run hard duration and chat turn caps test suite (Task C.1)
 npx tsx scratch/test-duration-and-turn-caps.ts
+
+# Run silence-based auto-hangup test suite (Task C.2)
+npx tsx scratch/test-silence-auto-hangup.ts
 ```
 
 ---
 
-## Hard Duration & Turn Caps (Cost & Abuse Protection)
+## Hard Duration, Turn Caps & Silence Hangup (Cost & Abuse Protection)
 
-Widgetized enforces strict, unavoidable server-side rate and duration boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
+Widgetized enforces strict, unavoidable server-side rate, duration, and silence boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
 
 1. **Server-Side Hard Call Duration Cap**:
    - Configurable per widget under the **Behavior** settings via `maxCallDurationMinutes` (default: 10 minutes, tunable from 1–60 min).
@@ -327,8 +330,13 @@ Widgetized enforces strict, unavoidable server-side rate and duration boundaries
 2. **Server-Side Hard Chat Turn Cap**:
    - Configurable per widget under **Behavior** via `maxChatTurns` (default: 30 user message turns).
    - Enforced directly in `/api/retell/chat` by `src/lib/chat/chatLimiter.ts`: When a session exceeds its configured turn limit, the server immediately stops all upstream LLM generations, embedding lookups, and third-party API calls, returning a fixed contact redirect message (*"You have reached the maximum message limit for this chat session. Please contact our team directly for further assistance."*).
-3. **Pre-Filled Baseline Protection**:
-   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
+3. **Silence-Based Auto-Hangup (Initial Window)**:
+   - Configurable per widget under **Behavior** via `initialSilenceTimeoutSeconds` with tunable constant fallback `DEFAULT_INITIAL_SILENCE_TIMEOUT_SECONDS = 15`.
+   - Protects against prank/ghost calls where a caller connects and stays silent to run up telephony minutes.
+   - If no user speech is detected during the first ~10–15 seconds, the server terminates the call immediately.
+   - As soon as caller speech is detected (`user_start_talking` in Retell, `speech-start` in Vapi, or user transcript entries), the watchdog is permanently disarmed for that session, ensuring natural conversational pauses during real dialogue are completely unaffected.
+4. **Pre-Filled Baseline Protection**:
+   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session, `15s` initial silence watchdog) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
 
 ---
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyUserSpeechDetected, clearCallTimeout } from '@/lib/voice/callLimiter';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,9 +14,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid_call_id' }, { status: 400 });
     }
     
-    const validEvents = ['call_start', 'call_end', 'call_error'];
+    const validEvents = ['call_start', 'call_end', 'call_error', 'user_speech_detected', 'initial_silence_timeout'];
     if (!event || !validEvents.includes(event)) {
       return NextResponse.json({ error: 'invalid_event' }, { status: 400 });
+    }
+
+    if (event === 'user_speech_detected') {
+      notifyUserSpeechDetected(callId);
+    } else if (event === 'call_end') {
+      clearCallTimeout(callId);
     }
 
     // Prepare a structured, privacy-safe observability record
@@ -30,7 +37,7 @@ export async function POST(req: NextRequest) {
     // Output structured log to stdout for server indexing
     console.log(`[RETELL_OBSERVABILITY] ${JSON.stringify(logPayload)}`);
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json({ success: true, event }, { status: 200 });
   } catch (err) {
     console.error('[retell/log] Telemetry logging failed:', err);
     return NextResponse.json({ error: 'internal_error' }, { status: 500 });

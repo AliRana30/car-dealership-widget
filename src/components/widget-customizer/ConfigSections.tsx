@@ -303,6 +303,21 @@ export function BehaviorSection({ draft, onChange }: Props) {
             Maximum user message turns allowed in a chat session before capping and directing visitor to direct contact (default: 30 turns).
           </div>
         </div>
+
+        <div>
+          <label style={labelStyle}>Initial Silence Timeout (Seconds)</label>
+          <input
+            type="number"
+            min={5}
+            max={60}
+            value={draft.behavior.initialSilenceTimeoutSeconds ?? 15}
+            onChange={(e) => set('initialSilenceTimeoutSeconds', Math.max(5, Math.min(60, parseInt(e.target.value, 10) || 15)))}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Automatically ends the call if the caller stays silent and never speaks during the initial window (default: 15s). Natural conversation pauses are unaffected.
+          </div>
+        </div>
       </div>
     </div>
   );

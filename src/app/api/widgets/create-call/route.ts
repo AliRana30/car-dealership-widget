@@ -179,11 +179,13 @@ export async function POST(req: NextRequest) {
         }
 
         const maxCallDurationMinutes = widget.config?.behavior?.maxCallDurationMinutes ?? 10;
+        const initialSilenceTimeoutSeconds = widget.config?.behavior?.initialSilenceTimeoutSeconds ?? 15;
         registerCallTimeout({
           callId,
           provider: 'retell',
           apiKey,
           maxDurationMinutes: maxCallDurationMinutes,
+          initialSilenceTimeoutSeconds,
           widgetId: widget.widgetId || widgetId,
         });
 
@@ -195,6 +197,7 @@ export async function POST(req: NextRequest) {
           sessionId,
           callId,
           maxCallDurationMinutes,
+          initialSilenceTimeoutSeconds,
           event: 'call_created'
         })}`);
 
@@ -205,6 +208,7 @@ export async function POST(req: NextRequest) {
             callId,
             sessionId,
             maxCallDurationMinutes,
+            initialSilenceTimeoutSeconds,
           },
           { status: 200, headers }
         );
@@ -237,6 +241,7 @@ export async function POST(req: NextRequest) {
       }
 
       const maxCallDurationMinutes = widget.config?.behavior?.maxCallDurationMinutes ?? 10;
+      const initialSilenceTimeoutSeconds = widget.config?.behavior?.initialSilenceTimeoutSeconds ?? 15;
       const sessionId = randomUUID();
       console.log(`[WIDGET_CALL_OBSERVABILITY] ${JSON.stringify({
         timestamp: new Date().toISOString(),
@@ -244,11 +249,13 @@ export async function POST(req: NextRequest) {
         provider: 'vapi',
         sessionId,
         maxCallDurationMinutes,
+        initialSilenceTimeoutSeconds,
         event: 'call_created'
       })}`);
 
       const vapiAssistantOverrides: Record<string, any> = {
         maxDurationSeconds: maxCallDurationMinutes * 60,
+        silenceTimeoutSeconds: initialSilenceTimeoutSeconds,
       };
       if (websiteContext) {
         vapiAssistantOverrides.variableValues = {
@@ -266,6 +273,7 @@ export async function POST(req: NextRequest) {
           vapiAssistantOverrides,
           sessionId,
           maxCallDurationMinutes,
+          initialSilenceTimeoutSeconds,
         },
         { status: 200, headers }
       );

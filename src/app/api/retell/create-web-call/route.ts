@@ -67,13 +67,15 @@ export async function POST(req: NextRequest) {
       throw new Error('Retell API response is missing accessToken or callId.');
     }
 
-    // Register server-side call duration cap
+    // Register server-side call duration cap & initial silence watchdog (Task C.1 & C.2)
     const maxCallDurationMinutes = widget?.config?.behavior?.maxCallDurationMinutes ?? 10;
+    const initialSilenceTimeoutSeconds = widget?.config?.behavior?.initialSilenceTimeoutSeconds ?? 15;
     registerCallTimeout({
       callId,
       provider: 'retell',
       apiKey,
       maxDurationMinutes: maxCallDurationMinutes,
+      initialSilenceTimeoutSeconds,
       widgetId: widget?.widgetId || widgetId,
     });
 
@@ -85,6 +87,7 @@ export async function POST(req: NextRequest) {
       callId,
       sessionId,
       maxCallDurationMinutes,
+      initialSilenceTimeoutSeconds,
     });
   } catch (err: any) {
     console.error('[api/retell/create-web-call] Error:', err);
