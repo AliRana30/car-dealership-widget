@@ -46,6 +46,8 @@
   try {
     if (sessionStorage.getItem('myfrontdesk_reopen_' + widgetId) === 'true') {
       shouldReopen = true;
+      // Consume the one-time transition flag so subsequent manual page reloads start clean
+      sessionStorage.removeItem('myfrontdesk_reopen_' + widgetId);
     }
   } catch (_) {}
 
@@ -90,19 +92,19 @@
         break;
 
       case 'widget-open':
-        try {
-          sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
-        } catch (_) {}
         // Resize container to fit the open chat panel
         resizeWidget(true);
         break;
 
       case 'widget-close':
+      case 'widget-new-chat':
         try {
           sessionStorage.removeItem('myfrontdesk_reopen_' + widgetId);
         } catch (_) {}
-        // Reset container to the launcher button dimensions
-        resizeWidget(false);
+        if (data.type === 'widget-close') {
+          // Reset container to the launcher button dimensions
+          resizeWidget(false);
+        }
         break;
 
       case 'voice-agent-navigate':

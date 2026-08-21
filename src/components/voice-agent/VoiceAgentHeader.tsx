@@ -7,11 +7,12 @@ interface VoiceAgentHeaderProps {
   isLoading: boolean;
   onClose?: () => void;
   showClose: boolean;
+  onNewChat?: () => void;
 }
 
 const CLOSE_ICON_PATH = ['M18 6L6 18', 'M6 6l12 12'];
 
-export default function VoiceAgentHeader({ config, isActive, isLoading, onClose, showClose }: VoiceAgentHeaderProps) {
+export default function VoiceAgentHeader({ config, isActive, isLoading, onClose, showClose, onNewChat }: VoiceAgentHeaderProps) {
   const { branding, panel, avatar } = config;
   const [imageError, setImageError] = useState(false);
 
@@ -41,7 +42,7 @@ export default function VoiceAgentHeader({ config, isActive, isLoading, onClose,
   return (
     <div
       style={{
-        padding: '12px 20px',
+        padding: '12px 16px',
         borderBottom: '1px solid var(--voice-widget-border)',
         display: 'flex',
         alignItems: 'center',
@@ -50,7 +51,7 @@ export default function VoiceAgentHeader({ config, isActive, isLoading, onClose,
         fontFamily: config.typography.fontFamily,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         {showAvatar ? (
           <div style={{ position: 'relative', width: `${avatarSize}px`, height: `${avatarSize}px` }}>
             {avatar.src && !imageError ? (
@@ -113,51 +114,100 @@ export default function VoiceAgentHeader({ config, isActive, isLoading, onClose,
           />
         )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--voice-widget-text)', lineHeight: 1.2 }}>
+          <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--voice-widget-text)', lineHeight: 1.2 }}>
             {branding.assistantName}
           </span>
           {showAvatar && (
-            <span style={{ fontSize: '11px', color: 'var(--voice-widget-text-muted)', marginTop: '2px' }}>
+            <span style={{ fontSize: '10.5px', color: 'var(--voice-widget-text-muted)', marginTop: '2px' }}>
               {isActive ? 'Online' : 'Agent'}
             </span>
           )}
         </div>
       </div>
-      {showClose && panel.showCloseButton && onClose && (
-        <button
-          onClick={onClose}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--voice-widget-text-muted)',
-            display: 'flex',
-            padding: '4px',
-            opacity: 0.7,
-            transition: 'opacity 0.2s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
-          title="Close panel"
-          aria-label="Close panel"
-        >
-          <svg
-            width={16}
-            height={16}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ display: 'inline-block', verticalAlign: 'middle' }}
+
+      {/* Right Header Actions (New Chat + Close Button) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {onNewChat && (
+          <button
+            type="button"
+            onClick={onNewChat}
+            style={{
+              background: 'rgba(14, 27, 42, 0.05)',
+              border: '1px solid var(--voice-widget-border)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              color: 'var(--voice-widget-text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '4px 8px',
+              fontSize: '11px',
+              fontWeight: 600,
+              transition: 'all 0.15s ease',
+            }}
+            title="Start a new conversation"
+            aria-label="Start a new conversation"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--voice-widget-primary, #2F8FE0)';
+              e.currentTarget.style.color = '#FFFFFF';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(14, 27, 42, 0.05)';
+              e.currentTarget.style.color = 'var(--voice-widget-text-muted)';
+            }}
           >
-            {CLOSE_ICON_PATH.map((p, i) => (
-              <path key={i} d={p} />
-            ))}
-          </svg>
-        </button>
-      )}
+            <svg
+              width={12}
+              height={12}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19" />
+            </svg>
+            <span>New Chat</span>
+          </button>
+        )}
+
+        {showClose && panel.showCloseButton && onClose && (
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--voice-widget-text-muted)',
+              display: 'flex',
+              padding: '4px',
+              opacity: 0.7,
+              transition: 'opacity 0.2s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+            title="Close panel"
+            aria-label="Close panel"
+          >
+            <svg
+              width={16}
+              height={16}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ display: 'inline-block', verticalAlign: 'middle' }}
+            >
+              {CLOSE_ICON_PATH.map((p, i) => (
+                <path key={i} d={p} />
+              ))}
+            </svg>
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -31,6 +31,7 @@ interface VoiceAgentPanelProps {
   transcriptEndRef: React.RefObject<HTMLDivElement | null>;
   parseStatusMessage: (content: string) => { isStatus: boolean; text: string; statusType: string };
   onSelectTemplateMessage?: (message: string) => void;
+  onNewChat?: () => void;
 }
 
 export default function VoiceAgentPanel({
@@ -59,6 +60,7 @@ export default function VoiceAgentPanel({
   transcriptEndRef,
   parseStatusMessage,
   onSelectTemplateMessage,
+  onNewChat,
 }: VoiceAgentPanelProps) {
   const { panel, animation } = config;
 
@@ -176,6 +178,7 @@ export default function VoiceAgentPanel({
         isLoading={isLoading}
         onClose={onClose}
         showClose={config.mode === 'floating'}
+        onNewChat={onNewChat}
       />
       <div
         style={{

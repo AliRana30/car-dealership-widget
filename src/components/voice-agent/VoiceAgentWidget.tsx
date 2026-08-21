@@ -646,6 +646,49 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       [sendChatMessage]
     );
 
+    const handleNewChat = useCallback(() => {
+      // 1. Generate new session ID
+      const newSid = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session_${Date.now()}`;
+      sessionIdRef.current = newSid;
+      setActiveSessionId(newSid);
+      setChatId(null);
+
+      // 2. Clear stored previous session caches
+      if (typeof window !== 'undefined') {
+        try {
+          const keysToClear: string[] = [];
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const k = sessionStorage.key(i);
+            if (k && (k.startsWith('widget_session_') || k.startsWith('myfrontdesk_chat_') || k.startsWith('myfrontdesk_reopen_'))) {
+              keysToClear.push(k);
+            }
+          }
+          keysToClear.forEach((k) => sessionStorage.removeItem(k));
+          if (activeSessionId) {
+            localStorage.removeItem(`widget_session_${activeSessionId}`);
+          }
+        } catch (_) {}
+
+        if (window.parent && window.parent !== window) {
+          try {
+            window.parent.postMessage({ type: 'widget-new-chat', widgetId }, '*');
+          } catch (_) {}
+        }
+      }
+
+      // 3. Reset chat to initial welcome message
+      const initialMsg = {
+        role: 'agent' as const,
+        content: mergedConfig.branding.welcomeMessage || "Hi! I'm your AI front desk receptionist. How can I help you today?",
+      };
+      setChatMessages([initialMsg]);
+      setTranscript([]);
+      setVoiceResults({});
+      setErrorMessage(null);
+      setChatInput('');
+      setChatTyping(false);
+    }, [mergedConfig, activeSessionId, widgetId]);
+
     const startCall = useCallback(async () => {
       if (callState !== 'idle' && callState !== 'ended' && callState !== 'error') {
         return;
@@ -1488,6 +1531,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           transcript={enrichedTranscript}
           transcriptEndRef={transcriptEndRef}
           parseStatusMessage={parseStatusMessage}
+          onNewChat={handleNewChat}
         />
       </div>
     );

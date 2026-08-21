@@ -71,7 +71,7 @@ const TOGGLE_CSS = `
     .mobile-tabs-container {
       display: flex;
       width: 100%;
-      height: 44px;
+      height: 42px;
       flex-shrink: 0;
     }
     .customizer-body {
@@ -116,37 +116,28 @@ const TOGGLE_CSS = `
     .customizer-browser-chrome {
       min-height: 480px !important;
     }
-    .customizer-header-actions button {
-      padding: 0 10px !important;
-      font-size: 12px !important;
-    }
-    .customizer-hamburger-btn {
-      display: flex !important;
-    }
   }
 
   @media (max-width: 640px) {
     .customizer-header {
-      padding: 0 8px !important;
-      height: 46px !important;
+      padding: 0 10px !important;
+      height: 48px !important;
     }
     .customizer-back-link {
       font-size: 12px !important;
+      white-space: nowrap !important;
     }
     .customizer-header-title {
       font-size: 12.5px !important;
       white-space: nowrap !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      max-width: 90px !important;
     }
     .customizer-header-actions {
       gap: 6px !important;
     }
     .customizer-header-actions button {
-      padding: 0 8px !important;
+      padding: 0 10px !important;
       height: 30px !important;
-      font-size: 11.5px !important;
+      font-size: 12px !important;
     }
     .customizer-sidebar {
       width: 46px !important;
@@ -162,7 +153,7 @@ const TOGGLE_CSS = `
       padding: 10px 8px 30px !important;
     }
     .mobile-tabs-container {
-      height: 40px !important;
+      height: 38px !important;
     }
   }
 `;
@@ -432,146 +423,8 @@ export default function WidgetCustomizerApp() {
           }}>
             {saved ? '✓ Saved' : 'Save'}
           </button>
-          {/* Mobile hamburger button */}
-          <button
-            onClick={() => setMobileMenuOpen(prev => !prev)}
-            style={{
-              display: 'none',
-              background: 'none',
-              border: '1px solid #e5e7eb',
-              borderRadius: '7px',
-              padding: '6px 8px',
-              cursor: 'pointer',
-              color: '#374151',
-            }}
-            className="customizer-hamburger-btn"
-            aria-label="Toggle customizer sections menu"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {mobileMenuOpen ? (
-                <>
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </>
-              ) : (
-                <>
-                  <line x1="4" y1="6" x2="20" y2="6" />
-                  <line x1="4" y1="12" x2="20" y2="12" />
-                  <line x1="4" y1="18" x2="20" y2="18" />
-                </>
-              )}
-            </svg>
-          </button>
         </div>
       </header>
-
-      {/* Mobile Drawer Overlay */}
-      {mobileMenuOpen && (
-        <div
-          onClick={() => setMobileMenuOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.45)',
-            backdropFilter: 'blur(5px)',
-            zIndex: 1000,
-            display: 'flex',
-            justifyContent: 'flex-end',
-            animation: 'fadeInOverlay 0.2s ease-out',
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: '100%',
-              maxWidth: '320px',
-              height: '100%',
-              background: '#FFFFFF',
-              boxShadow: '-8px 0 30px rgba(0,0,0,0.18)',
-              display: 'flex',
-              flexDirection: 'column',
-              padding: '20px',
-              boxSizing: 'border-box',
-              animation: 'drawerSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
-          >
-            {/* Drawer Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #F1F5F9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <img src="/logo.png" alt="Logo" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
-                <span style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>Widget Customizer</span>
-              </div>
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                style={{
-                  background: '#F1F5F9',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#475569',
-                  cursor: 'pointer',
-                  padding: '6px 8px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                }}
-                aria-label="Close menu"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#64748B', letterSpacing: '0.08em', marginBottom: '10px' }}>
-              Customizer Sections
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto' }}>
-              {(Object.keys(SECTION_TITLES) as CustomizerSection[]).map((sec) => (
-                <button
-                  key={sec}
-                  onClick={() => {
-                    handleSectionChange(sec);
-                    setMobileTab('editor');
-                    setMobileMenuOpen(false);
-                  }}
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: activeSection === sec ? '1px solid #2563EB' : '1px solid #E2E8F0',
-                    background: activeSection === sec ? '#EFF6FF' : '#F8FAFC',
-                    color: activeSection === sec ? '#1D4ED8' : '#334155',
-                    fontSize: '13px',
-                    fontWeight: activeSection === sec ? 600 : 500,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {SECTION_TITLES[sec]}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ paddingTop: '16px', borderTop: '1px solid #F1F5F9', marginTop: 'auto' }}>
-              <Link
-                href="/dashboard"
-                onClick={() => setMobileMenuOpen(false)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid #E2E8F0',
-                  background: '#FFFFFF',
-                  color: '#334155',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                }}
-              >
-                ← Return to Fleet Dashboard
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Mobile Tab Switcher */}
       <div style={styles.mobileTabs} className="mobile-tabs-container">
@@ -733,41 +586,55 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
   },
   header: {
-    height: '52px',
+    height: '50px',
     borderBottom: '1px solid #e5e7eb',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '0 20px',
+    padding: '0 16px',
     background: '#ffffff',
     flexShrink: 0,
     zIndex: 10,
+    boxSizing: 'border-box',
+    width: '100%',
   },
   headerLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '10px',
+    minWidth: 0,
+    flexShrink: 1,
   },
   backLink: {
     fontSize: '13px',
     color: '#6b7280',
     textDecoration: 'none',
     fontWeight: 500,
+    whiteSpace: 'nowrap',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    flexShrink: 0,
   },
   headerDivider: {
     width: '1px',
     height: '18px',
     background: '#e5e7eb',
+    flexShrink: 0,
   },
   headerTitle: {
     fontSize: '14px',
     fontWeight: 600,
     color: '#111827',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   headerActions: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
+    flexShrink: 0,
   },
   btnSecondary: {
     height: '32px',
