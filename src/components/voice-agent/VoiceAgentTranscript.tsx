@@ -242,26 +242,6 @@ export default function VoiceAgentTranscript({
                   }}
                 >
                   {renderFormattedContent(msg.content)}
-
-                  {/* Navigation Confirmation Badge */}
-                  {isNavConfirm && navTarget && (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      marginTop: '8px',
-                      padding: '4px 8px',
-                      borderRadius: '6px',
-                      background: '#ECFDF5',
-                      border: '1px solid #A7F3D0',
-                      color: '#059669',
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                    }}>
-                      <span>✓</span>
-                      <span>Navigated to: {navTarget}</span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -275,42 +255,44 @@ export default function VoiceAgentTranscript({
               Suggested Inquiries:
             </span>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {behavior.templateMessages.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onSelectTemplateMessage && onSelectTemplateMessage(t.message)}
-                  style={{
-                    background: 'var(--voice-widget-bg-card, #FFFFFF)',
-                    color: 'var(--voice-widget-primary, #2F8FE0)',
-                    border: '1px solid var(--voice-widget-border, #E2E8F0)',
-                    borderRadius: '16px',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    textAlign: 'left',
-                    boxShadow: '0 1px 3px rgba(14,27,42,0.04)',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--voice-widget-primary, #2F8FE0)';
-                    e.currentTarget.style.background = 'rgba(47, 143, 224, 0.08)';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--voice-widget-border, #E2E8F0)';
-                    e.currentTarget.style.background = 'var(--voice-widget-bg-card, #FFFFFF)';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                  }}
-                >
-                  {t.icon && <span>{t.icon}</span>}
-                  <span>{t.label}</span>
-                </button>
-              ))}
+              {behavior.templateMessages.map((t) => {
+                // Strip leading emoji/generic icons from label
+                const cleanLabel = (t.label || t.message || '').replace(/^[\p{Emoji}\u200d\uFE0F\s]+/u, '').trim();
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => onSelectTemplateMessage && onSelectTemplateMessage(t.message)}
+                    style={{
+                      background: 'var(--voice-widget-bg-card, #FFFFFF)',
+                      color: 'var(--voice-widget-primary, #2F8FE0)',
+                      border: '1px solid var(--voice-widget-border, #E2E8F0)',
+                      borderRadius: '16px',
+                      padding: '6px 14px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      textAlign: 'left',
+                      boxShadow: '0 1px 3px rgba(14,27,42,0.04)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--voice-widget-primary, #2F8FE0)';
+                      e.currentTarget.style.background = 'rgba(47, 143, 224, 0.08)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--voice-widget-border, #E2E8F0)';
+                      e.currentTarget.style.background = 'var(--voice-widget-bg-card, #FFFFFF)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <span>{cleanLabel}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

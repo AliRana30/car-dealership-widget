@@ -8,11 +8,11 @@ import { NextRequest } from 'next/server';
 async function testDirectHandler() {
   const widgetId = 'front-desk';
   const queries = [
-    'can you tell me which courses do you have/',
-    'can you show me the mern sstack course?',
-    'show me your about',
-    'what is your policy?',
-    'show me courses under $100',
+    'navigate me to courses',
+    'navigate me to about page',
+    'open mern stack course',
+    'what are the tuition rates and pricing options?',
+    'how do i apply and what are the admission requirements?',
   ];
 
   for (const q of queries) {

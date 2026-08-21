@@ -39,15 +39,20 @@
 
   Object.assign(container.style, defaultStyles);
 
-  // 3. Create the iframe with optional session resumption (Phase 9.4)
+  // 3. Create the iframe with optional session resumption
   const hostUrlParams = new URLSearchParams(window.location.search);
   const resumeToken = hostUrlParams.get('widget_resume');
   let shouldReopen = false;
+  let isPanelExpanded = false;
   try {
-    if (sessionStorage.getItem('myfrontdesk_reopen_' + widgetId) === 'true') {
+    if (
+      sessionStorage.getItem('myfrontdesk_open_' + widgetId) === '1' ||
+      sessionStorage.getItem('myfrontdesk_reopen_' + widgetId) === 'true'
+    ) {
       shouldReopen = true;
-      // Consume the one-time transition flag so subsequent manual page reloads start clean
-      sessionStorage.removeItem('myfrontdesk_reopen_' + widgetId);
+    }
+    if (sessionStorage.getItem('myfrontdesk_expanded_' + widgetId) === '1') {
+      isPanelExpanded = true;
     }
   } catch (_) {}
 
@@ -71,6 +76,13 @@
   container.appendChild(iframe);
   document.body.appendChild(container);
 
+  // If reopening from a previous page navigation, expand the container immediately
+  if (shouldReopen) {
+    setTimeout(function() {
+      resizeWidget(true, isPanelExpanded);
+    }, 10);
+  }
+
   // 4. Setup postMessage event listener to communicate with the iframe widget
   let widgetConfig = null;
 
@@ -83,31 +95,36 @@
 
     switch (data.type) {
       case 'widget-ready':
-        // Save config sent by the widget (e.g. position details)
         widgetConfig = data.config;
         applyPosition(widgetConfig);
         if (shouldReopen) {
-          resizeWidget(true);
+          resizeWidget(true, isPanelExpanded);
         }
         break;
 
       case 'widget-open':
-        // Resize container to fit the open chat panel
-        resizeWidget(true);
+        try {
+          sessionStorage.setItem('myfrontdesk_open_' + widgetId, '1');
+        } catch (_) {}
+        resizeWidget(true, isPanelExpanded);
         break;
 
       case 'widget-resize':
         isPanelExpanded = Boolean(data.expanded);
+        try {
+          sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, isPanelExpanded ? '1' : '0');
+        } catch (_) {}
         resizeWidget(true, isPanelExpanded);
         break;
 
       case 'widget-close':
       case 'widget-new-chat':
         try {
+          sessionStorage.setItem('myfrontdesk_open_' + widgetId, '0');
+          sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, '0');
           sessionStorage.removeItem('myfrontdesk_reopen_' + widgetId);
         } catch (_) {}
         if (data.type === 'widget-close') {
-          // Reset container to the launcher button dimensions
           isPanelExpanded = false;
           resizeWidget(false);
         }
@@ -121,7 +138,11 @@
         if (data.url && typeof data.url === 'string') {
           console.log('[Widgetized] Agent requested host page navigation to:', data.url);
           try {
+            sessionStorage.setItem('myfrontdesk_open_' + widgetId, '1');
             sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
+            if (isPanelExpanded) {
+              sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, '1');
+            }
           } catch (_) {}
           let target = data.url;
           if (target.startsWith('/')) {
@@ -135,8 +156,6 @@
         break;
     }
   });
-
-  let isPanelExpanded = false;
 
   // Apply custom alignment positions from the widget configuration
   function applyPosition(config) {
@@ -205,12 +224,12 @@
       } else {
         // Desktop panel size (dynamically expanded if intelligence cards are present)
         const baseWidth = widgetConfig?.panel?.width || 360;
-        const panelWidth = isExpanded ? Math.min(680, window.innerWidth - 32) : baseWidth;
+        const panelWidth = isExpanded ? Math.min(710, window.innerWidth - 32) : baseWidth;
         const panelHeight = widgetConfig?.panel?.maxHeight || 490;
         
         // Add safety margins for shadows and launcher overlap
-        container.style.width = `${panelWidth + 40}px`;
-        container.style.height = `${panelHeight + 110}px`;
+        container.style.width = `${panelWidth + 30}px`;
+        container.style.height = `${panelHeight + 80}px`;
       }
     } else {
       // Restore default launcher sizing

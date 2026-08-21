@@ -129,7 +129,70 @@ async function generateChatFallbackResponse(
     };
   }
 
-  // 1. Check for Admissions & Enrollment Intent FIRST (e.g. "How do I apply?", "Admission requirements?")
+  // 1. Explicit & Specific Navigation Intent Handling
+  if (isExplicit) {
+    // 1a. Navigation to About Page
+    if (/\b(?:about|who\s+are\s+you|mission|story|company|founder|developer|team)\b/i.test(trimmed)) {
+      const match = matchedRecords.find(r => /about/i.test(r.title || '') || /about/i.test(r.sourceUrl || ''));
+      const url = match?.sourceUrl || 'https://lms-e-learning-system.vercel.app/about';
+      return {
+        text: `Navigating you to our About page now so you can learn more about ${businessName}!`,
+        navigationUrl: url
+      };
+    }
+
+    // 1b. Navigation to Policies & Terms
+    if (/\b(?:policy|policies|terms|privacy|gdpr|refund|legal)\b/i.test(trimmed)) {
+      const match = matchedRecords.find(r => /policy|terms|privacy/i.test(r.title || '') || /policy|terms/i.test(r.sourceUrl || ''));
+      const url = match?.sourceUrl || 'https://lms-e-learning-system.vercel.app/policy';
+      return {
+        text: `Opening our Policies & Terms page on your screen now!`,
+        navigationUrl: url
+      };
+    }
+
+    // 1c. Navigation to FAQ / Help / Contact
+    if (/\b(?:faq|frequently asked|questions?|help|contact|support)\b/i.test(trimmed)) {
+      const isFaq = /\b(?:faq|frequently asked|questions?|help)\b/i.test(trimmed);
+      const match = matchedRecords.find(r => (isFaq ? /faq/i : /contact/i).test(r.title || '') || (isFaq ? /faq/i : /contact/i).test(r.sourceUrl || ''));
+      const url = match?.sourceUrl || (isFaq ? 'https://lms-e-learning-system.vercel.app/faq' : 'https://lms-e-learning-system.vercel.app/contact');
+      return {
+        text: `Navigating you to our ${isFaq ? 'FAQ' : 'Contact'} page now!`,
+        navigationUrl: url
+      };
+    }
+
+    // 1d. Navigation to all courses / general catalog directory (e.g. "navigate me to courses", "open catalog", "browse courses")
+    if (/\b(?:all\s+courses|courses|catalog|inventory|shop|all\s+programs|offerings)\b/i.test(trimmed)) {
+      const catalogMatch = matchedRecords.find(r => /\/(courses|catalog|inventory|shop)\/?$/i.test(r.sourceUrl || ''));
+      const url = catalogMatch?.sourceUrl || 'https://lms-e-learning-system.vercel.app/courses';
+      return {
+        text: `Opening our courses catalog on your screen now! Feel free to explore our offerings or ask me about any specific course.`,
+        navigationUrl: url
+      };
+    }
+
+    // 1e. Navigation to a specific named course or product item (e.g. "navigate to mern stack", "open backend mastery")
+    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'the', 'you', 'show'].includes(w));
+    const targetItem = matchedRecords.find(r => {
+      const t = (r.title || '').toLowerCase();
+      return queryWords.some(w => t.includes(w));
+    });
+
+    if (targetItem?.sourceUrl) {
+      return {
+        text: `Opening the page for **${targetItem.title}** on your screen now! Let me know if you have any questions about it.`,
+        navigationUrl: targetItem.sourceUrl,
+      };
+    }
+
+    return {
+      text: `I've opened our courses directory on your screen so you can browse all available programs!`,
+      navigationUrl: 'https://lms-e-learning-system.vercel.app/courses',
+    };
+  }
+
+  // 2. Check for Admissions & Enrollment Intent (e.g. "How do I apply?", "Admission requirements?")
   const isAdmissionsQuery = /\b(?:admission|admissions|enroll|enrollment|apply|application|requirements?|prerequisites?|how to join|how do i apply|register)\b/i.test(trimmed);
   if (isAdmissionsQuery) {
     return {
@@ -138,74 +201,31 @@ async function generateChatFallbackResponse(
     };
   }
 
-  // 2. Check for Information Pages (About Us, Policies, FAQ, Contact)
+  // 3. Check for Informational Queries (About Us, Policies, FAQ, Contact)
   const isAboutQuery = /\b(?:about|who\s+are\s+you|mission|story|company|founder|developer|background|team|who\s+built)\b/i.test(trimmed);
   const isPolicyQuery = /\b(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)\b/i.test(trimmed);
   const isFaqQuery = /\b(?:faq|frequently asked|questions?|help center)\b/i.test(trimmed);
   const isContactQuery = /\b(?:contact|reach out|email|phone|address|location|support team|talk to advisor|speak with advisor)\b/i.test(trimmed);
 
   if (isAboutQuery) {
-    let sourceUrl = '/about';
-    const match = matchedRecords.find(r => /about/i.test(r.title || '') || /about/i.test(r.sourceUrl || ''));
-    if (match?.sourceUrl) sourceUrl = match.sourceUrl;
-    else {
-      const urlMatch = relevantData?.match(/\[(?:URL|SourceURL):\s*([^\]]*about[^\]]*)\]/i);
-      if (urlMatch) sourceUrl = urlMatch[1].trim();
-    }
-
     return {
-      text: isExplicit
-        ? `Navigating you to our About page now so you can learn more about ${businessName}!`
-        : `At ${businessName}, our mission is to make high-quality education and practical engineering skills accessible to learners worldwide through hands-on instruction and modern technology.`,
-      navigationUrl: isExplicit ? sourceUrl : undefined
+      text: `At ${businessName}, our mission is to make high-quality education and practical engineering skills accessible to learners worldwide through hands-on instruction and modern technology.`,
+      navigationUrl: undefined
     };
   }
 
   if (isPolicyQuery) {
-    let sourceUrl = '/policy';
-    const match = matchedRecords.find(r => /policy|terms|privacy/i.test(r.title || '') || /policy|terms/i.test(r.sourceUrl || ''));
-    if (match?.sourceUrl) sourceUrl = match.sourceUrl;
-    else {
-      const urlMatch = relevantData?.match(/\[(?:URL|SourceURL):\s*([^\]]*policy[^\]]*)\]/i);
-      if (urlMatch) sourceUrl = urlMatch[1].trim();
-    }
-
     return {
-      text: isExplicit
-        ? `Opening our Policies & Terms page on your screen now!`
-        : `Our policies at ${businessName} ensure bank-level 256-bit encryption, full GDPR compliance, and a 30-day refund window on course purchases. Your personal data is never shared with third parties.`,
-      navigationUrl: isExplicit ? sourceUrl : undefined
+      text: `Our policies at ${businessName} ensure bank-level 256-bit encryption, full GDPR compliance, and a 30-day refund window on course purchases. Your personal data is never shared with third parties.`,
+      navigationUrl: undefined
     };
   }
 
   if (isFaqQuery || isContactQuery) {
-    let sourceUrl = isFaqQuery ? '/faq' : '/contact';
-    const match = matchedRecords.find(r => (isFaqQuery ? /faq/i : /contact/i).test(r.title || '') || (isFaqQuery ? /faq/i : /contact/i).test(r.sourceUrl || ''));
-    if (match?.sourceUrl) sourceUrl = match.sourceUrl;
-
     return {
-      text: isExplicit
-        ? `Navigating you to our ${isFaqQuery ? 'FAQ' : 'Contact'} page now!`
-        : `You can find answers to common questions, support options, and direct contact details on our ${isFaqQuery ? 'FAQ' : 'contact'} page. Let me know what specific questions you have!`,
-      navigationUrl: isExplicit ? sourceUrl : undefined
+      text: `You can find answers to common questions, support options, and direct contact details on our ${isFaqQuery ? 'FAQ' : 'contact'} page. Let me know what specific questions you have!`,
+      navigationUrl: undefined
     };
-  }
-
-  // 1.5 Explicit Navigation to specific course or catalog
-  if (isExplicit && matchedRecords.length > 0) {
-    // Find best matching entity by query words
-    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'the', 'you'].includes(w));
-    const targetItem = matchedRecords.find(r => {
-      const t = (r.title || '').toLowerCase();
-      return queryWords.some(w => t.includes(w));
-    }) || matchedRecords[0];
-
-    if (targetItem?.sourceUrl) {
-      return {
-        text: `Opening the page for **${targetItem.title}** on your screen now! Let me know if you have any questions about it.`,
-        navigationUrl: targetItem.sourceUrl,
-      };
-    }
   }
 
   // 2. Try LLMs (OpenAI, Gemini, Groq) if API keys are available

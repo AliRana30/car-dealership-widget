@@ -129,14 +129,14 @@ export default function VoiceAgentPanel({
     
     const offset = panel.offset || defaultOffset;
     const baseWidth = typeof panel.width === 'number' ? panel.width : 360;
-    const calculatedWidth = hasCards ? Math.min(680, 720) : baseWidth;
+    const calculatedWidth = hasCards ? 700 : baseWidth;
 
     const style: React.CSSProperties = {
       position: 'fixed',
       zIndex: (launcher.zIndex ?? 1000) - 1,
-      width: hasCards ? `min(${calculatedWidth}px, calc(100vw - 32px))` : (typeof panel.width === 'number' ? `${panel.width}px` : panel.width),
+      width: hasCards ? `min(${calculatedWidth}px, calc(100vw - 24px))` : (typeof panel.width === 'number' ? `${panel.width}px` : panel.width),
       height: panel.height !== undefined ? (typeof panel.height === 'number' ? `${panel.height}px` : panel.height) : 'auto',
-      maxWidth: hasCards ? 'calc(100vw - 24px)' : (panel.maxWidth !== undefined ? (typeof panel.maxWidth === 'number' ? `${panel.maxWidth}px` : panel.maxWidth) : '100vw'),
+      maxWidth: hasCards ? 'calc(100vw - 20px)' : (panel.maxWidth !== undefined ? (typeof panel.maxWidth === 'number' ? `${panel.maxWidth}px` : panel.maxWidth) : '100vw'),
       maxHeight: (() => {
         const verticalOffset = targetPos.startsWith('bottom') ? (offset.bottom || 0) : (offset.top || 0);
         const topGap = 24; // safe spacing from container edge
@@ -175,7 +175,7 @@ export default function VoiceAgentPanel({
     return style;
   };
 
-  const bodyPadding = config.mode === 'inline' ? '0' : '16px';
+  const bodyPadding = panel.padding !== undefined ? (typeof panel.padding === 'number' ? `${panel.padding}px` : panel.padding) : '12px';
 
   const handleNavigate = (url: string) => {
     if (typeof window !== 'undefined') {
@@ -189,9 +189,15 @@ export default function VoiceAgentPanel({
 
   return (
     <div
+      role="dialog"
+      aria-label={`${config.branding.assistantName} panel`}
       className="voice-widget-panel-container"
-      style={{ ...getLayoutStyles(), ...getAnimationStyles() }}
+      style={{
+        ...getLayoutStyles(),
+        ...getAnimationStyles(),
+      }}
     >
+      {/* Header */}
       <VoiceAgentHeader
         config={config}
         isActive={isActive}
@@ -215,8 +221,8 @@ export default function VoiceAgentPanel({
             flexDirection: 'column',
             alignItems: 'center',
             gap: '10px',
-            flex: 1,
-            minWidth: hasCards ? '320px' : '100%',
+            flex: '1 1 auto',
+            minWidth: hasCards ? '340px' : '100%',
             overflowY: 'auto',
             boxSizing: 'border-box',
           }}
@@ -268,9 +274,9 @@ export default function VoiceAgentPanel({
           <div
             className="voice-widget-cards-pane"
             style={{
-              width: '300px',
-              minWidth: '280px',
-              maxWidth: '320px',
+              width: '320px',
+              minWidth: '300px',
+              maxWidth: '330px',
               borderLeft: '1px solid var(--voice-widget-border, #E2E8F0)',
               background: '#F8FAFC',
               display: 'flex',

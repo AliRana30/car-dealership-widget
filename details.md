@@ -209,8 +209,20 @@
 | Retell Voice Telephony | WebRTC Voice Call Creation | **Completed & Verified** | Verified in `api/widgets/create-call/route.ts`; successfully connects to active Retell Agent (`agent_de685808e8532318607de0b0c8`) returning HTTP 200 and WebRTC access tokens. |
 | Navigation Persistence | In-Session Open State & Message Cache | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx`; `sessionStorage` tracks open state and chat messages across browser page navigations without resetting the session. |
 | Catalog Prioritization | Individual Offering Ranking | **Completed & Verified** | Verified in `widgetsDb.ts`; prioritizes concrete priced items (`/course/:id`, `/product/:id`) above broad index pages (`/courses`), guaranteeing full course discovery (MERN Stack, Backend Mastery, Leetcode). |
-| Intent Classification | Strict Intent Boundaries | **Completed & Verified** | Verified in `retell/chat/route.ts`; fixed word boundary matching for admissions, pricing, and about queries, preventing false positive intercept of admissions inquiries. |
 | Database Scoping | Comprehensive Test Row Cleanup | **Completed & Verified** | Verified in Supabase database; purged all test vehicle and dummy rows from `front-desk` widget, preserving strictly LMS records. |
+
+---
+
+## 17. Autonomous Route Resolution, 710px Side Drawer & Clean Messaging UI
+
+| Feature | Sub-item | Status | Evidence |
+|---|---|---|---|
+| Navigation Routing | Precise Route & Directory Resolution | **Completed & Verified** | Verified in `retell/chat/route.ts`; correctly routes generic course navigation to `/courses`, about page queries to `/about`, policies to `/policy`, and specific course requests to `/course/:id`. |
+| Drawer Sizing | 710px Responsive Container Width | **Completed & Verified** | Verified in `widget.js` & `VoiceAgentPanel.tsx`; expands host container and panel to `710px` when cards are active, giving `320px` to the cards drawer and `350px` to chat. |
+| Message Cleanliness | Removal of Redundant Navigation Badges | **Completed & Verified** | Verified in `VoiceAgentTranscript.tsx`; eliminated `✓ Navigated to:` status banner from chat stream. |
+| UI Polish | Minimalist Suggested Inquiry Chips | **Completed & Verified** | Verified in `VoiceAgentTranscript.tsx`; stripped generic leading emojis from starter query chips. |
+| Host Bridge Reopen | Immediate Container Sizing on Reload | **Completed & Verified** | Verified in `widget.js` & `embed/[id]/page.tsx`; restores container open dimensions immediately on host page mount across navigations. |
+
 
 
 

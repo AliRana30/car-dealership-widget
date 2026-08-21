@@ -422,3 +422,22 @@ npx tsx scratch/test-agent-tools.ts
    - Individual offering items (`/course/:id`, `/product/:id`) with concrete pricing and image banners are prioritized over broad directory pages (e.g. `/courses`), ensuring full catalog coverage including MERN Stack, Backend Mastery, and Leetcode Mastery.
 4. **Strict Intent Boundary Classification**:
    - Explicit priority matching for admissions, enrollment, tuition, pricing, policies, and specific course queries with word boundary protection to prevent false positive triggers.
+
+---
+
+## Autonomous Route Resolution, 710px Side Drawer & Clean Messaging UI
+
+1. **Targeted Route & Catalog Navigation**:
+   - Explicit navigation commands resolve exact target destinations:
+     - `navigate to courses` / `catalog` $\rightarrow$ `/courses`
+     - `navigate to about` $\rightarrow$ `/about`
+     - `navigate to policy` $\rightarrow$ `/policy`
+     - `navigate to faq` $\rightarrow$ `/faq`
+     - Named item queries (`open mern stack course`) $\rightarrow$ `/course/6945...`
+2. **710px Full-Width Drawer Container**:
+   - The embed bridge (`widget.js`) and panel container dynamically resize to `710px` with a dedicated `320px` cards pane, preventing intelligence cards from being squished or truncated.
+3. **Clean Starter Chips & Message Stream**:
+   - Stripped leading emoji prefixes from suggested inquiry chips for a sleek, minimalist aesthetic.
+   - Removed redundant inline navigation badge banners from the chat transcript for a clean conversation flow.
+4. **Immediate Container Open on Host Navigation**:
+   - Host bridge immediately resizes the container on page reload using cached session storage state, ensuring the widget never minimizes during site navigation.

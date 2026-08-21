@@ -19,12 +19,11 @@ export default function EmbedWidgetPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
-      const shouldOpen = sp.get('open') === '1' || Boolean(sp.get('widget_resume'));
-      
-      // Clean up legacy reopen flag from iframe sessionStorage
-      try {
-        sessionStorage.removeItem(`myfrontdesk_reopen_${id}`);
-      } catch (_) {}
+      const shouldOpen =
+        sp.get('open') === '1' ||
+        Boolean(sp.get('widget_resume')) ||
+        sessionStorage.getItem(`myfrontdesk_open_${id}`) === '1' ||
+        sessionStorage.getItem(`myfrontdesk_reopen_${id}`) === 'true';
 
       if (shouldOpen) {
         setInitialOpen(true);
