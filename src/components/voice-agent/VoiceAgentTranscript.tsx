@@ -67,8 +67,6 @@ function renderFormattedContent(text: string): React.ReactNode {
         <a
           key={`link-${lineIdx}-${match.index}`}
           href={url}
-          target="_blank"
-          rel="noopener noreferrer"
           style={{
             color: 'var(--voice-widget-primary, #2F8FE0)',
             textDecoration: 'underline',
@@ -76,11 +74,15 @@ function renderFormattedContent(text: string): React.ReactNode {
             cursor: 'pointer',
           }}
           onClick={(e) => {
+            e.preventDefault();
+            // Always navigate the host/parent page — never open a new tab
             if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
               try {
-                window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url }, '*');
                 window.parent.postMessage({ type: 'voice-agent-navigate', url }, '*');
+                window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url }, '*');
               } catch (_) {}
+            } else if (typeof window !== 'undefined') {
+              window.location.href = url;
             }
           }}
         >

@@ -68,8 +68,7 @@ export default function VoiceAgentPanel({
   onDismissCards,
 }: VoiceAgentPanelProps) {
   const { panel, animation } = config;
-  const [isCardsCollapsed, setIsCardsCollapsed] = React.useState(false);
-  const hasCards = Boolean(cards && cards.length > 0 && !isCardsCollapsed);
+  const hasCards = Boolean(cards && cards.length > 0);
 
   const getAnimationStyles = (): React.CSSProperties => {
     if (config.mode === 'inline') return {};
@@ -206,8 +205,8 @@ export default function VoiceAgentPanel({
         showClose={config.mode === 'floating'}
         onNewChat={onNewChat}
         cardCount={cards.length}
-        isCardsOpen={!isCardsCollapsed}
-        onToggleCards={() => setIsCardsCollapsed(prev => !prev)}
+        isCardsOpen={hasCards}
+        onToggleCards={undefined}
         isMuted={isMuted}
         onToggleMute={onToggleMute}
       />
@@ -295,31 +294,13 @@ export default function VoiceAgentPanel({
                   Discovered & Recommended
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{
-                  background: '#ECFDF5', color: '#059669',
-                  padding: '2px 8px', borderRadius: '12px',
-                  fontSize: '10px', fontWeight: 700,
-                }}>
-                  {cards.length} {cards.length === 1 ? 'item' : 'items'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIsCardsCollapsed(true)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    color: '#94A3B8',
-                    padding: '2px',
-                  }}
-                  title="Close cards panel"
-                  aria-label="Close cards panel"
-                >
-                  ✕
-                </button>
-              </div>
+              <span style={{
+                background: '#ECFDF5', color: '#059669',
+                padding: '2px 8px', borderRadius: '12px',
+                fontSize: '10px', fontWeight: 700,
+              }}>
+                {cards.length} {cards.length === 1 ? 'item' : 'items'}
+              </span>
             </div>
 
             {/* Cards Scroll List */}

@@ -174,36 +174,7 @@ export default function VoiceAgentHeader({
           </button>
         )}
 
-        {/* Cards (X) toggle pill button */}
-        {cardCount > 0 && onToggleCards && (
-          <button
-            type="button"
-            onClick={onToggleCards}
-            style={{
-              background: isCardsOpen ? '#ECFDF5' : '#F1F5F9',
-              color: isCardsOpen ? '#059669' : '#64748B',
-              border: `1px solid ${isCardsOpen ? '#A7F3D0' : '#E2E8F0'}`,
-              borderRadius: '16px',
-              padding: '3px 9px',
-              fontSize: '11px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.15s ease',
-            }}
-            title="Toggle recommended cards"
-            aria-label="Toggle recommended cards"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 12 17 22 12" />
-            </svg>
-            <span>Cards ({cardCount})</span>
-          </button>
-        )}
+
 
         {/* New Chat / Reload */}
         {onNewChat && (

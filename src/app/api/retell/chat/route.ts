@@ -173,7 +173,7 @@ async function generateChatFallbackResponse(
     }
 
     // 1e. Navigation to a specific named course or product item (e.g. "navigate to mern stack", "open backend mastery")
-    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'the', 'you', 'show'].includes(w));
+    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'me', 'the', 'you', 'show', 'to', 'can'].includes(w));
     const targetItem = matchedRecords.find(r => {
       const t = (r.title || '').toLowerCase();
       return queryWords.some(w => t.includes(w));
@@ -186,9 +186,18 @@ async function generateChatFallbackResponse(
       };
     }
 
+    // 1f. Vague navigation with no recognizable destination — ask which page
+    if (queryWords.length === 0 || (queryWords.length === 1 && ['page', 'site', 'website', 'somewhere'].includes(queryWords[0]))) {
+      return {
+        text: `Sure! Which page would you like me to open? For example you can say "navigate to About", "open Courses", "go to FAQ", or name a specific item.`,
+        navigationUrl: undefined,
+      };
+    }
+
+    // 1g. Explicit navigation but nothing matched — ask for clarification
     return {
-      text: `I've opened our courses directory on your screen so you can browse all available programs!`,
-      navigationUrl: 'https://lms-e-learning-system.vercel.app/courses',
+      text: `I couldn't find a page matching "${queryWords.join(' ')}" in our site. Would you like me to open the main courses directory instead, or can you be more specific?`,
+      navigationUrl: undefined,
     };
   }
 
@@ -228,7 +237,7 @@ async function generateChatFallbackResponse(
     };
   }
 
-  // 2. Try LLMs (OpenAI, Gemini, Groq) if API keys are available
+  // 4. Try LLMs (OpenAI, Gemini, Groq) if API keys are available
   const systemPrompt = `You are a helpful AI receptionist and assistant for ${businessName}.
 Use this relevant website information to answer accurately and concisely:
 ${relevantData || 'No additional scraped content.'}
@@ -236,6 +245,7 @@ ${relevantData || 'No additional scraped content.'}
 Guidelines:
 - Provide clear, professional, and friendly answers.
 - Format course/product lists cleanly using bullet points, titles, and prices when available.
+- If the user asks about something we DO NOT offer (e.g. a Python course when we only have MERN/Backend/Leetcode courses), clearly say we don't currently offer that, and suggest the closest available alternative.
 - If the user asks general questions about courses or offerings, present the top 5-6 options with hyperlinks and ask which one they'd like more details on.
 - Keep responses concise (under 120 words).`;
 
@@ -318,7 +328,7 @@ Guidelines:
     }
   }
 
-  // 3. Zero-LLM Adaptive Dynamic Synthesis Engine
+  // 5. Zero-LLM Adaptive Dynamic Synthesis Engine
 
   // Case A: Explicit single item navigation request (e.g. "take me to mern course")
   if (isExplicit && matchedRecords.length > 0) {
@@ -381,7 +391,16 @@ Guidelines:
     };
   }
 
-  // Case G: General Fallback
+  // Case G: No match found — be honest about what we don't have
+  // Extract the main search term from the query to give a helpful "we don't have X" message
+  const searchTerms = content.trim().split(/\s+/).filter(w => w.length > 3 && !['what', 'does', 'have', 'your', 'offer', 'available', 'about', 'course', 'courses', 'program', 'programs', 'do', 'you', 'with', 'that', 'this', 'there'].includes(w.toLowerCase())).slice(0, 3).join(' ');
+  if (searchTerms) {
+    return {
+      text: `I'm sorry, we don't currently offer anything related to "${searchTerms}" at ${businessName}. Our available programs are in web development, backend engineering, and coding interview prep. Would you like me to show you what we do offer?`,
+      navigationUrl: undefined
+    };
+  }
+
   return {
     text: `I'm happy to help you with ${businessName}. We have courses, services, and live support available. What specific topic or program can I help you find?`,
     navigationUrl: undefined

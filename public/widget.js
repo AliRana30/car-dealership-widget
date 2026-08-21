@@ -77,15 +77,23 @@
   container.appendChild(iframe);
   document.body.appendChild(container);
 
+  let widgetConfig = null;
+
   // If reopening from a previous page navigation, expand the container immediately
+  // Use cached config dimensions if available so we don't wait for widget-ready
   if (shouldReopen) {
+    try {
+      const cachedCfgStr = sessionStorage.getItem('myfrontdesk_config_' + widgetId);
+      if (cachedCfgStr) {
+        widgetConfig = JSON.parse(cachedCfgStr);
+      }
+    } catch (_) {}
     setTimeout(function() {
       resizeWidget(true, isPanelExpanded);
     }, 10);
   }
 
   // 4. Setup postMessage event listener to communicate with the iframe widget
-  let widgetConfig = null;
 
   window.addEventListener('message', function(event) {
     // Only accept messages from our widget domain
@@ -135,14 +143,17 @@
       case 'WIDGET_NAVIGATE':
       case 'widget-navigate':
       case 'navigate':
-        // Top-level host navigation bridge
+        // Top-level host navigation bridge — keep widget open across navigation
         if (data.url && typeof data.url === 'string') {
           console.log('[Widgetized] Agent requested host page navigation to:', data.url);
           try {
+            // Persist open state BEFORE navigating so the widget reopens on the next page
             sessionStorage.setItem('myfrontdesk_open_' + widgetId, '1');
             sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
-            if (isPanelExpanded) {
-              sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, '1');
+            sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, isPanelExpanded ? '1' : '0');
+            // Store last known dimensions so we can restore without waiting for widget-ready
+            if (widgetConfig) {
+              try { sessionStorage.setItem('myfrontdesk_config_' + widgetId, JSON.stringify({ panel: widgetConfig.panel, launcher: widgetConfig.launcher })); } catch(_) {}
             }
           } catch (_) {}
           let target = data.url;
