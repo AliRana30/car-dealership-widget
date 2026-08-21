@@ -162,6 +162,12 @@ export const defaultVoiceWidgetConfig: VoiceWidgetConfig = {
     maxDailyChats: 500,
     chatRateLimitPerMinute: 15,
     maxMessageCharacters: 1000,
+    templateMessages: [
+      { id: '1', label: 'Explore Programs', message: 'Which courses or programs do you offer?', icon: '🎓' },
+      { id: '2', label: 'Pricing & Tuition', message: 'What are the tuition rates and pricing options?', icon: '💰' },
+      { id: '3', label: 'Admissions & Enrollment', message: 'How do I apply and what are the admission requirements?', icon: '📝' },
+      { id: '4', label: 'Talk to an Advisor', message: 'Can I speak with an advisor or instructor?', icon: '🗣️' },
+    ],
   },
 
   animation: {
@@ -446,6 +452,12 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       maxDailyChats: config.behavior?.maxDailyChats ?? 500,
       chatRateLimitPerMinute: config.behavior?.chatRateLimitPerMinute ?? 15,
       maxMessageCharacters: config.behavior?.maxMessageCharacters ?? 1000,
+      templateMessages: config.behavior?.templateMessages || [
+        { id: '1', label: 'Explore Programs', message: 'Which courses or programs do you offer?', icon: '🎓' },
+        { id: '2', label: 'Pricing & Tuition', message: 'What are the tuition rates and pricing options?', icon: '💰' },
+        { id: '3', label: 'Admissions & Enrollment', message: 'How do I apply and what are the admission requirements?', icon: '📝' },
+        { id: '4', label: 'Talk to an Advisor', message: 'Can I speak with an advisor or instructor?', icon: '🗣️' },
+      ],
     },
     responsive: config.responsive || {},
   };
@@ -508,6 +520,12 @@ export function fromConfigurationRecord(record: WidgetConfigurationRecord): Voic
       maxDailyChats: (record.behavior as any)?.maxDailyChats ?? 500,
       chatRateLimitPerMinute: (record.behavior as any)?.chatRateLimitPerMinute ?? 15,
       maxMessageCharacters: (record.behavior as any)?.maxMessageCharacters ?? 1000,
+      templateMessages: (record.behavior as any)?.templateMessages || [
+        { id: '1', label: 'Explore Programs', message: 'Which courses or programs do you offer?', icon: '🎓' },
+        { id: '2', label: 'Pricing & Tuition', message: 'What are the tuition rates and pricing options?', icon: '💰' },
+        { id: '3', label: 'Admissions & Enrollment', message: 'How do I apply and what are the admission requirements?', icon: '📝' },
+        { id: '4', label: 'Talk to an Advisor', message: 'Can I speak with an advisor or instructor?', icon: '🗣️' },
+      ],
     },
     animation: record.call?.animation || {
       launcher: 'pulse',

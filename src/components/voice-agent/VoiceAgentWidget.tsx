@@ -13,6 +13,7 @@ interface VoiceAgentWidgetProps {
   overrides?: Partial<VoiceWidgetConfig>;
   widgetId?: string;
   isDemo?: boolean;
+  initialOpen?: boolean;
 }
 
 export interface VoiceAgentWidgetRef {
@@ -52,7 +53,7 @@ function parseStatusMessage(content: string): { isStatus: boolean; text: string;
 }
 
 const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
-  ({ onCallStateChange, config: clientConfig, overrides, widgetId, isDemo = false }, ref) => {
+  ({ onCallStateChange, config: clientConfig, overrides, widgetId, isDemo = false, initialOpen = false }, ref) => {
     // 1. Deep merge configurations
     const mergedConfig = React.useMemo(() => {
       const step1 = deepMerge(defaultVoiceWidgetConfig, clientConfig);
@@ -61,8 +62,22 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
     const isFloating = mergedConfig.mode === 'floating';
 
-    // 2. State management
-    const [isOpen, setIsOpen] = useState(false);
+    // 2. State management with session persistence
+    const [isOpen, setIsOpen] = useState(() => {
+      if (initialOpen) return true;
+      if (typeof window !== 'undefined') {
+        const key = `myfrontdesk_reopen_${widgetId || 'default'}`;
+        if (sessionStorage.getItem(key) === 'true') return true;
+      }
+      return false;
+    });
+
+    useEffect(() => {
+      if (initialOpen) {
+        setIsOpen(true);
+      }
+    }, [initialOpen]);
+
     const [callState, setCallState] = useState<CallState>('idle');
     const [isMuted, setIsMuted] = useState(false);
     const [agentSpeaking, setAgentSpeaking] = useState(false);
@@ -83,16 +98,66 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       setActiveTab(mergedConfig.behavior.defaultTab);
     }, [mergedConfig.behavior.defaultTab]);
 
-    // Synchronize initial text chat state when welcomeMessage configuration changes
+    // Restore cached chat messages from sessionStorage if available, else welcome message
     useEffect(() => {
-      setChatMessages((prev) => {
-        // Only update the initial welcome message if user has not sent messages yet
-        if (prev.length <= 1) {
-          return [{ role: 'agent', content: mergedConfig.branding.welcomeMessage || "Hi! How can I help you today?" }];
+      if (typeof window === 'undefined') return;
+      const key = `myfrontdesk_chat_${widgetId || 'default'}`;
+      try {
+        const saved = sessionStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+            setChatMessages(parsed.messages);
+            if (parsed.chatId) setChatId(parsed.chatId);
+            if (parsed.activeTab) setActiveTab(parsed.activeTab);
+            return;
+          }
         }
-        return prev;
-      });
-    }, [mergedConfig.branding.welcomeMessage]);
+      } catch (_) {}
+
+      // Default welcome message
+      setChatMessages([{ role: 'agent', content: mergedConfig.branding.welcomeMessage || "Hi! How can I help you today?" }]);
+    }, [widgetId, mergedConfig.branding.welcomeMessage]);
+
+    // Save chat messages to sessionStorage on every update
+    useEffect(() => {
+      if (typeof window === 'undefined' || chatMessages.length === 0) return;
+      const key = `myfrontdesk_chat_${widgetId || 'default'}`;
+      try {
+        sessionStorage.setItem(key, JSON.stringify({
+          messages: chatMessages.slice(-30),
+          chatId,
+          activeTab,
+          timestamp: Date.now()
+        }));
+      } catch (_) {}
+    }, [chatMessages, chatId, activeTab, widgetId]);
+
+    // Dynamically load Google Font if custom web font is selected in typography
+    useEffect(() => {
+      const family = mergedConfig.typography?.fontFamily;
+      if (!family || typeof document === 'undefined') return;
+
+      const cleanName = family.replace(/['",]/g, ' ').trim().split(/\s+/)[0];
+      const standardFonts = ['system-ui', 'sans-serif', 'serif', 'monospace', 'inherit', 'Arial', 'Helvetica', 'Times'];
+      if (!cleanName || standardFonts.includes(cleanName)) return;
+
+      const linkId = `google-font-${cleanName.toLowerCase()}`;
+      if (!document.getElementById(linkId)) {
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(cleanName)}:wght@300;400;500;600;700&display=swap`;
+        document.head.appendChild(link);
+      }
+    }, [mergedConfig.typography?.fontFamily]);
+
+    // Pre-warm Retell SDK when panel opens to eliminate call startup lag
+    useEffect(() => {
+      if (isOpen) {
+        import('retell-client-js-sdk').catch(() => {});
+      }
+    }, [isOpen]);
 
     // Cache for voice transcript results to avoid redundant network calls
     const [voiceResults, setVoiceResults] = useState<Record<string, any[]>>({});
@@ -429,11 +494,10 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       }
     }, [chatMessages, transcript, chatTyping]);
 
-    const handleSendChatMessage = useCallback(
-      async (e: React.FormEvent) => {
-        e.preventDefault();
-        const text = chatInput.trim();
-        if (!text) return;
+    const sendChatMessage = useCallback(
+      async (overrideText?: string) => {
+        const text = (typeof overrideText === 'string' ? overrideText : chatInput).trim();
+        if (!text || chatTyping) return;
 
         setChatInput('');
         const userMsg: TranscriptMessage = { role: 'user', content: text };
@@ -447,8 +511,10 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             const lowerText = text.toLowerCase();
             if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('hey')) {
               response = `Hello! How can I help you with ${mergedConfig.branding.companyName || 'our services'} today?`;
-            } else if (lowerText.includes('price') || lowerText.includes('cost') || lowerText.includes('pricing')) {
+            } else if (lowerText.includes('price') || lowerText.includes('cost') || lowerText.includes('pricing') || lowerText.includes('tuition')) {
               response = `Our pricing packages are customizable! You can configure them in the settings. In a live environment, I would retrieve current pricing data directly from your crawled website pages.`;
+            } else if (lowerText.includes('course') || lowerText.includes('program') || lowerText.includes('class')) {
+              response = `We offer several comprehensive training tracks and courses! You can explore full details and course syllabus options in our catalog.`;
             } else if (lowerText.includes('test') || lowerText.includes('working')) {
               response = "Yes, the test chat is fully working! The widget preview responds in real-time to your configuration changes.";
             }
@@ -528,7 +594,15 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           setChatTyping(false);
         }
       },
-      [chatInput, chatId, isDemo, mergedConfig.branding.companyName, widgetId, chatMessages]
+      [chatInput, chatTyping, chatId, isDemo, mergedConfig.branding.companyName, widgetId, chatMessages]
+    );
+
+    const handleSendChatMessage = useCallback(
+      (e: React.FormEvent) => {
+        e.preventDefault();
+        sendChatMessage();
+      },
+      [sendChatMessage]
     );
 
     const startCall = useCallback(async () => {
@@ -1332,7 +1406,14 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         <VoiceAgentPanel
           config={mergedConfig}
           isOpen={isFloating ? isOpen : true}
-          onClose={() => setIsOpen(false)}
+          onClose={() => {
+            setIsOpen(false);
+            if (typeof window !== 'undefined') {
+              try {
+                sessionStorage.removeItem(`myfrontdesk_reopen_${widgetId || 'default'}`);
+              } catch (_) {}
+            }
+          }}
           callState={callState}
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -1350,6 +1431,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           chatInput={chatInput}
           onChatInputChange={setChatInput}
           onSendChatMessage={handleSendChatMessage}
+          onSelectTemplateMessage={(msg) => sendChatMessage(msg)}
           chatTyping={chatTyping}
           transcript={enrichedTranscript}
           transcriptEndRef={transcriptEndRef}

@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
-import { inputStyle, labelStyle, rowStyle } from './formStyles';
+import { inputStyle, labelStyle, rowStyle, cardStyle } from './formStyles';
 
 interface Props {
   draft: VoiceWidgetConfig;
@@ -48,11 +48,53 @@ export function TypographySection({ draft, onChange }: Props) {
   const set = (key: keyof typeof draft.typography, val: any) =>
     onChange({ typography: { [key]: val } as any });
 
+  const FONT_PRESETS = [
+    { label: 'Inter (Modern & Clean)', value: "'Inter', sans-serif" },
+    { label: 'Figtree (Friendly Tech)', value: "'Figtree', sans-serif" },
+    { label: 'Outfit (Modern Geometric)', value: "'Outfit', sans-serif" },
+    { label: 'Plus Jakarta Sans (Premium SaaS)', value: "'Plus Jakarta Sans', sans-serif" },
+    { label: 'Poppins (Soft Geometric)', value: "'Poppins', sans-serif" },
+    { label: 'Roboto (Universal & Crisp)', value: "'Roboto', sans-serif" },
+    { label: 'Montserrat (Bold Editorial)', value: "'Montserrat', sans-serif" },
+    { label: 'Open Sans (Neutral & Readable)', value: "'Open Sans', sans-serif" },
+    { label: 'Lato (Warm Corporate)', value: "'Lato', sans-serif" },
+    { label: 'Space Grotesk (Tech Futuristic)', value: "'Space Grotesk', sans-serif" },
+    { label: 'Playfair Display (Serif Luxury)', value: "'Playfair Display', serif" },
+    { label: 'System UI (Native Fast)', value: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
+  ];
+
+  const currentFont = draft.typography.fontFamily || "'Inter', sans-serif";
+  const isPreset = FONT_PRESETS.some((p) => p.value.toLowerCase() === currentFont.toLowerCase());
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div>
         <label style={labelStyle}>Font Family</label>
-        <input type="text" value={draft.typography.fontFamily} onChange={(e) => set('fontFamily', e.target.value)} style={inputStyle} />
+        <select
+          value={isPreset ? currentFont : 'custom'}
+          onChange={(e) => {
+            if (e.target.value !== 'custom') {
+              set('fontFamily', e.target.value);
+            }
+          }}
+          style={inputStyle}
+        >
+          {FONT_PRESETS.map((font) => (
+            <option key={font.value} value={font.value}>
+              {font.label}
+            </option>
+          ))}
+          <option value="custom">Custom Font...</option>
+        </select>
+        {!isPreset && (
+          <input
+            type="text"
+            placeholder="e.g. 'Inter', sans-serif"
+            value={draft.typography.fontFamily}
+            onChange={(e) => set('fontFamily', e.target.value)}
+            style={{ ...inputStyle, marginTop: '6px' }}
+          />
+        )}
       </div>
       <div>
         <label style={labelStyle}>Font Size Scale</label>
@@ -377,6 +419,168 @@ export function BehaviorSection({ draft, onChange }: Props) {
           <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
             Caps the length of individual user chat messages to prevent prompt injection and token abuse (default: 1,000 chars).
           </div>
+        </div>
+      </div>
+
+      {/* Template Messages Library & Quick Prompts Manager (Task 5) */}
+      <div style={{ ...cardStyle, marginTop: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>💬 Template Messages & Quick Prompts</div>
+            <div style={{ fontSize: '11.5px', color: '#64748B', marginTop: '2px' }}>
+              Clickable suggestion chips displayed to visitors when they open the chat. Clicking sends the prompt instantly.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const current = draft.behavior.templateMessages || [];
+              const newItem = {
+                id: String(Date.now()),
+                label: 'New Inquiry',
+                message: 'Can you tell me more about your offerings?',
+                icon: '💡',
+              };
+              set('templateMessages', [...current, newItem]);
+            }}
+            style={{
+              padding: '5px 10px',
+              fontSize: '11.5px',
+              fontWeight: 600,
+              background: '#2F8FE0',
+              color: '#FFFFFF',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            + Add Prompt
+          </button>
+        </div>
+
+        {/* Preset quick loaders */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <span style={{ fontSize: '11px', color: '#64748B', alignSelf: 'center' }}>Load Preset:</span>
+          {[
+            {
+              name: '🎓 Education / LMS',
+              prompts: [
+                { id: '1', label: 'Explore Programs', message: 'Which courses or programs do you offer?', icon: '🎓' },
+                { id: '2', label: 'Pricing & Tuition', message: 'What are the tuition rates and pricing options?', icon: '💰' },
+                { id: '3', label: 'Admissions & Enrollment', message: 'How do I apply and what are the admission requirements?', icon: '📝' },
+                { id: '4', label: 'Talk to an Advisor', message: 'Can I speak with an advisor or instructor?', icon: '🗣️' },
+              ],
+            },
+            {
+              name: '🚗 Dealership / Auto',
+              prompts: [
+                { id: '1', label: 'View Inventory', message: 'What vehicles do you currently have in stock?', icon: '🚗' },
+                { id: '2', label: 'Book Service', message: 'I would like to schedule an oil change or maintenance service.', icon: '🔧' },
+                { id: '3', label: 'Trade-in Value', message: 'How does your vehicle trade-in process work?', icon: '💵' },
+                { id: '4', label: 'Financing Options', message: 'What financing or lease rates are available?', icon: '📄' },
+              ],
+            },
+            {
+              name: '💼 General Business',
+              prompts: [
+                { id: '1', label: 'Our Services', message: 'What services does your company provide?', icon: '⚡' },
+                { id: '2', label: 'Pricing & Plans', message: 'What are your rates and pricing packages?', icon: '🏷️' },
+                { id: '3', label: 'Book Consultation', message: 'I want to schedule a discovery call or appointment.', icon: '📅' },
+                { id: '4', label: 'Contact Support', message: 'How can I get in touch with your team directly?', icon: '📞' },
+              ],
+            },
+          ].map((preset) => (
+            <button
+              key={preset.name}
+              type="button"
+              onClick={() => set('templateMessages', preset.prompts)}
+              style={{
+                padding: '3px 8px',
+                fontSize: '11px',
+                background: '#F1F5F9',
+                color: '#334155',
+                border: '1px solid #CBD5E1',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              {preset.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Template messages list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {(draft.behavior.templateMessages || []).map((item, idx) => (
+            <div
+              key={item.id || idx}
+              style={{
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                borderRadius: '8px',
+                padding: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Emoji"
+                  value={item.icon || ''}
+                  onChange={(e) => {
+                    const next = [...(draft.behavior.templateMessages || [])];
+                    next[idx] = { ...next[idx], icon: e.target.value };
+                    set('templateMessages', next);
+                  }}
+                  style={{ width: '40px', padding: '6px', fontSize: '13px', borderRadius: '6px', border: '1px solid #CBD5E1', textAlign: 'center' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Chip Label (e.g. Explore Courses)"
+                  value={item.label}
+                  onChange={(e) => {
+                    const next = [...(draft.behavior.templateMessages || [])];
+                    next[idx] = { ...next[idx], label: e.target.value };
+                    set('templateMessages', next);
+                  }}
+                  style={{ flex: 1, padding: '6px 10px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', border: '1px solid #CBD5E1' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = (draft.behavior.templateMessages || []).filter((_, i) => i !== idx);
+                    set('templateMessages', next);
+                  }}
+                  style={{
+                    background: '#FEE2E2',
+                    color: '#DC2626',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '6px 8px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                  }}
+                  title="Delete prompt"
+                >
+                  ✕
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Message sent to AI (e.g. Which courses do you offer?)"
+                value={item.message}
+                onChange={(e) => {
+                  const next = [...(draft.behavior.templateMessages || [])];
+                  next[idx] = { ...next[idx], message: e.target.value };
+                  set('templateMessages', next);
+                }}
+                style={{ width: '100%', padding: '6px 10px', fontSize: '11.5px', color: '#475569', borderRadius: '6px', border: '1px solid #CBD5E1' }}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </div>

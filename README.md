@@ -188,14 +188,25 @@ The platform features built-in intelligence adapters tailored to diverse busines
 - **Cross-Widget Isolation**: All vector queries, entity lookups, and tool invocations are strictly isolated by `widget_id`.
 
 ### Visual Customizer & White-Label Theming
-- **Real-Time Visual Customizer**: Comprehensive editor (`/widget-customizer`) with instant preview updates across themes, launcher buttons, panel dimensions, and typography.
-- **Precision Color Engine**: Integrated `@jaames/iro` color picker supporting primary, background, text, user bubble, and agent bubble customization.
-- **Typography & Layout Controls**: Configurable font families, scale multipliers, border radiuses, box shadows, and full-screen mobile responsive modes.
+- **Real-Time Visual Customizer**: Comprehensive editor (`/widget-customizer`) with instant preview updates across themes, launcher buttons, panel dimensions, typography, and prompt templates.
+- **Precision Color Engine**: Integrated color pickers supporting primary, background, text, user bubble, and agent bubble customization.
+- **Dynamic Google Fonts Typography**: Curated Google Fonts picker (Inter, Outfit, Plus Jakarta Sans, Poppins, Roboto, Montserrat, Space Grotesk, Playfair Display, etc.) with automated runtime stylesheet injection.
+- **Template Messages & Starter Prompts Library**: Visual manager in customizer with quick-load presets for Education/LMS, Dealerships/Automotive, and General Business. Renders interactive prompt chips inside the chat.
 
 ### Embeddable Widget Bridge & Client Integration
 - **Single Script Embed**: Lightweight loader (`public/widget.js`) dynamically mounted on any client web page with a single `<script data-widget-id="...">` tag.
+- **Zero-Delay Instant Rendering**: Embed container mounts immediately with zero loading spinner delay.
+- **Session-Preserved Autonomous Navigation**: When agent triggers host navigation (`WIDGET_NAVIGATE`), widget state and chat message history are persisted across page transitions in `sessionStorage`, reopening automatically on the target page.
+- **Catalog vs. Explicit Navigation Disambiguation**: General queries ("what courses/products do you offer?") stay in chat presenting top 5-6 cards with prices, details, and hyperlinks; explicit navigation requests ("take me to course X") execute host redirection.
+- **Sub-Second WebRTC Call Setup**: In-memory summary TTL caching, lightweight DB query projections, and SDK pre-warming accelerate voice call initiation to under 1.5 seconds.
 - **Cross-Origin PostMessage Protocol**: Secure messaging bridge coordinating panel expansion, dimension resizing, audio stream state, and customizer live reloading.
 - **Standalone Embed Route**: Isolated iframe container (`/embed/[widgetId]`) with SSR hydration safeguards and domain whitelist enforcement.
+
+### Comprehensive Abuse Prevention & Spending Circuit Breakers
+- **C.1 Hard Server-Side Duration & Turn Caps**: Server-enforced call duration limits (`maxCallDurationMinutes`, default 10 min) and chat turn caps (`maxChatTurns`, default 30 turns).
+- **C.2 Silence-Based Auto-Hangup**: Server-side watchdog (`initialSilenceTimeoutSeconds`, default 15s) terminating silent calls while preserving normal conversational pauses upon speech detection.
+- **C.3 Per-Widget Spend Cap with Circuit Breaker**: Date-partitioned daily usage counters (`maxDailyCalls: 100`, `maxDailyChats: 500`) with UTC midnight rollover and circuit breaker tripping.
+- **C.4 Session-Based Rate Limiting & Duplicate Throttling**: Session-scoped sliding window rate limiter (15 msg/min), duplicate message throttling with static instant replies (0 LLM calls), and 1,000-character single-message caps.
 
 ---
 

@@ -48,3 +48,11 @@ export const toggleStyle: React.CSSProperties = {
   width: '36px',
   height: '20px',
 };
+
+export const cardStyle: React.CSSProperties = {
+  background: '#ffffff',
+  border: '1px solid #e5e7eb',
+  borderRadius: '10px',
+  padding: '14px',
+  boxSizing: 'border-box',
+};

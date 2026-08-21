@@ -10,9 +10,21 @@ export default function EmbedWidgetPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [widgetData, setWidgetData] = useState<{ config: VoiceWidgetConfig; provider: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [widgetData, setWidgetData] = useState<{ config: VoiceWidgetConfig; provider: string }>({
+    config: defaultVoiceWidgetConfig,
+    provider: 'retell',
+  });
+  const [initialOpen, setInitialOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const shouldOpen = sp.get('open') === '1' || sessionStorage.getItem(`myfrontdesk_reopen_${id}`) === 'true';
+      if (shouldOpen) {
+        setInitialOpen(true);
+      }
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -24,16 +36,9 @@ export default function EmbedWidgetPage() {
           const configRecord = await res.json();
           const voiceConfig = fromConfigurationRecord(configRecord);
           setWidgetData({ config: voiceConfig, provider: voiceConfig.provider?.provider || 'retell' });
-        } else {
-          // If custom record not found, gracefully use default widget config
-          console.warn(`[EmbedWidget] Custom configuration not found for '${id}', using default voice receptionist configuration.`);
-          setWidgetData({ config: defaultVoiceWidgetConfig, provider: defaultVoiceWidgetConfig.provider?.provider || 'retell' });
         }
       } catch (err: any) {
-        console.error('[EmbedWidget] Fetch failed, falling back to default configuration:', err);
-        setWidgetData({ config: defaultVoiceWidgetConfig, provider: defaultVoiceWidgetConfig.provider?.provider || 'retell' });
-      } finally {
-        setLoading(false);
+        console.warn('[EmbedWidget] Using default configuration:', err);
       }
     }
 
@@ -43,44 +48,15 @@ export default function EmbedWidgetPage() {
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (e.data && e.data.type === 'widget-config-update') {
-        setWidgetData((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            config: e.data.config,
-          };
-        });
+        setWidgetData((prev) => ({
+          ...prev,
+          config: e.data.config,
+        }));
       }
     }
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
-
-  if (loading) {
-    return (
-      <div style={placeholderStyle}>
-        <div className="animate-spin-slow" style={spinnerStyle} />
-      </div>
-    );
-  }
-
-  if (error || !widgetData) {
-    return (
-      <div style={placeholderStyle}>
-        <div style={errorCardStyle}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.2" style={{ marginBottom: '8px' }}>
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>Widget Error</span>
-          <span style={{ fontSize: '11px', color: '#64748B', textAlign: 'center', marginTop: '2px' }}>
-            {error || 'Widget not found'}
-          </span>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -94,14 +70,6 @@ export default function EmbedWidgetPage() {
           height: 100vh !important;
           font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
         }
-        /* Spinner animation */
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .animate-spin-slow {
-          animation: spin 1.2s linear infinite;
-        }
       `}</style>
       
       {/* 
@@ -112,36 +80,8 @@ export default function EmbedWidgetPage() {
       <VoiceAgentWidget 
         widgetId={id} 
         config={widgetData.config}
+        initialOpen={initialOpen}
       />
     </>
   );
 }
-
-const placeholderStyle: React.CSSProperties = {
-  width: '100vw',
-  height: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'transparent',
-};
-
-const spinnerStyle: React.CSSProperties = {
-  width: '28px',
-  height: '28px',
-  borderRadius: '50%',
-  border: '3px solid rgba(14, 27, 42, 0.08)',
-  borderTopColor: '#2F8FE0',
-};
-
-const errorCardStyle: React.CSSProperties = {
-  background: '#FFFFFF',
-  padding: '12px 16px',
-  borderRadius: '12px',
-  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
-  border: '1px solid rgba(0, 0, 0, 0.05)',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  maxWidth: '220px',
-};

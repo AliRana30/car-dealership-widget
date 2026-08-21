@@ -42,9 +42,19 @@
   // 3. Create the iframe with optional session resumption (Phase 9.4)
   const hostUrlParams = new URLSearchParams(window.location.search);
   const resumeToken = hostUrlParams.get('widget_resume');
+  let shouldReopen = false;
+  try {
+    if (sessionStorage.getItem('myfrontdesk_reopen_' + widgetId) === 'true') {
+      shouldReopen = true;
+    }
+  } catch (_) {}
+
   const embedUrl = new URL(`${baseUrl}/embed/${widgetId}`);
   if (resumeToken) {
     embedUrl.searchParams.set('widget_resume', resumeToken);
+  }
+  if (shouldReopen) {
+    embedUrl.searchParams.set('open', '1');
   }
 
   const iframe = document.createElement('iframe');
@@ -74,14 +84,23 @@
         // Save config sent by the widget (e.g. position details)
         widgetConfig = data.config;
         applyPosition(widgetConfig);
+        if (shouldReopen) {
+          resizeWidget(true);
+        }
         break;
 
       case 'widget-open':
+        try {
+          sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
+        } catch (_) {}
         // Resize container to fit the open chat panel
         resizeWidget(true);
         break;
 
       case 'widget-close':
+        try {
+          sessionStorage.removeItem('myfrontdesk_reopen_' + widgetId);
+        } catch (_) {}
         // Reset container to the launcher button dimensions
         resizeWidget(false);
         break;
@@ -93,6 +112,9 @@
         // Top-level host navigation bridge (Phase 9.4)
         if (data.url && typeof data.url === 'string') {
           console.log('[Widgetized] Agent requested host page navigation to:', data.url);
+          try {
+            sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
+          } catch (_) {}
           window.location.href = data.url;
         }
         break;

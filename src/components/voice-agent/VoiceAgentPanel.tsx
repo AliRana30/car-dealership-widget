@@ -30,6 +30,7 @@ interface VoiceAgentPanelProps {
   transcript: TranscriptMessage[];
   transcriptEndRef: React.RefObject<HTMLDivElement | null>;
   parseStatusMessage: (content: string) => { isStatus: boolean; text: string; statusType: string };
+  onSelectTemplateMessage?: (message: string) => void;
 }
 
 export default function VoiceAgentPanel({
@@ -57,6 +58,7 @@ export default function VoiceAgentPanel({
   transcript,
   transcriptEndRef,
   parseStatusMessage,
+  onSelectTemplateMessage,
 }: VoiceAgentPanelProps) {
   const { panel, animation } = config;
 
@@ -210,6 +212,7 @@ export default function VoiceAgentPanel({
           transcript={transcript}
           transcriptEndRef={transcriptEndRef}
           parseStatusMessage={parseStatusMessage}
+          onSelectTemplateMessage={onSelectTemplateMessage}
         />
 
         <VoiceAgentControls

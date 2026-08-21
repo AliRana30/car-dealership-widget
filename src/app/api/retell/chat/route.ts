@@ -96,6 +96,14 @@ function corsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
+function isExplicitNavigationIntent(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return (
+    /^(?:take me to|navigate to|open|go to|redirect to|launch|show me the page for|open the page for|visit|take me)\b/i.test(q) ||
+    /\b(?:page|url|website|tab|screen)\s+(?:please|now)?$/i.test(q)
+  );
+}
+
 interface ChatFallbackResult {
   text: string;
   navigationUrl?: string;
@@ -108,10 +116,10 @@ async function generateChatFallbackResponse(
   matchedRecords: WebsiteDataRecord[] = []
 ): Promise<ChatFallbackResult> {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const openAiKey = (process.env.OPENAI_API_KEY || '').trim();
   const groqKey = process.env.GROQ_API_KEY;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
+  const isExplicit = isExplicitNavigationIntent(content);
   const trimmed = content.trim().toLowerCase();
   const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmed);
   if (isGreeting) {
@@ -133,7 +141,7 @@ async function generateChatFallbackResponse(
 
     return {
       text: `At ${businessName}, our mission is to make high-quality education and practical skills accessible to learners worldwide through hands-on instruction and modern technology.`,
-      navigationUrl: sourceUrl
+      navigationUrl: isExplicit ? sourceUrl : undefined
     };
   }
 
@@ -144,7 +152,7 @@ async function generateChatFallbackResponse(
 
     return {
       text: `Our policies at ${businessName} ensure bank-level 256-bit encryption, full GDPR compliance, and a 30-day refund window on course purchases. Your personal data is never shared with third parties.`,
-      navigationUrl: sourceUrl
+      navigationUrl: isExplicit ? sourceUrl : undefined
     };
   }
 
@@ -155,21 +163,51 @@ async function generateChatFallbackResponse(
 
     return {
       text: `You can find answers to common questions, support options, and direct contact details on our ${isFaqQuery ? 'FAQ' : 'contact'} page. Let me know what specific questions you have!`,
-      navigationUrl: sourceUrl
+      navigationUrl: isExplicit ? sourceUrl : undefined
     };
   }
 
-  // 2. Try LLMs (Gemini, OpenAI, Groq, Anthropic) if API keys are available
-  const systemPrompt = `${generateBaseSystemPrompt({
-    businessName,
-    websiteContext: relevantData || undefined,
-  })}
+  // 2. Try LLMs (OpenAI, Gemini, Groq) if API keys are available
+  const systemPrompt = `You are a helpful AI receptionist and assistant for ${businessName}.
+Use this relevant website information to answer accurately and concisely:
+${relevantData || 'No additional scraped content.'}
 
-CRITICAL CONVERSATIONAL RULES:
-- Keep all answers concise, friendly, and natural (1 to 3 short sentences maximum).
-- When asked about a specific course or product, summarize only that specific item and its pricing.
-- When asked for offerings under a budget, list only items that fit within the budget.
-- Never dump raw text blocks or policies when asked about catalog items.`;
+Guidelines:
+- Provide clear, professional, and friendly answers.
+- Format course/product lists cleanly using bullet points, titles, and prices when available.
+- If the user asks general questions about courses or offerings, present the top 5-6 options with hyperlinks and ask which one they'd like more details on.
+- Keep responses concise (under 120 words).`;
+
+  if (openAiKey) {
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openAiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: content.trim() }
+          ],
+          temperature: 0.7,
+          max_tokens: 250,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content?.trim();
+        if (text) {
+          const topUrl = isExplicit ? matchedRecords[0]?.sourceUrl : undefined;
+          return { text, navigationUrl: topUrl };
+        }
+      }
+    } catch (err) {
+      console.warn('[retell/chat] OpenAI fallback failed:', err);
+    }
+  }
 
   if (geminiKey) {
     try {
@@ -185,7 +223,7 @@ CRITICAL CONVERSATIONAL RULES:
         const data = await res.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) {
-          const topUrl = matchedRecords[0]?.sourceUrl;
+          const topUrl = isExplicit ? matchedRecords[0]?.sourceUrl : undefined;
           return { text, navigationUrl: topUrl };
         }
       }
@@ -210,7 +248,7 @@ CRITICAL CONVERSATIONAL RULES:
         const data = await res.json();
         const text = data.choices?.[0]?.message?.content?.trim();
         if (text) {
-          const topUrl = matchedRecords[0]?.sourceUrl;
+          const topUrl = isExplicit ? matchedRecords[0]?.sourceUrl : undefined;
           return { text, navigationUrl: topUrl };
         }
       }
@@ -219,60 +257,51 @@ CRITICAL CONVERSATIONAL RULES:
     }
   }
 
-  if (openaiKey) {
-    try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: content.trim() }],
-          temperature: 0.7,
-          max_tokens: 250,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content?.trim();
-        if (text) {
-          const topUrl = matchedRecords[0]?.sourceUrl;
-          return { text, navigationUrl: topUrl };
-        }
-      }
-    } catch (err) {
-      console.warn('[retell/chat] OpenAI fallback failed:', err);
-    }
-  }
-
   // 3. Zero-LLM Adaptive Dynamic Synthesis Engine
 
-  // Case A: Specific Single Item Match (e.g. "mern stack", "leetcode")
-  if (matchedRecords.length === 1) {
+  // Case A: Explicit single item navigation request (e.g. "take me to mern course")
+  if (isExplicit && matchedRecords.length > 0) {
     const item = matchedRecords[0];
-    const priceText = item.price ? ` (${item.price})` : '';
-    const descText = item.description ? item.description.substring(0, 150) : '';
     return {
-      text: `Here are the details for the **${item.title}**${priceText}:\n\n${descText}\n\nI can navigate you to the course page now if you'd like!`,
+      text: `Opening the page for **${item.title}** on your screen now! Let me know if you have any questions about it.`,
       navigationUrl: item.sourceUrl
     };
   }
 
-  // Case B: Filtered Budget Match or Multi-item Catalog
-  if (matchedRecords.length > 1) {
-    const itemsList = matchedRecords
-      .map(item => `• **${item.title}**${item.price ? ` (${item.price})` : ''}${item.description ? `: ${item.description.substring(0, 80)}` : ''}`)
-      .join('\n');
-
+  // Case B: Specific Single Item Detail Query (e.g. "tell me about mern stack course")
+  if (matchedRecords.length === 1) {
+    const item = matchedRecords[0];
+    const priceText = item.price ? ` (${item.price})` : '';
+    const descText = item.description ? item.description.substring(0, 180).trim() : '';
+    const linkText = item.sourceUrl ? `\n\n[View Full Course Page](${item.sourceUrl})` : '';
     return {
-      text: `At ${businessName}, here is what we have available:\n\n${itemsList}\n\nWhich one would you like to explore or get started with?`,
-      navigationUrl: matchedRecords[0]?.sourceUrl || '/courses'
+      text: `Here are the details for **${item.title}**${priceText}:\n\n${descText}${linkText}\n\nWould you like me to open the course page on your screen?`,
+      navigationUrl: undefined
     };
   }
 
-  // Case C: General Fallback
+  // Case C: Catalog / Multi-item Query (e.g. "which courses do you offer?", "all courses")
+  if (matchedRecords.length > 1) {
+    const topRecords = matchedRecords.slice(0, 6);
+    const itemsList = topRecords
+      .map(item => {
+        const price = item.price ? ` (${item.price})` : '';
+        const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
+        const desc = item.description ? `: ${item.description.substring(0, 90).trim()}...` : '';
+        return `• ${link}${price}${desc}`;
+      })
+      .join('\n');
+
+    return {
+      text: `We offer several popular courses and programs at ${businessName}:\n\n${itemsList}\n\nWhich of these would you like to explore or get more details on? You can also ask me to open any course page directly on your screen!`,
+      navigationUrl: undefined
+    };
+  }
+
+  // Case D: General Fallback
   return {
-    text: `I'm happy to help you with ${businessName}. We have courses, services, and live assistance available. What specific details can I provide for you?`,
-    navigationUrl: '/courses'
+    text: `I'm happy to help you with ${businessName}. We have courses, services, and live support available. What specific topic or program can I help you find?`,
+    navigationUrl: undefined
   };
 }
 
@@ -471,13 +500,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!apiKey || !agentId) {
-    return NextResponse.json(
-      { error: 'misconfigured', message: 'Retell credentials or Agent ID are not configured for this widget.' },
-      { status: 503, headers }
-    );
-  }
-
   // Resolve relevant website intelligence data dynamically through the backend
   const websiteId = widget.websiteId || '00000000-0000-0000-0000-000000000000';
   // Run text context + structured records retrieval in parallel
@@ -485,6 +507,39 @@ export async function POST(req: NextRequest) {
     getRelevantWebsiteData(websiteId, content),
     getRelevantWebsiteRecords(websiteId, content),
   ]);
+
+  if (!apiKey || !agentId) {
+    const fallbackResult = await generateChatFallbackResponse(
+      content,
+      relevantData,
+      widget.name || widget.config?.branding?.companyName || 'our business',
+      relevantRecords
+    );
+
+    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
+    const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
+
+    const fallbackMessages = [
+      { role: 'user', content: content.trim() },
+      {
+        role: 'agent',
+        content: fallbackResult.text,
+        ...(relevantRecords.length > 0 && isCatalogIntent && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
+        ...(fallbackResult.navigationUrl ? { navigationUrl: fallbackResult.navigationUrl } : {}),
+      },
+    ];
+
+    return NextResponse.json(
+      {
+        chatId: chatId || `chat_${Date.now()}`,
+        messages: fallbackMessages,
+        sessionId,
+        navigationUrl: fallbackResult.navigationUrl,
+        action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
+      },
+      { status: 200, headers }
+    );
+  }
 
   // ── Initialize Retell SDK Client ──────────────────────────────────────────
   const client = new Retell({ apiKey });
@@ -580,9 +635,8 @@ export async function POST(req: NextRequest) {
       ip: maskIp(ip)
     })}`);
 
-    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
-    const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
-    const topNavUrl = (isCatalogIntent && !isInfoIntent) ? relevantRecords[0]?.sourceUrl : undefined;
+    const isExplicit = isExplicitNavigationIntent(content);
+    const topNavUrl = isExplicit ? (relevantRecords[0]?.sourceUrl || undefined) : undefined;
 
     return NextResponse.json(
       {
@@ -614,7 +668,7 @@ export async function POST(req: NextRequest) {
       {
         role: 'agent',
         content: fallbackResult.text,
-        ...(relevantRecords.length > 0 && isCatalogIntent && !isInfoIntent ? { results: relevantRecords } : {}),
+        ...(relevantRecords.length > 0 && isCatalogIntent && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
         ...(fallbackResult.navigationUrl ? { navigationUrl: fallbackResult.navigationUrl } : {}),
       },
     ];

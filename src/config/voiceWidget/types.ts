@@ -327,6 +327,15 @@ export interface VoiceWidgetBehaviorConfig {
   chatRateLimitPerMinute?: number;
   /** Maximum character length allowed for a single chat message (default: 1000) */
   maxMessageCharacters?: number;
+  /** Quick-action starter prompt chips / template messages */
+  templateMessages?: TemplateMessage[];
+}
+
+export interface TemplateMessage {
+  id: string;
+  label: string;
+  message: string;
+  icon?: string;
 }
 
 // -------------------------------------------------------

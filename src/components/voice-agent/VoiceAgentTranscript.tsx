@@ -17,6 +17,7 @@ interface VoiceAgentTranscriptProps {
   transcript: TranscriptMessage[];
   transcriptEndRef: React.RefObject<HTMLDivElement | null>;
   parseStatusMessage: (content: string) => { isStatus: boolean; text: string; statusType: string };
+  onSelectTemplateMessage?: (message: string) => void;
 }
 
 export default function VoiceAgentTranscript({
@@ -27,6 +28,7 @@ export default function VoiceAgentTranscript({
   transcript,
   transcriptEndRef,
   parseStatusMessage,
+  onSelectTemplateMessage,
 }: VoiceAgentTranscriptProps) {
   const { branding, behavior } = config;
 
@@ -158,6 +160,53 @@ export default function VoiceAgentTranscript({
             </div>
           );
         })}
+
+        {/* Quick-action Template Message / Starter Prompt Chips */}
+        {behavior.templateMessages && behavior.templateMessages.length > 0 && chatMessages.length <= 2 && !chatTyping && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px', marginBottom: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--voice-widget-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Suggested Inquiries:
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {behavior.templateMessages.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onSelectTemplateMessage && onSelectTemplateMessage(t.message)}
+                  style={{
+                    background: 'var(--voice-widget-bg-card, #FFFFFF)',
+                    color: 'var(--voice-widget-primary, #2F8FE0)',
+                    border: '1px solid var(--voice-widget-border, #E2E8F0)',
+                    borderRadius: '16px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    textAlign: 'left',
+                    boxShadow: '0 1px 3px rgba(14,27,42,0.04)',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--voice-widget-primary, #2F8FE0)';
+                    e.currentTarget.style.background = 'rgba(47, 143, 224, 0.08)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--voice-widget-border, #E2E8F0)';
+                    e.currentTarget.style.background = 'var(--voice-widget-bg-card, #FFFFFF)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  {t.icon && <span>{t.icon}</span>}
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {chatTyping && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>

@@ -931,7 +931,17 @@ export async function getRelevantWebsiteRecords(
   }
 }
 
+// Fast in-memory cache for website context summaries to accelerate WebRTC call setup
+const contextSummaryCache = new Map<string, { summary: string; expiresAt: number }>();
+
 export async function getWebsiteContextSummary(websiteId: string): Promise<string> {
+  const cacheKey = (websiteId || '').trim().toLowerCase();
+  const now = Date.now();
+  const cached = contextSummaryCache.get(cacheKey);
+  if (cached && now < cached.expiresAt) {
+    return cached.summary;
+  }
+
   try {
     const isTargetUuid = isValidUuid(websiteId);
     const widgetIds = new Set<string>();
@@ -968,12 +978,15 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
       filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
     }
 
+    // Select only lightweight text fields (exclude 1536-float embedding vectors)
     const { data: records, error } = await supabase
       .from('website_data')
-      .select('*')
-      .in('widget_id', filterWidgetIds);
+      .select('title, entity_type, metadata, short_description, content')
+      .in('widget_id', filterWidgetIds)
+      .limit(35);
 
     if (error || !records || records.length === 0) {
+      contextSummaryCache.set(cacheKey, { summary: '', expiresAt: now + 300_000 });
       return '';
     }
 
@@ -983,23 +996,25 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
     const parts: string[] = [];
     if (catalogItems.length > 0) {
       parts.push('Catalog Items & Pricing:');
-      catalogItems.forEach(c => {
+      catalogItems.slice(0, 15).forEach(c => {
         const price = c.metadata?.price ? ` (${c.metadata.price})` : '';
         const level = c.metadata?.level ? ` [Level: ${c.metadata.level}]` : '';
-        const desc = c.short_description || c.metadata?.description || c.content.substring(0, 100).replace(/\s+/g, ' ');
+        const desc = c.short_description || c.metadata?.description || (c.content ? c.content.substring(0, 100).replace(/\s+/g, ' ') : '');
         parts.push(`• ${c.title}${price}${level}: ${desc}`);
       });
     }
 
     if (generalPages.length > 0) {
       parts.push('\nGeneral Information:');
-      generalPages.slice(0, 3).forEach(g => {
-        const desc = g.short_description || g.content.substring(0, 120).replace(/\s+/g, ' ').trim();
+      generalPages.slice(0, 4).forEach(g => {
+        const desc = g.short_description || (g.content ? g.content.substring(0, 120).replace(/\s+/g, ' ').trim() : '');
         parts.push(`• ${g.title}: ${desc}`);
       });
     }
 
-    return parts.join('\n');
+    const summary = parts.join('\n');
+    contextSummaryCache.set(cacheKey, { summary, expiresAt: now + 300_000 }); // 5 min TTL
+    return summary;
   } catch (err) {
     console.error(`[widgetsDb] Error in getWebsiteContextSummary:`, err);
     return '';
