@@ -158,6 +158,8 @@ export const defaultVoiceWidgetConfig: VoiceWidgetConfig = {
     maxCallDurationMinutes: 10,
     maxChatTurns: 30,
     initialSilenceTimeoutSeconds: 15,
+    maxDailyCalls: 100,
+    maxDailyChats: 500,
   },
 
   animation: {
@@ -438,6 +440,8 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       maxCallDurationMinutes: config.behavior?.maxCallDurationMinutes ?? 10,
       maxChatTurns: config.behavior?.maxChatTurns ?? 30,
       initialSilenceTimeoutSeconds: config.behavior?.initialSilenceTimeoutSeconds ?? 15,
+      maxDailyCalls: config.behavior?.maxDailyCalls ?? 100,
+      maxDailyChats: config.behavior?.maxDailyChats ?? 500,
     },
     responsive: config.responsive || {},
   };
@@ -496,6 +500,8 @@ export function fromConfigurationRecord(record: WidgetConfigurationRecord): Voic
       maxCallDurationMinutes: (record.behavior as any)?.maxCallDurationMinutes ?? (record.call as any)?.maxCallDurationMinutes ?? 10,
       maxChatTurns: (record.behavior as any)?.maxChatTurns ?? (record.chat as any)?.maxChatTurns ?? 30,
       initialSilenceTimeoutSeconds: (record.behavior as any)?.initialSilenceTimeoutSeconds ?? (record.call as any)?.initialSilenceTimeoutSeconds ?? 15,
+      maxDailyCalls: (record.behavior as any)?.maxDailyCalls ?? 100,
+      maxDailyChats: (record.behavior as any)?.maxDailyChats ?? 500,
     },
     animation: record.call?.animation || {
       launcher: 'pulse',

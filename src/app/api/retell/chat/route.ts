@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords, WebsiteDataRecord } from '@/config/widgetsDb';
 import { generateBaseSystemPrompt } from '@/lib/agents/prompts';
 import { checkAndIncrementChatTurns } from '@/lib/chat/chatLimiter';
+import { checkAndIncrementUsage } from '@/lib/usage/spendLimiter';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -360,6 +361,30 @@ export async function POST(req: NextRequest) {
   const agentId = (widget.agentId || process.env.RETELL_AGENT_ID || '').trim();
   // Check if a specific chat agent has been configured in the config overrides, or fallback to main agentId
   const chatAgentId = (widget.config?.behavior as any)?.chatAgentId || undefined;
+
+  // ── Enforce Per-Widget Daily Chat Limit & Circuit Breaker (Task C.3) ───
+  const maxDailyCalls = widget.config?.behavior?.maxDailyCalls ?? 100;
+  const maxDailyChats = widget.config?.behavior?.maxDailyChats ?? 500;
+  const usageCheck = await checkAndIncrementUsage(widget.widgetId || targetId, 'chat', { maxDailyCalls, maxDailyChats });
+
+  if (!usageCheck.allowed) {
+    const circuitBreakerMessage = usageCheck.reason || 'This assistant is temporarily unavailable. Please try again later or contact us directly.';
+    console.warn(`[SPEND_CIRCUIT_BREAKER] Widget ${targetId} exceeded daily chat quota (${usageCheck.currentCount}/${usageCheck.maxLimit}). Returning circuit breaker fallback.`);
+
+    return NextResponse.json(
+      {
+        chatId: chatId || `chat_${Date.now()}`,
+        messages: [
+          { role: 'user', content: content.trim() },
+          { role: 'agent', content: circuitBreakerMessage },
+        ],
+        sessionId,
+        isCircuitBreakerTripped: true,
+        dailyUsageExceeded: true,
+      },
+      { status: 200, headers }
+    );
+  }
 
   // ── Enforce Hard Server-Side Chat Turn Limits (Task C.1) ─────────────────
   const maxChatTurns = widget.config?.behavior?.maxChatTurns ?? 30;

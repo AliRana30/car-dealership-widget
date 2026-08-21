@@ -16,6 +16,15 @@ interface WidgetSummary {
   hasVapiAssistantId: boolean;
   config: any;
   createdAt: string;
+  dailyUsage?: {
+    calls: number;
+    chats: number;
+    maxCalls: number;
+    maxChats: number;
+    isCircuitBreakerTripped: boolean;
+    trippedReason?: string;
+    trippedAt?: number;
+  };
 }
 
 // ── Icon helpers ───────────────────────────────────────────────────────────
@@ -392,6 +401,51 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
 
         {/* Credential status */}
         <CredentialStatus widget={widget} />
+
+        {/* Circuit Breaker Trip Indicator & Usage Status (Task C.3) */}
+        {widget.dailyUsage?.isCircuitBreakerTripped ? (
+          <div style={{
+            marginTop: '12px',
+            padding: '8px 10px',
+            background: '#FEF2F2',
+            border: '1px solid #FECACA',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '11.5px',
+            color: '#991B1B',
+            fontWeight: 600,
+          }}>
+            <span style={{ fontSize: '14px' }}>⚠️</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div>Circuit Breaker Tripped</div>
+              <div style={{ fontSize: '10px', color: '#B91C1C', fontWeight: 400, marginTop: '2px' }}>
+                {widget.dailyUsage.trippedReason || 'Daily spend cap reached'} • Auto-resets midnight UTC
+              </div>
+            </div>
+          </div>
+        ) : (
+          widget.dailyUsage && (
+            <div style={{
+              marginTop: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '5px 8px',
+              background: '#F8FAFC',
+              border: '1px solid #E2E8F0',
+              borderRadius: '6px',
+              fontSize: '10.5px',
+              color: '#64748B',
+            }}>
+              <span>Daily Quota:</span>
+              <span style={{ fontWeight: 600, color: '#334155' }}>
+                📞 {widget.dailyUsage.calls}/{widget.dailyUsage.maxCalls} calls • 💬 {widget.dailyUsage.chats}/{widget.dailyUsage.maxChats} chats
+              </span>
+            </div>
+          )
+        )}
       </div>
 
       {/* Footer actions */}

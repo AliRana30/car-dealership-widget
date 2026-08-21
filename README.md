@@ -316,13 +316,16 @@ npx tsx scratch/test-duration-and-turn-caps.ts
 
 # Run silence-based auto-hangup test suite (Task C.2)
 npx tsx scratch/test-silence-auto-hangup.ts
+
+# Run per-widget spend cap with circuit breaker test suite (Task C.3)
+npx tsx scratch/test-spend-circuit-breaker.ts
 ```
 
 ---
 
-## Hard Duration, Turn Caps & Silence Hangup (Cost & Abuse Protection)
+## Hard Duration, Turn Caps, Silence Hangup & Spend Circuit Breakers (Cost & Abuse Protection)
 
-Widgetized enforces strict, unavoidable server-side rate, duration, and silence boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
+Widgetized enforces strict, unavoidable server-side rate, duration, silence, and volume boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
 
 1. **Server-Side Hard Call Duration Cap**:
    - Configurable per widget under the **Behavior** settings via `maxCallDurationMinutes` (default: 10 minutes, tunable from 1–60 min).
@@ -335,8 +338,15 @@ Widgetized enforces strict, unavoidable server-side rate, duration, and silence 
    - Protects against prank/ghost calls where a caller connects and stays silent to run up telephony minutes.
    - If no user speech is detected during the first ~10–15 seconds, the server terminates the call immediately.
    - As soon as caller speech is detected (`user_start_talking` in Retell, `speech-start` in Vapi, or user transcript entries), the watchdog is permanently disarmed for that session, ensuring natural conversational pauses during real dialogue are completely unaffected.
-4. **Pre-Filled Baseline Protection**:
-   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session, `15s` initial silence watchdog) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
+4. **Per-Widget Daily Spend Cap & Circuit Breaker**:
+   - Configurable per widget under **Behavior** via `maxDailyCalls` (default: 100/day) and `maxDailyChats` (default: 500/day).
+   - Enforced by `src/lib/usage/spendLimiter.ts`: Tracks daily call and chat starts against configurable daily thresholds.
+   - When a widget exceeds its daily limit, the circuit breaker automatically trips, disabling all new call and chat starts for that widget for the remainder of the day and returning a clear visitor fallback message (*"This assistant is temporarily unavailable. Please try again later or contact us directly."*).
+   - **Dashboard Indicator**: Prominently flags the widget card with an alert badge (*"⚠️ Circuit Breaker: Daily Spend Cap Reached"*) and displays daily quota counters (`📞 Calls: X/Y • 💬 Chats: A/B`).
+   - **Automatic Rollover**: Auto-resets at UTC midnight date partition boundaries without requiring manual intervention.
+   - **Fail-Safe Operation**: Fails open with logged warnings if tracking errors occur, ensuring tracking failures never become an outage.
+5. **Pre-Filled Baseline Protection**:
+   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session, `15s` silence watchdog, `100 calls/day`, `500 chats/day`) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
 
 ---
 

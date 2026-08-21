@@ -8,6 +8,7 @@ import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 import { getWidget, getWebsiteContextSummary } from '@/config/widgetsDb';
 import { registerCallTimeout } from '@/lib/voice/callLimiter';
+import { checkAndIncrementUsage } from '@/lib/usage/spendLimiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,22 @@ export async function POST(req: NextRequest) {
 
     // 1. Try to load widget or fallback to default environment credentials
     let widget = await getWidget(widgetId);
+
+    // 2. Check per-widget daily call limit & circuit breaker (Task C.3)
+    const maxDailyCalls = widget?.config?.behavior?.maxDailyCalls ?? 100;
+    const maxDailyChats = widget?.config?.behavior?.maxDailyChats ?? 500;
+    const usageCheck = await checkAndIncrementUsage(widget?.widgetId || widgetId, 'call', { maxDailyCalls, maxDailyChats });
+
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: 'daily_limit_exceeded',
+          message: usageCheck.reason || 'This assistant is temporarily unavailable. Please try again later or contact us directly.',
+          isCircuitBreakerTripped: true,
+        },
+        { status: 429 }
+      );
+    }
     
     const apiKey = (widget?.retellApiKey || process.env.RETELL_API_KEY || '').trim();
     const agentId = (agentIdFromReq || widget?.agentId || process.env.RETELL_AGENT_ID || '').trim();

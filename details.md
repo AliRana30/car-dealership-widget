@@ -16,6 +16,7 @@
 | Cost Protection | Server-Side Hard Call Duration Cap | **Completed & Verified** | Configurable via `maxCallDurationMinutes` (default: 10 min); enforced server-side via `callLimiter.ts` using Retell `client.call.stop` & Vapi API; verified in `scratch/test-duration-and-turn-caps.ts`. |
 | Cost Protection | Server-Side Hard Chat Turn Cap | **Completed & Verified** | Configurable via `maxChatTurns` (default: 30 turns); strictly enforced in `/api/retell/chat` via `chatLimiter.ts` with 0 upstream LLM calls past cap; verified in `scratch/test-duration-and-turn-caps.ts`. |
 | Cost Protection | Silence-Based Auto-Hangup | **Completed & Verified** | Tunable constant `DEFAULT_INITIAL_SILENCE_TIMEOUT_SECONDS = 15` and widget config `initialSilenceTimeoutSeconds`; automatically terminates call server-side if caller stays silent in the initial window; speech detection permanently disarms watchdog for conversational pauses; verified in `scratch/test-silence-auto-hangup.ts`. |
+| Cost Protection | Per-Widget Spend Cap & Circuit Breaker | **Completed & Verified** | Configurable via `maxDailyCalls` (default: 100/day) & `maxDailyChats` (default: 500/day); date-partitioned tracking in `spendLimiter.ts`; trips circuit breaker when cap exceeded to block new calls/chats with fallback message and dashboard alert; auto-resets at UTC midnight with fail-safe fail-open operation; verified in `scratch/test-spend-circuit-breaker.ts`. |
 
 ---
 

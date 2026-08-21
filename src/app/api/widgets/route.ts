@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWidget, saveWidget, listWidgets, deleteWidget, supabase } from '@/config/widgetsDb';
+import { getWidgetUsageStatus } from '@/lib/usage/spendLimiter';
 
 // GET /api/widgets
 // If ID is provided, returns client-safe visual config and provider name.
@@ -52,20 +53,36 @@ export async function GET(req: NextRequest) {
 
     const list = await listWidgets(userId);
     
-    // For admin view, we sanitize API keys (mask them) for security
-    const sanitizedList = list.map(w => ({
-      id: w.widgetId, // Use slug for client compatibility
-      name: w.name,
-      provider: w.provider,
-      retellAgentId: w.agentId,
-      vapiAssistantId: w.assistantId,
-      hasRetellKey: !!w.retellApiKey,
-      hasRetellAgentId: !!w.agentId,
-      hasVapiKey: !!w.vapiApiKey,
-      hasVapiAssistantId: !!w.assistantId,
-      config: w.config,
-      createdAt: w.createdAt
-    }));
+    // For admin view, we sanitize API keys (mask them) for security and attach daily usage status
+    const sanitizedList = list.map(w => {
+      const usageStatus = getWidgetUsageStatus(w.widgetId || w.id, {
+        maxDailyCalls: (w.config?.behavior as any)?.maxDailyCalls,
+        maxDailyChats: (w.config?.behavior as any)?.maxDailyChats,
+      });
+
+      return {
+        id: w.widgetId, // Use slug for client compatibility
+        name: w.name,
+        provider: w.provider,
+        retellAgentId: w.agentId,
+        vapiAssistantId: w.assistantId,
+        hasRetellKey: !!w.retellApiKey,
+        hasRetellAgentId: !!w.agentId,
+        hasVapiKey: !!w.vapiApiKey,
+        hasVapiAssistantId: !!w.assistantId,
+        config: w.config,
+        createdAt: w.createdAt,
+        dailyUsage: {
+          calls: usageStatus.calls,
+          chats: usageStatus.chats,
+          maxCalls: usageStatus.maxDailyCalls,
+          maxChats: usageStatus.maxDailyChats,
+          isCircuitBreakerTripped: usageStatus.isCircuitBreakerTripped,
+          trippedReason: usageStatus.trippedReason,
+          trippedAt: usageStatus.trippedAt,
+        },
+      };
+    });
 
     return NextResponse.json(sanitizedList, { status: 200 });
   } catch (error: any) {

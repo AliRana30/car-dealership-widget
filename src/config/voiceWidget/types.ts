@@ -319,6 +319,10 @@ export interface VoiceWidgetBehaviorConfig {
   maxChatTurns?: number;
   /** Initial silence auto-hangup window in seconds if caller never speaks (default: 15) */
   initialSilenceTimeoutSeconds?: number;
+  /** Maximum allowed voice calls per day before circuit breaker trips (default: 100) */
+  maxDailyCalls?: number;
+  /** Maximum allowed chat messages/turns per day before circuit breaker trips (default: 500) */
+  maxDailyChats?: number;
 }
 
 // -------------------------------------------------------

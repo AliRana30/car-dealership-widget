@@ -318,6 +318,36 @@ export function BehaviorSection({ draft, onChange }: Props) {
             Automatically ends the call if the caller stays silent and never speaks during the initial window (default: 15s). Natural conversation pauses are unaffected.
           </div>
         </div>
+
+        <div>
+          <label style={labelStyle}>Daily Voice Call Quota (Circuit Breaker)</label>
+          <input
+            type="number"
+            min={5}
+            max={5000}
+            value={draft.behavior.maxDailyCalls ?? 100}
+            onChange={(e) => set('maxDailyCalls', Math.max(5, Math.min(5000, parseInt(e.target.value, 10) || 100)))}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Maximum allowed voice calls per day before the circuit breaker temporarily disables the assistant for cost protection (default: 100/day).
+          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Daily Chat Message Quota (Circuit Breaker)</label>
+          <input
+            type="number"
+            min={10}
+            max={20000}
+            value={draft.behavior.maxDailyChats ?? 500}
+            onChange={(e) => set('maxDailyChats', Math.max(10, Math.min(20000, parseInt(e.target.value, 10) || 500)))}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Maximum allowed chat messages per day before the circuit breaker trips (default: 500/day). Automatically resets at UTC midnight.
+          </div>
+        </div>
       </div>
     </div>
   );

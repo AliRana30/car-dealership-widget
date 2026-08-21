@@ -3,6 +3,7 @@ import { getWidget, getWebsiteContextSummary } from '@/config/widgetsDb';
 import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 import { registerCallTimeout } from '@/lib/voice/callLimiter';
+import { checkAndIncrementUsage } from '@/lib/usage/spendLimiter';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -127,6 +128,22 @@ export async function POST(req: NextRequest) {
           { status: 404, headers }
         );
       }
+    }
+
+    // ── Check per-widget daily call limit & circuit breaker (Task C.3) ───────
+    const maxDailyCalls = widget.config?.behavior?.maxDailyCalls ?? 100;
+    const maxDailyChats = widget.config?.behavior?.maxDailyChats ?? 500;
+    const usageCheck = await checkAndIncrementUsage(widget.widgetId || widgetId, 'call', { maxDailyCalls, maxDailyChats });
+
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: 'daily_limit_exceeded',
+          message: usageCheck.reason || 'This assistant is temporarily unavailable. Please try again later or contact us directly.',
+          isCircuitBreakerTripped: true,
+        },
+        { status: 429, headers }
+      );
     }
 
     // Resolve website intelligence context for the widget
