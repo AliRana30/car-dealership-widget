@@ -5,6 +5,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import PromptLibrary from '@/components/prompts/PromptLibrary';
 import { Sparkles, BookOpen } from 'lucide-react';
+import { FiPhone, FiMessageSquare, FiAlertTriangle, FiActivity, FiShield } from 'react-icons/fi';
 
 interface WidgetSummary {
   id: string;
@@ -417,7 +418,7 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
             color: '#991B1B',
             fontWeight: 600,
           }}>
-            <span style={{ fontSize: '14px' }}>⚠️</span>
+            <FiAlertTriangle size={15} color="#DC2626" style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div>Circuit Breaker Tripped</div>
               <div style={{ fontSize: '10px', color: '#B91C1C', fontWeight: 400, marginTop: '2px' }}>
@@ -429,20 +430,45 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
           widget.dailyUsage && (
             <div style={{
               marginTop: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '5px 8px',
+              padding: '8px 10px',
               background: '#F8FAFC',
               border: '1px solid #E2E8F0',
-              borderRadius: '6px',
-              fontSize: '10.5px',
-              color: '#64748B',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
             }}>
-              <span>Daily Quota:</span>
-              <span style={{ fontWeight: 600, color: '#334155' }}>
-                📞 {widget.dailyUsage.calls}/{widget.dailyUsage.maxCalls} calls • 💬 {widget.dailyUsage.chats}/{widget.dailyUsage.maxChats} chats
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: '#64748B' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: '#334155' }}>
+                  <FiActivity size={12} color="#2563EB" />
+                  <span>Daily Quota</span>
+                </div>
+                <span style={{ fontSize: '10px', color: '#94A3B8' }}>Resets midnight UTC</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569' }}>
+                  <FiPhone size={12} color="#059669" />
+                  <span style={{ fontWeight: 600, color: '#0F172A' }}>{widget.dailyUsage.calls}</span>
+                  <span style={{ color: '#94A3B8' }}>/ {widget.dailyUsage.maxCalls} calls</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569' }}>
+                  <FiMessageSquare size={12} color="#2563EB" />
+                  <span style={{ fontWeight: 600, color: '#0F172A' }}>{widget.dailyUsage.chats}</span>
+                  <span style={{ color: '#94A3B8' }}>/ {widget.dailyUsage.maxChats} chats</span>
+                </div>
+              </div>
+              {/* Visual dynamic percentage track */}
+              {(() => {
+                const callPct = Math.min(100, Math.round((widget.dailyUsage.calls / (widget.dailyUsage.maxCalls || 1)) * 100));
+                const chatPct = Math.min(100, Math.round((widget.dailyUsage.chats / (widget.dailyUsage.maxChats || 1)) * 100));
+                const maxPct = Math.max(callPct, chatPct);
+                const barColor = maxPct > 85 ? '#EF4444' : maxPct > 60 ? '#F59E0B' : '#10B981';
+                return (
+                  <div style={{ width: '100%', height: '4px', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.max(4, maxPct)}%`, height: '100%', background: barColor, borderRadius: '999px', transition: 'width 0.3s ease' }} />
+                  </div>
+                );
+              })()}
             </div>
           )
         )}

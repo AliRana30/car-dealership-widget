@@ -116,6 +116,26 @@ const TOGGLE_CSS = `
     .customizer-browser-chrome {
       min-height: 480px !important;
     }
+    .customizer-color-panel.panel-empty {
+      display: none !important;
+    }
+    .customizer-color-panel.panel-active {
+      position: fixed !important;
+      right: 0 !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      width: min(340px, 92vw) !important;
+      z-index: 1000 !important;
+      box-shadow: -8px 0 35px rgba(0,0,0,0.22) !important;
+      background: #ffffff !important;
+      border-left: 1px solid #e5e7eb !important;
+      animation: drawerSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+  }
+
+  @keyframes drawerSlideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
   }
 
   @media (max-width: 640px) {

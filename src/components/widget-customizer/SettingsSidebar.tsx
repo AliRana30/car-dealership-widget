@@ -120,29 +120,6 @@ export default function SettingsSidebar({
           );
         })}
       </nav>
-
-      {/* Widget Fleet link footer */}
-      <div
-        style={{
-          ...styles.sidebarFooter,
-          padding: isCollapsed ? '10px 6px' : '10px 12px',
-          justifyContent: isCollapsed ? 'center' : 'flex-start',
-        }}
-        className="sidebar-footer"
-      >
-        <Link
-          href="/"
-          style={{
-            ...styles.fleetLink,
-            justifyContent: isCollapsed ? 'center' : 'flex-start',
-            padding: isCollapsed ? '8px 0' : '8px 10px',
-          }}
-          title="Widget Fleet Dashboard"
-        >
-          <LayoutGrid size={15} />
-          {!isCollapsed && <span>Widget Fleet</span>}
-        </Link>
-      </div>
     </aside>
   );
 }

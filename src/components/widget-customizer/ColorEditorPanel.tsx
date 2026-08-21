@@ -17,7 +17,7 @@ export default function ColorEditorPanel({ draft, openTokenId, onClose, onColorC
 
   if (!token) {
     return (
-      <aside style={styles.panel}>
+      <aside style={styles.panel} className="customizer-color-panel panel-empty">
         <div style={styles.emptyState}>
           <div style={styles.emptyIcon}>◐</div>
           <div style={styles.emptyTitle}>Color Editor</div>
@@ -30,7 +30,7 @@ export default function ColorEditorPanel({ draft, openTokenId, onClose, onColorC
   }
 
   return (
-    <aside style={styles.panel}>
+    <aside style={styles.panel} className="customizer-color-panel panel-active">
       <div style={styles.header}>
         <div>
           <div style={styles.headerToken}>{token.group} / {token.label}</div>
