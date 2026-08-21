@@ -71,7 +71,8 @@
   iframe.style.border = 'none';
   iframe.style.background = 'transparent';
   iframe.style.colorScheme = 'light';
-  iframe.setAttribute('allow', 'microphone'); // Crucial for voice WebRTC!
+  iframe.setAttribute('allow', 'microphone *; autoplay *; camera *; display-capture *; encrypted-media *');
+  iframe.setAttribute('allowusermedia', 'true');
 
   container.appendChild(iframe);
   document.body.appendChild(container);

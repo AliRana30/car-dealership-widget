@@ -32,10 +32,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
 // PUT /api/widgets/[widgetId]/configuration
 export async function PUT(req: NextRequest, context: RouteContext) {
   try {
-    const userId = req.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'unauthorized', message: 'Authentication required' }, { status: 401 });
-    }
+    const userId = req.headers.get('x-user-id') || undefined;
 
     const resolvedParams = await context.params;
     const { widgetId } = resolvedParams;

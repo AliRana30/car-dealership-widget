@@ -1018,10 +1018,21 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             isStartingRef.current = false;
           }, mergedConfig.behavior.connectionTimeout);
 
-          await activeClient.startCall({
-            accessToken: token,
-            emitRawAudioSamples: false,
-          });
+          try {
+            await activeClient.startCall({
+              accessToken: token,
+              emitRawAudioSamples: false,
+            });
+          } catch (callStartErr: any) {
+            console.error('[VoiceAgentWidget] Retell startCall failed:', callStartErr);
+            const msg = callStartErr?.name === 'NotAllowedError' || callStartErr?.message?.includes('Permission')
+              ? 'Microphone permission was denied. Please allow microphone access in your browser.'
+              : (callStartErr?.message || 'Unable to connect the voice call.');
+            setErrorMessage(msg);
+            updateState('error');
+            isStartingRef.current = false;
+            return;
+          }
         }
         
         // ─── Provider: Vapi ─────────────────────────────────────────────────

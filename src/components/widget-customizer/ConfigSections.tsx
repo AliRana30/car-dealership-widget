@@ -9,33 +9,93 @@ interface Props {
 }
 
 export function BrandingSection({ draft, onChange }: Props) {
-  const set = (key: keyof typeof draft.branding, val: string) =>
-    onChange({ branding: { [key]: val } as any });
+  const setBranding = (key: string, val: string) =>
+    onChange({ branding: { ...draft.branding, [key]: val } as any });
+
+  const setAvatar = (key: string, val: any) =>
+    onChange({ avatar: { ...(draft.avatar || { size: 44, shape: 'circle' }), [key]: val } as any });
 
   const fields: [keyof typeof draft.branding, string][] = [
-    ['companyName',      'Company Name'],
-    ['assistantName',    'Assistant Name'],
-    ['title',            'Panel Title'],
-    ['subtitle',         'Subtitle'],
-    ['welcomeMessage',   'Welcome Message'],
-    ['startLabel',       'Start Button Label'],
-    ['connectingLabel',  'Connecting Label'],
-    ['connectedLabel',   'Connected Label'],
-    ['endLabel',         'End Call Label'],
-    ['retryLabel',       'Retry Label'],
-    ['muteLabel',        'Mute Label'],
-    ['unmuteLabel',      'Unmute Label'],
+    ['companyName',      'Company / Brand Name'],
+    ['assistantName',    'Assistant Name (Header Display)'],
+    ['title',            'Panel Header Title'],
+    ['subtitle',         'Subtitle / Description'],
+    ['welcomeMessage',   'Initial Welcome Message'],
+    ['placeholderText',  'Chat Input Placeholder'],
+    ['agentMessageName', 'Agent Message Header'],
+    ['userMessageName',  'User Message Header'],
+    ['startLabel',       'Start Voice Call Label'],
+    ['connectingLabel',  'Connecting Status Label'],
+    ['connectedLabel',   'Connected Status Label'],
+    ['endLabel',         'End Call Button Label'],
+    ['retryLabel',       'Retry Button Label'],
+    ['muteLabel',        'Mute Button Label'],
+    ['unmuteLabel',      'Unmute Button Label'],
+    ['errorMessage',     'Connection Error Message'],
+    ['callEndedMessage', 'Call Ended Notice Message'],
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {/* Avatar Sub-Card */}
+      <div style={cardStyle}>
+        <div style={rowStyle}>
+          <span style={labelStyle}>Show Assistant Avatar</span>
+          <label className="cust-toggle">
+            <input
+              type="checkbox"
+              checked={draft.avatar?.enabled || false}
+              onChange={(e) => setAvatar('enabled', e.target.checked)}
+            />
+            <span />
+          </label>
+        </div>
+
+        {draft.avatar?.enabled && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+            <div>
+              <label style={labelStyle}>Avatar Image URL</label>
+              <input
+                type="text"
+                placeholder="https://example.com/avatar.png"
+                value={draft.avatar?.src || ''}
+                onChange={(e) => setAvatar('src', e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Fallback Initials (e.g. FD)</label>
+              <input
+                type="text"
+                placeholder="AI"
+                value={draft.avatar?.fallbackText || ''}
+                onChange={(e) => setAvatar('fallbackText', e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Avatar Shape</label>
+              <select
+                value={draft.avatar?.shape || 'circle'}
+                onChange={(e) => setAvatar('shape', e.target.value)}
+                style={inputStyle}
+              >
+                <option value="circle">Circle</option>
+                <option value="rounded">Rounded</option>
+                <option value="square">Square</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
       {fields.map(([key, label]) => (
         <div key={key}>
           <label style={labelStyle}>{label}</label>
           <input
             type="text"
             value={(draft.branding as any)[key] ?? ''}
-            onChange={(e) => set(key, e.target.value)}
+            onChange={(e) => setBranding(key, e.target.value)}
             style={inputStyle}
           />
         </div>
@@ -46,7 +106,7 @@ export function BrandingSection({ draft, onChange }: Props) {
 
 export function TypographySection({ draft, onChange }: Props) {
   const set = (key: keyof typeof draft.typography, val: any) =>
-    onChange({ typography: { [key]: val } as any });
+    onChange({ typography: { ...draft.typography, [key]: val } as any });
 
   const FONT_PRESETS = [
     { label: 'Inter (Modern & Clean)', value: "'Inter', sans-serif" },
@@ -126,7 +186,7 @@ export function TypographySection({ draft, onChange }: Props) {
 
 export function LauncherSection({ draft, onChange }: Props) {
   const set = (key: keyof typeof draft.launcher, val: any) =>
-    onChange({ launcher: { [key]: val } as any });
+    onChange({ launcher: { ...draft.launcher, [key]: val } as any });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

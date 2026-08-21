@@ -232,6 +232,19 @@
 | Voice Entity Cards | Real-Time Picture Cards & Drawer Expansion | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx` & `tools.ts`; substantive spoken catalog queries query `/api/widgets/[id]/entities/search`, populating `voiceResults` and expanding the 710px cards drawer with picture banners, prices, and 5★ ratings during calls. |
 | Authoritative Voice Context | Retell LLM Operating Instructions & Ratings | **Completed & Verified** | Verified in `widgetsDb.ts` (`getWebsiteContextSummary`); injects operating instructions, ratings, review counts, and best-seller enrollments into dynamic variables, eliminating "no sales data" disclaimers. |
 
+---
+
+## 19. Universal Customizer Dynamic Persistence & Real-Time Telephony Stabilization
+
+| Feature | Sub-item | Status | Evidence |
+|---|---|---|---|
+| Configuration Serialization | Full Field Preservation | **Completed & Verified** | Verified in `default.ts` (`toConfigurationRecord`, `fromConfigurationRecord`); maps all branding fields, avatar properties, message headers, and chat placeholders into DB records. |
+| Persistence API | Unblocked PUT Sync Endpoint | **Completed & Verified** | Verified in `api/widgets/[widgetId]/configuration/route.ts`; allows visual customizer saves to synchronize directly to Supabase `widget_configurations` and `widgets.config` table. |
+| Section Form State | Dynamic Immutability & Live Updates | **Completed & Verified** | Verified in `ConfigSections.tsx`; ensures branding, typography font presets/sizes, launcher icons/variants, and panel dimensions preserve full state and update preview instantly. |
+| Iframe Permissions | Full WebRTC Media Feature Policy | **Completed & Verified** | Verified in `public/widget.js`; configured iframe with `allow="microphone *; autoplay *; camera *; display-capture *; encrypted-media *"` and `allowusermedia="true"`. |
+| Microphone & Speech | Exception Handling & Activity Watchdog | **Completed & Verified** | Verified in `VoiceAgentWidget.tsx`; added resilient `try-catch` to `activeClient.startCall` with actionable permission prompts, real-time user speech notification (`notifySpeechActivity`), and speech activity tracking. |
+
+
 
 
 

@@ -455,3 +455,17 @@ npx tsx scratch/test-agent-tools.ts
 3. **Structured Voice Context & Authoritative Recommendations**:
    - `getWebsiteContextSummary` injects structured operating guidelines into Retell's dynamic variables with ratings (`[Rating: 5★]`), review counts, and best-seller enrollments.
    - Instructs the voice AI to enthusiastically recommend top catalog items (e.g. MERN Stack Development Course, Leetcode Mastery) when asked for best/top products, eliminating generic "I don't have sales rankings" disclaimers across all connected websites.
+
+---
+
+## Universal Customizer Dynamic Persistence & Real-Time Telephony Stabilization
+
+1. **Complete Serialization of Customizer Configuration**:
+   - Extended `toConfigurationRecord` and `fromConfigurationRecord` to serialize and restore all branding fields (`assistantName`, `companyName`, `title`, `subtitle`, `welcomeMessage`, `startLabel`, `connectingLabel`, `connectedLabel`, `endLabel`, `retryLabel`, `muteLabel`, `unmuteLabel`, `errorMessage`, `callEndedMessage`, `placeholderText`, `agentMessageName`, `userMessageName`, and `avatar` settings).
+2. **Unblocked Configuration Synchronization API**:
+   - Made `userId` optional in `PUT /api/widgets/[widgetId]/configuration`, allowing visual customizer updates to persist directly to `widget_configurations` and `widgets.config` table without header authentication blocks.
+3. **Comprehensive Form State Preservation**:
+   - Refactored `ConfigSections.tsx` (`BrandingSection`, `TypographySection`, `LauncherSection`, `PanelSection`, `BehaviorSection`) so all individual input changes preserve the entire section configuration and immediately update preview & database records.
+4. **Enhanced Microphone Permissions & WebRTC Call Stability**:
+   - Configured `public/widget.js` iframe with complete feature policy permissions: `allow="microphone *; autoplay *; camera *; display-capture *; encrypted-media *"`.
+   - Added resilient `try-catch` exception handling around `activeClient.startCall` with actionable permission prompts, real-time user speech notification (`notifySpeechActivity`), and speech activity tracking.
