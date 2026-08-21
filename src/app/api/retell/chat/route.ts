@@ -108,13 +108,15 @@ function isExplicitNavigationIntent(query: string): boolean {
 interface ChatFallbackResult {
   text: string;
   navigationUrl?: string;
+  suggestedUrl?: string;
 }
 
 async function generateChatFallbackResponse(
   content: string,
   relevantData: string | null,
   businessName: string,
-  matchedRecords: WebsiteDataRecord[] = []
+  matchedRecords: WebsiteDataRecord[] = [],
+  lastNavUrl?: string | null
 ): Promise<ChatFallbackResult> {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_KEY;
   const openAiKey = (process.env.OPENAI_API_KEY || '').trim();
@@ -126,6 +128,21 @@ async function generateChatFallbackResponse(
   if (isGreeting) {
     return {
       text: `Hello! I'm your AI front desk receptionist for ${businessName}. How can I help you today? Feel free to ask about our courses, pricing, admissions, or policies.`
+    };
+  }
+
+  // ── "Yes" / Confirmation — navigate to the last suggested URL ──────────
+  const isYesConfirmation = /^(?:yes|yeah|sure|yep|ok|okay|open it|open that|go|do it|please|let's go|yes please|navigate|open|take me there)[\.\!]*$/i.test(trimmed);
+  if (isYesConfirmation && lastNavUrl) {
+    return {
+      text: `Opening that page on your screen now!`,
+      navigationUrl: lastNavUrl,
+    };
+  }
+  // If "yes" but no pending URL, ask what they mean
+  if (isYesConfirmation && !lastNavUrl) {
+    return {
+      text: `Sure! What would you like me to help with? You can ask about our courses, pricing, or I can navigate you to a specific page.`,
     };
   }
 
@@ -368,7 +385,8 @@ Guidelines:
     const linkText = item.sourceUrl ? `\n\n[View Full Course Page](${item.sourceUrl})` : '';
     return {
       text: `Here are the details for **${item.title}**${priceText}:\n\n${descText}${linkText}\n\nWould you like me to open the course page on your screen?`,
-      navigationUrl: undefined
+      navigationUrl: undefined,
+      suggestedUrl: item.sourceUrl,
     };
   }
 
@@ -440,7 +458,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { chatId?: string | null; content?: string; widgetId?: string; sessionId?: string } = {};
+  let body: { chatId?: string | null; content?: string; widgetId?: string; sessionId?: string; lastNavUrl?: string | null } = {};
   try {
     body = (await req.json()) ?? {};
   } catch {
@@ -450,7 +468,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { widgetId, sessionId: incomingSessionId } = body;
+  const { widgetId, sessionId: incomingSessionId, lastNavUrl } = body;
   let { chatId } = body;
   const rawContent = body.content;
   const sessionId = incomingSessionId && typeof incomingSessionId === 'string' ? incomingSessionId : randomUUID();
@@ -615,7 +633,8 @@ export async function POST(req: NextRequest) {
       content,
       relevantData,
       widget.name || widget.config?.branding?.companyName || 'our business',
-      relevantRecords
+      relevantRecords,
+      lastNavUrl
     );
 
     const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
@@ -626,8 +645,9 @@ export async function POST(req: NextRequest) {
       {
         role: 'agent',
         content: fallbackResult.text,
-        ...(relevantRecords.length > 0 && isCatalogIntent && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
+        ...(relevantRecords.length > 0 && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
         ...(fallbackResult.navigationUrl ? { navigationUrl: fallbackResult.navigationUrl } : {}),
+        ...(fallbackResult.suggestedUrl ? { suggestedUrl: fallbackResult.suggestedUrl } : {}),
       },
     ];
 
@@ -637,6 +657,7 @@ export async function POST(req: NextRequest) {
         messages: fallbackMessages,
         sessionId,
         navigationUrl: fallbackResult.navigationUrl,
+        suggestedUrl: fallbackResult.suggestedUrl,
         action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
       },
       { status: 200, headers }
@@ -759,7 +780,8 @@ export async function POST(req: NextRequest) {
       content,
       relevantData,
       widget.name || widget.config?.branding?.companyName || 'our business',
-      relevantRecords
+      relevantRecords,
+      lastNavUrl
     );
 
     const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
@@ -770,8 +792,9 @@ export async function POST(req: NextRequest) {
       {
         role: 'agent',
         content: fallbackResult.text,
-        ...(relevantRecords.length > 0 && isCatalogIntent && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
+        ...(relevantRecords.length > 0 && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
         ...(fallbackResult.navigationUrl ? { navigationUrl: fallbackResult.navigationUrl } : {}),
+        ...(fallbackResult.suggestedUrl ? { suggestedUrl: fallbackResult.suggestedUrl } : {}),
       },
     ];
 
@@ -781,6 +804,7 @@ export async function POST(req: NextRequest) {
         messages: fallbackMessages,
         sessionId,
         navigationUrl: fallbackResult.navigationUrl,
+        suggestedUrl: fallbackResult.suggestedUrl,
         action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
       },
       { status: 200, headers }

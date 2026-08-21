@@ -182,7 +182,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     const fetchedContents = useRef<Set<string>>(new Set());
 
     // Helper to identify greetings vs substantive catalog queries
-    const isGreetingOrGeneric = (text: string) => {
+    const isGreetingOrGeneric = useCallback((text: string) => {
       const t = text.trim().toLowerCase();
       return (
         /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|welcome)\b/i.test(t) ||
@@ -193,9 +193,10 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         t.includes('how are you') ||
         t.length < 15
       );
-    };
+    }, []);
 
     const lastNavigatedUrlRef = useRef<string | null>(null);
+    const lastPendingNavUrlRef = useRef<string | null>(null); // tracks URL from "Would you like me to open?" prompts
 
     // ── Real-Time Voice Navigation & Entity Cards Bridge ───
     useEffect(() => {
@@ -628,6 +629,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               content: text,
               widgetId: widgetId || 'default',
               history: chatMessages.slice(-6),
+              lastNavUrl: lastPendingNavUrlRef.current,
             }),
           });
 
@@ -643,6 +645,16 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             sessionIdRef.current = data.sessionId;
             setActiveSessionId(data.sessionId);
           }
+
+          // ── Handle navigation: check pending "yes" confirmation first ──
+          const isYesConfirmation = /^(?:yes|yeah|sure|yep|ok|okay|open it|open that|go|navigate|do it|please|let's go|yes please)[\.!]*$/i.test(text.trim());
+          let navUrl = data.navigationUrl || data.action?.url;
+
+          // If user said "yes" and there's a pending nav URL from a previous agent message, use it
+          if (!navUrl && isYesConfirmation && lastPendingNavUrlRef.current) {
+            navUrl = lastPendingNavUrlRef.current;
+          }
+
           if (data.messages && Array.isArray(data.messages)) {
             // Filter only agent messages to prevent duplicating the user's message in the UI
             const agentMsgs = data.messages
@@ -656,23 +668,64 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               })) as TranscriptMessage[];
 
             if (agentMsgs.length > 0) {
-              setChatMessages((prev) => [...prev, ...agentMsgs]);
-            }
+              // ── Search entity cards for the agent's reply and attach to message ──
+              const agentContent = agentMsgs[0]?.content || '';
+              const shouldSearchCards = !isGreetingOrGeneric(agentContent) && (
+                /\b(?:course|program|class|service|product|pricing|price|cost|mern|backend|leetcode|offering)\b/i.test(agentContent) ||
+                /\b(?:course|program|class|service|product|pricing|price|cost|mern|backend|leetcode|offering)\b/i.test(text)
+              );
 
-            // Real-Time Autonomous Host Navigation
-            const navUrl = data.navigationUrl || data.action?.url || (data.messages.find((m: any) => m.navigationUrl || m.action?.url))?.navigationUrl;
-            if (navUrl && typeof window !== 'undefined') {
-              try {
-                if (window.parent && window.parent !== window) {
-                  window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url: navUrl }, '*');
-                  window.parent.postMessage({ type: 'voice-agent-navigate', url: navUrl }, '*');
-                  window.parent.postMessage({ type: 'navigate', url: navUrl }, '*');
-                } else if (window.location.pathname !== new URL(navUrl, window.location.href).pathname) {
-                  window.location.href = navUrl;
-                }
-              } catch (navErr) {
-                console.warn('[VoiceAgent] Navigation error:', navErr);
+              if (shouldSearchCards && !agentMsgs[0].results) {
+                // Fire async entity search and update the message when done
+                const searchQuery = text.length > agentContent.length ? text : agentContent;
+                fetch(`/api/widgets/${widgetId || 'default'}/entities/search`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ query: searchQuery, limit: 4 }),
+                })
+                  .then((r) => r.json())
+                  .then((entityData) => {
+                    const entityResults = entityData.entities || entityData.results || [];
+                    if (Array.isArray(entityResults) && entityResults.length > 0) {
+                      setChatMessages((prev) => {
+                        const idx = prev.findIndex((m) => m.role === 'agent' && m.content === agentContent && !m.results);
+                        if (idx === -1) return prev;
+                        const updated = [...prev];
+                        updated[idx] = { ...updated[idx], results: entityResults };
+                        return updated;
+                      });
+                    }
+                  })
+                  .catch(() => {});
               }
+
+              setChatMessages((prev) => [...prev, ...agentMsgs]);
+
+              // Track the pending navigation URL from agent suggestions or markdown links
+              const urlFromMarkdown = agentContent.match(/\[(?:[^\]]+)\]\((https?:\/\/[^\)]+|\/[^\)]+)\)/)?.[1];
+              const urlFromText = agentContent.match(/https?:\/\/[^\s<>"')]+/)?.[0];
+              const suggestedNavUrl = data.suggestedUrl || data.navigationUrl || data.action?.url || 
+                (data.messages.find((m: any) => m.navigationUrl || m.action?.url || m.suggestedUrl) as any)?.suggestedUrl ||
+                urlFromMarkdown || urlFromText || agentMsgs[0]?.results?.[0]?.sourceUrl;
+
+              if (suggestedNavUrl) {
+                lastPendingNavUrlRef.current = suggestedNavUrl;
+              }
+            }
+          }
+
+          // ── Real-Time Autonomous Host Navigation ──
+          if (navUrl && typeof window !== 'undefined') {
+            lastPendingNavUrlRef.current = null; // consumed
+            try {
+              if (window.parent && window.parent !== window) {
+                window.parent.postMessage({ type: 'WIDGET_NAVIGATE', url: navUrl }, '*');
+                window.parent.postMessage({ type: 'voice-agent-navigate', url: navUrl }, '*');
+              } else if (window.location.pathname !== new URL(navUrl, window.location.href).pathname) {
+                window.location.href = navUrl;
+              }
+            } catch (navErr) {
+              console.warn('[VoiceAgent] Navigation error:', navErr);
             }
           }
         } catch {
@@ -684,7 +737,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           setChatTyping(false);
         }
       },
-      [chatInput, chatTyping, chatId, isDemo, mergedConfig.branding.companyName, widgetId, chatMessages]
+      [chatInput, chatTyping, chatId, isDemo, mergedConfig.branding.companyName, widgetId, chatMessages, isGreetingOrGeneric]
     );
 
     const handleSendChatMessage = useCallback(

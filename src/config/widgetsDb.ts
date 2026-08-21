@@ -659,8 +659,8 @@ export async function getRelevantWebsiteData(
     }
 
     const trimmedQuery = query.trim().toLowerCase();
-    const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
-    if (isGreeting) {
+    const isGreetingOrConfirm = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help|yes|yeah|sure|yep|ok|okay|open it|go|please|do it|open that)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
+    if (isGreetingOrConfirm) {
       return '';
     }
 
@@ -782,8 +782,8 @@ export async function getRelevantWebsiteRecords(
 ): Promise<WebsiteDataRecord[]> {
   try {
     const trimmedQuery = query.trim().toLowerCase();
-    const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
-    if (isGreeting) {
+    const isGreetingOrConfirm = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help|yes|yeah|sure|yep|ok|okay|open it|go|please|do it|open that)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
+    if (isGreetingOrConfirm) {
       return [];
     }
 
