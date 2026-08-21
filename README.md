@@ -319,13 +319,16 @@ npx tsx scratch/test-silence-auto-hangup.ts
 
 # Run per-widget spend cap with circuit breaker test suite (Task C.3)
 npx tsx scratch/test-spend-circuit-breaker.ts
+
+# Run session-based chat rate limiting and duplicate throttling test suite (Task C.4)
+npx tsx scratch/test-chat-session-throttle.ts
 ```
 
 ---
 
-## Hard Duration, Turn Caps, Silence Hangup & Spend Circuit Breakers (Cost & Abuse Protection)
+## Hard Duration, Turn Caps, Silence Hangup, Spend Circuit Breakers & Chat Throttling (Cost & Abuse Protection)
 
-Widgetized enforces strict, unavoidable server-side rate, duration, silence, and volume boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
+Widgetized enforces strict, unavoidable server-side rate, duration, silence, volume, and repetition boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
 
 1. **Server-Side Hard Call Duration Cap**:
    - Configurable per widget under the **Behavior** settings via `maxCallDurationMinutes` (default: 10 minutes, tunable from 1–60 min).
@@ -345,8 +348,13 @@ Widgetized enforces strict, unavoidable server-side rate, duration, silence, and
    - **Dashboard Indicator**: Prominently flags the widget card with an alert badge (*"⚠️ Circuit Breaker: Daily Spend Cap Reached"*) and displays daily quota counters (`📞 Calls: X/Y • 💬 Chats: A/B`).
    - **Automatic Rollover**: Auto-resets at UTC midnight date partition boundaries without requiring manual intervention.
    - **Fail-Safe Operation**: Fails open with logged warnings if tracking errors occur, ensuring tracking failures never become an outage.
-5. **Pre-Filled Baseline Protection**:
-   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session, `15s` silence watchdog, `100 calls/day`, `500 chats/day`) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
+5. **Session-Scoped Chat Rate Limiting & Duplicate Throttling**:
+   - Configurable per widget under **Behavior** via `chatRateLimitPerMinute` (default: 15 msg/min per session) and `maxMessageCharacters` (default: 1000 characters).
+   - **Sliding-Window Rate Limiter**: Evaluates message rate per session identifier (`chatId || sessionId || ip`), throttling rapid bursts (HTTP 429) independently of IP-level limits.
+   - **Duplicate-Message Throttling**: When a visitor repeatedly sends identical message text in rapid succession, skips invoking upstream LLM calls after the threshold (default: 2 repeats) and returns a lightweight static answer (*"I've already answered that — is there something else I can help with?"*), consuming 0 LLM tokens.
+   - **Message Length Cap**: Rejects oversized inputs (>1,000 chars) before tokenization or vector lookup.
+6. **Pre-Filled Baseline Protection**:
+   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session, `15s` silence watchdog, `100 calls/day`, `500 chats/day`, `15 msg/min`, `1,000 char cap`) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
 
 ---
 

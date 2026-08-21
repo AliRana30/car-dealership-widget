@@ -323,6 +323,10 @@ export interface VoiceWidgetBehaviorConfig {
   maxDailyCalls?: number;
   /** Maximum allowed chat messages/turns per day before circuit breaker trips (default: 500) */
   maxDailyChats?: number;
+  /** Session-scoped chat rate limit: max messages per minute (default: 15) */
+  chatRateLimitPerMinute?: number;
+  /** Maximum character length allowed for a single chat message (default: 1000) */
+  maxMessageCharacters?: number;
 }
 
 // -------------------------------------------------------

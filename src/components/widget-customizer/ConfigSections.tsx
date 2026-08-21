@@ -348,6 +348,36 @@ export function BehaviorSection({ draft, onChange }: Props) {
             Maximum allowed chat messages per day before the circuit breaker trips (default: 500/day). Automatically resets at UTC midnight.
           </div>
         </div>
+
+        <div>
+          <label style={labelStyle}>Chat Rate Limit (Messages / Minute / Session)</label>
+          <input
+            type="number"
+            min={1}
+            max={120}
+            value={draft.behavior.chatRateLimitPerMinute ?? 15}
+            onChange={(e) => set('chatRateLimitPerMinute', Math.max(1, Math.min(120, parseInt(e.target.value, 10) || 15)))}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Session-scoped rate limit. Throttles rapid message bursts per session independently of IP blocking (default: 15 msg/min).
+          </div>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Max Message Length (Characters)</label>
+          <input
+            type="number"
+            min={100}
+            max={10000}
+            value={draft.behavior.maxMessageCharacters ?? 1000}
+            onChange={(e) => set('maxMessageCharacters', Math.max(100, Math.min(10000, parseInt(e.target.value, 10) || 1000)))}
+            style={inputStyle}
+          />
+          <div style={{ fontSize: '11px', color: '#64748B', marginTop: '3px' }}>
+            Caps the length of individual user chat messages to prevent prompt injection and token abuse (default: 1,000 chars).
+          </div>
+        </div>
       </div>
     </div>
   );

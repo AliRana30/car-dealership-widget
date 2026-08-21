@@ -15,7 +15,12 @@ import Retell from 'retell-sdk';
 import { randomUUID } from 'crypto';
 import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords, WebsiteDataRecord } from '@/config/widgetsDb';
 import { generateBaseSystemPrompt } from '@/lib/agents/prompts';
-import { checkAndIncrementChatTurns } from '@/lib/chat/chatLimiter';
+import {
+  checkAndIncrementChatTurns,
+  checkSessionChatRateLimit,
+  checkDuplicateMessage,
+  validateMessageLength,
+} from '@/lib/chat/chatLimiter';
 import { checkAndIncrementUsage } from '@/lib/usage/spendLimiter';
 
 function maskIp(ip: string): string {
@@ -314,13 +319,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { content, widgetId, sessionId: incomingSessionId } = body;
+  const { widgetId, sessionId: incomingSessionId } = body;
   let { chatId } = body;
+  const rawContent = body.content;
   const sessionId = incomingSessionId && typeof incomingSessionId === 'string' ? incomingSessionId : randomUUID();
 
-  if (!content || typeof content !== 'string' || content.trim() === '') {
+  if (!rawContent || typeof rawContent !== 'string' || rawContent.trim() === '') {
     return NextResponse.json(
       { error: 'invalid_request', message: 'Content field is required and must be a non-empty string.' },
+      { status: 400, headers }
+    );
+  }
+
+  const content: string = rawContent.trim();
+
+  // Validate message content length cap (Task C.4)
+  const lengthValidation = validateMessageLength(content, 1000);
+  if (!lengthValidation.valid) {
+    return NextResponse.json(
+      { error: 'invalid_request', message: lengthValidation.error || 'Message cannot be empty.' },
       { status: 400, headers }
     );
   }
@@ -386,9 +403,52 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Session-Scoped Chat Rate Limiting (Task C.4) ──────────────────────
+  const chatRateLimitPerMinute = widget.config?.behavior?.chatRateLimitPerMinute ?? 15;
+  const sessionTurnKey = chatId || sessionId || ip;
+  const rateLimitCheck = checkSessionChatRateLimit(sessionTurnKey, chatRateLimitPerMinute);
+
+  if (!rateLimitCheck.allowed) {
+    const rateLimitMessage = rateLimitCheck.message || "You're sending messages too fast. Please wait a moment before trying again.";
+    console.warn(`[CHAT_RATE_LIMIT] Session ${sessionTurnKey} throttled (${rateLimitCheck.currentWindowCount}/${rateLimitCheck.maxPerMinute} msg/min).`);
+
+    return NextResponse.json(
+      {
+        chatId: chatId || `chat_${Date.now()}`,
+        messages: [
+          { role: 'user', content: content.trim() },
+          { role: 'agent', content: rateLimitMessage },
+        ],
+        sessionId,
+        isRateLimited: true,
+        retryAfterSeconds: rateLimitCheck.retryAfterSeconds,
+      },
+      { status: 429, headers }
+    );
+  }
+
+  // ── Duplicate-Message Throttling (Task C.4) ───────────────────────────
+  const duplicateCheck = checkDuplicateMessage(sessionTurnKey, content);
+  if (duplicateCheck.isDuplicateThrottled) {
+    const staticReply = duplicateCheck.message || "I've already answered that — is there something else I can help with?";
+
+    return NextResponse.json(
+      {
+        chatId: chatId || `chat_${Date.now()}`,
+        messages: [
+          { role: 'user', content: content.trim() },
+          { role: 'agent', content: staticReply },
+        ],
+        sessionId,
+        isDuplicateThrottled: true,
+        duplicateCount: duplicateCheck.duplicateCount,
+      },
+      { status: 200, headers }
+    );
+  }
+
   // ── Enforce Hard Server-Side Chat Turn Limits (Task C.1) ─────────────────
   const maxChatTurns = widget.config?.behavior?.maxChatTurns ?? 30;
-  const sessionTurnKey = chatId || sessionId || ip;
   const turnCheck = checkAndIncrementChatTurns(sessionTurnKey, maxChatTurns);
 
   if (!turnCheck.allowed) {
