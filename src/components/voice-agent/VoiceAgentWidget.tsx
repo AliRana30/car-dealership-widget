@@ -164,6 +164,21 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const fetchedContents = useRef<Set<string>>(new Set());
 
+    // Helper to identify greetings vs substantive catalog queries
+    const isGreetingOrGeneric = (text: string) => {
+      const t = text.trim().toLowerCase();
+      return (
+        /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|welcome)\b/i.test(t) ||
+        t.includes('how can i help') ||
+        t.includes('how may i assist') ||
+        t.includes('front desk receptionist') ||
+        t.includes('virtual receptionist') ||
+        t.includes('how are you') ||
+        t.length < 15
+      );
+    };
+
+    // Only query backend for voice cards when substantive catalog questions are answered after user speaks
     useEffect(() => {
       const isCallActive = ['connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState);
       if (!isCallActive) {
@@ -172,9 +187,25 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         return;
       }
 
+      // Do NOT fetch result cards if user has not spoken yet or conversation is just starting
+      if (!hasUserSpokenRef.current || transcript.length <= 1) {
+        return;
+      }
+
       transcript.forEach((msg) => {
         const content = msg.content?.trim();
         if (!content || msg.role !== 'agent' || fetchedContents.current.has(content)) {
+          return;
+        }
+
+        // Ignore greetings and generic opening remarks
+        if (isGreetingOrGeneric(content)) {
+          return;
+        }
+
+        // Only search if the content has catalog/offering intent
+        const hasCatalogKeywords = /course|courses|program|programs|class|classes|pricing|price|cost|tier|service|services|offering|inventory|product|learn/i.test(content);
+        if (!hasCatalogKeywords) {
           return;
         }
 
@@ -224,6 +255,33 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     const hasUserSpokenRef = useRef(false);
     const isStartingRef = useRef(false);
     const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+    // Safe stop helper to tear down active call and timers
+    const safeStopCurrentCall = useCallback(() => {
+      if (initialSilenceTimerRef.current) {
+        clearTimeout(initialSilenceTimerRef.current);
+        initialSilenceTimerRef.current = null;
+      }
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
+      if (clientRef.current) {
+        try {
+          if (providerRef.current === 'vapi') {
+            clientRef.current.stop();
+          } else {
+            clientRef.current.stopCall();
+          }
+        } catch (err) {
+          console.warn('[VoiceAgent] Error stopping client:', err);
+        }
+        clientRef.current = null;
+      }
+      isStartingRef.current = false;
+      setAgentSpeaking(false);
+      setUserSpeaking(false);
+    }, []);
 
     // Initial silence watchdog speech activity detector (Task C.2)
     const notifySpeechActivity = useCallback(() => {
@@ -410,23 +468,6 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         window.parent.postMessage({ type: 'widget-ready', config: mergedConfig }, '*');
       }
     }, [mergedConfig]);
-
-    // Helper to safely stop calls on either Retell or Vapi
-    const safeStopCurrentCall = useCallback(() => {
-      if (initialSilenceTimerRef.current) {
-        clearTimeout(initialSilenceTimerRef.current);
-        initialSilenceTimerRef.current = null;
-      }
-      if (clientRef.current) {
-        try {
-          if (providerRef.current === 'vapi') {
-            clientRef.current.stop();
-          } else {
-            clientRef.current.stopCall();
-          }
-        } catch {}
-      }
-    }, []);
 
     // Sync state update with parent callback
     const updateState = useCallback(
@@ -696,7 +737,13 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
         updateState('permission_required');
         try {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
+          const probeStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Immediately stop and release probe tracks so WebRTC SDK gets clean exclusive access
+          probeStream.getTracks().forEach((track) => {
+            try {
+              track.stop();
+            } catch (_) {}
+          });
         } catch (micErr) {
           const errorName = micErr instanceof Error ? micErr.name : '';
           if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
@@ -831,8 +878,13 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           });
 
           activeClient.on('error', (err: { message?: string }) => {
+            const errMsg = err?.message || 'Call encountered a connection interruption.';
+            // Ignore normal disconnect or data channel teardown logs
+            if (errMsg.includes('participant') || errMsg.includes('closed') || errMsg.includes('DataChannel') || errMsg.includes('unsubscribed')) {
+              console.warn('[VoiceAgent] WebRTC channel event:', errMsg);
+              return;
+            }
             console.error('Retell SDK error:', err);
-            const errMsg = err.message || 'Call encountered a connection interruption.';
             sendTelemetry('call_error', errMsg);
             setErrorMessage(errMsg);
             updateState('error');
@@ -862,7 +914,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
           await activeClient.startCall({
             accessToken: token,
-            emitRawAudioSamples: true,
+            emitRawAudioSamples: false,
           });
         }
         
