@@ -131,9 +131,11 @@ export default function VoiceAgentHeader({
           />
         )}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--voice-widget-text, #0F172A)', lineHeight: 1.2 }}>
-            {branding.assistantName || 'AI Assistant'}
-          </span>
+          {branding.companyName && (
+            <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--voice-widget-text, #0F172A)', lineHeight: 1.2 }}>
+              {branding.companyName}
+            </span>
+          )}
           {branding.subtitle && (
             <span style={{ fontSize: '10.5px', color: 'var(--voice-widget-text-muted, #64748B)', marginTop: '2px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {branding.subtitle}

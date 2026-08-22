@@ -161,65 +161,50 @@ export default function PromptLibrary({ isEmbedded = false }: PromptLibraryProps
       )}
 
       {/* Main Content Area */}
-      <div style={{ maxWidth: '1240px', margin: '0 auto', padding: isEmbedded ? '20px 0' : '40px 24px' }}>
-        {/* Banner Section */}
+      <div style={{ maxWidth: '1240px', margin: '0 auto', padding: isEmbedded ? '16px 0' : '32px 20px', boxSizing: 'border-box', width: '100%' }}>
+        {/* Banner Section - clean, no badge, no stats chips */}
         <div style={{
-          background: 'linear-gradient(135deg, #1E293B, #0F172A)',
-          borderRadius: '20px',
-          padding: '32px 36px',
+          background: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+          borderRadius: '16px',
+          padding: '28px 28px',
           color: '#FFFFFF',
-          boxShadow: '0 12px 36px -8px rgba(15,23,42,0.25)',
-          marginBottom: '32px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '24px',
-          flexWrap: 'wrap',
+          boxShadow: '0 8px 24px -6px rgba(15,23,42,0.3)',
+          marginBottom: '24px',
+          boxSizing: 'border-box',
+          width: '100%',
         }}>
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(37,99,235,0.2)', border: '1px solid rgba(59,130,246,0.3)', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, color: '#93C5FD', marginBottom: '12px' }}>
-              <BookOpen size={13} />
-              Production Voice Agent Prompts
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+            <div style={{ width: '32px', height: '32px', background: 'rgba(37,99,235,0.25)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <BookOpen size={16} color="#93C5FD" />
             </div>
-            <h1 style={{ margin: '0 0 8px', fontSize: '26px', fontWeight: 800, letterSpacing: '-0.02em' }}>
-              AI Front Desk Agent Prompt Library
+            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              AI Agent Prompt Library
             </h1>
-            <p style={{ margin: 0, fontSize: '14.5px', color: '#94A3B8', maxWidth: '640px', lineHeight: 1.5 }}>
-              Expertly tuned system prompts, conversational constraints, dynamic context bindings, and tool definitions for 10 common business verticals.
-            </p>
           </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '12px', padding: '12px 18px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#38BDF8' }}>10</div>
-              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 600 }}>Industries</div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '12px', padding: '12px 18px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '20px', fontWeight: 800, color: '#4ADE80' }}>100%</div>
-              <div style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 600 }}>Crawl Linked</div>
-            </div>
-          </div>
+          <p style={{ margin: 0, fontSize: '13.5px', color: '#94A3B8', lineHeight: 1.55, maxWidth: '540px' }}>
+            Expertly tuned system prompts, conversational constraints, and tool definitions for 10 common business verticals.
+          </p>
         </div>
 
         {/* Search & Category Filter Bar */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '28px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px', width: '100%', boxSizing: 'border-box' }}>
           {/* Search Input */}
-          <div style={{ position: 'relative', width: '100%' }}>
-            <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+          <div style={{ position: 'relative', width: '100%', boxSizing: 'border-box' }}>
+            <Search size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', pointerEvents: 'none' }} />
             <input
               type="text"
-              placeholder="Search prompts by industry, keywords, tool function (e.g. test_drive, inventory, booking)..."
+              placeholder="Search prompts by industry, keywords, tool function..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
                 width: '100%',
-                padding: '13px 16px 13px 46px',
-                borderRadius: '12px',
+                padding: '11px 14px 11px 40px',
+                borderRadius: '10px',
                 border: '1px solid #E2E8F0',
                 background: '#FFFFFF',
-                fontSize: '14.5px',
+                fontSize: '13.5px',
                 color: '#0F172A',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
                 outline: 'none',
                 boxSizing: 'border-box',
               }}
@@ -229,11 +214,12 @@ export default function PromptLibrary({ isEmbedded = false }: PromptLibraryProps
           {/* Category Chips Scroll */}
           <div style={{
             display: 'flex',
-            gap: '8px',
+            gap: '6px',
             overflowX: 'auto',
-            paddingBottom: '4px',
+            paddingBottom: '2px',
             msOverflowStyle: 'none',
             scrollbarWidth: 'none',
+            width: '100%',
           }}>
             {categories.map(cat => {
               const active = selectedCategory === cat.id;
@@ -265,8 +251,10 @@ export default function PromptLibrary({ isEmbedded = false }: PromptLibraryProps
         {/* Templates Grid */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-          gap: '20px',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gap: '16px',
+          width: '100%',
+          boxSizing: 'border-box',
         }}>
           {filteredTemplates.map(template => {
             const isCopied = copiedId === template.id;

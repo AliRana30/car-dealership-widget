@@ -634,6 +634,21 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchWidgets(); }, [fetchWidgets]);
 
+  // ── Dynamic quota refresh every 30s ────────────────────────────────────────
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetch('/api/widgets')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (Array.isArray(data)) {
+            setWidgets(data);
+          }
+        })
+        .catch(() => {});
+    }, 30_000);
+    return () => clearInterval(intervalId);
+  }, []);
+
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
