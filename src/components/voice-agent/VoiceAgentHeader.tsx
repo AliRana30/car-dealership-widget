@@ -13,6 +13,9 @@ interface VoiceAgentHeaderProps {
   isCardsOpen?: boolean;
   isMuted?: boolean;
   onToggleMute?: () => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
+  onMinimize?: () => void;
 }
 
 const CLOSE_ICON_PATH = ['M18 6L6 18', 'M6 6l12 12'];
@@ -29,6 +32,9 @@ export default function VoiceAgentHeader({
   isCardsOpen = true,
   isMuted = false,
   onToggleMute,
+  isExpanded = false,
+  onToggleExpand,
+  onMinimize,
 }: VoiceAgentHeaderProps) {
   const { branding, panel, avatar } = config;
   const [imageError, setImageError] = useState(false);
@@ -175,6 +181,64 @@ export default function VoiceAgentHeader({
         )}
 
 
+
+        {/* Expand / Minimize Split View Toggle (Image 2) */}
+        {onToggleExpand && (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            style={{
+              background: isExpanded ? 'rgba(14,27,42,0.08)' : 'transparent',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              color: isExpanded ? 'var(--voice-widget-primary, #2F8FE0)' : '#64748B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+            }}
+            title={isExpanded ? "Collapse side panel" : "Expand side panel"}
+            aria-label={isExpanded ? "Collapse side panel" : "Expand side panel"}
+          >
+            {isExpanded ? (
+              /* Minimize2 icon (arrows pointing in) */
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />
+              </svg>
+            ) : (
+              /* Maximize2 icon (arrows pointing out - matching Image 2) */
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+              </svg>
+            )}
+          </button>
+        )}
+
+        {/* Down Arrow / Minimize Panel */}
+        {onMinimize && (
+          <button
+            type="button"
+            onClick={onMinimize}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              color: '#64748B',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px',
+            }}
+            title="Minimize panel"
+            aria-label="Minimize panel"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+        )}
 
         {/* New Chat / Reload */}
         {onNewChat && (

@@ -35,6 +35,9 @@ interface VoiceAgentPanelProps {
   onNewChat?: () => void;
   cards?: WebsiteDataResult[];
   onDismissCards?: () => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
+  onMinimize?: () => void;
 }
 
 export default function VoiceAgentPanel({
@@ -66,6 +69,9 @@ export default function VoiceAgentPanel({
   onNewChat,
   cards = [],
   onDismissCards,
+  isExpanded = false,
+  onToggleExpand,
+  onMinimize,
 }: VoiceAgentPanelProps) {
   const { panel, animation } = config;
   const hasCards = Boolean(cards && cards.length > 0);
@@ -128,17 +134,17 @@ export default function VoiceAgentPanel({
     
     const offset = panel.offset || defaultOffset;
     const baseWidth = typeof panel.width === 'number' ? panel.width : 360;
-    const calculatedWidth = hasCards ? 700 : baseWidth;
+    const calculatedWidth = (hasCards || isExpanded) ? 700 : baseWidth;
 
     const style: React.CSSProperties = {
       position: 'fixed',
       zIndex: (launcher.zIndex ?? 1000) - 1,
-      width: hasCards ? `min(${calculatedWidth}px, calc(100vw - 24px))` : (typeof panel.width === 'number' ? `${panel.width}px` : panel.width),
+      width: (hasCards || isExpanded) ? `min(${calculatedWidth}px, calc(100vw - 24px))` : (typeof panel.width === 'number' ? `${panel.width}px` : panel.width),
       height: panel.height !== undefined ? (typeof panel.height === 'number' ? `${panel.height}px` : panel.height) : 'auto',
-      maxWidth: hasCards ? 'calc(100vw - 20px)' : (panel.maxWidth !== undefined ? (typeof panel.maxWidth === 'number' ? `${panel.maxWidth}px` : panel.maxWidth) : '100vw'),
+      maxWidth: (hasCards || isExpanded) ? 'calc(100vw - 20px)' : (panel.maxWidth !== undefined ? (typeof panel.maxWidth === 'number' ? `${panel.maxWidth}px` : panel.maxWidth) : '100vw'),
       maxHeight: (() => {
         const verticalOffset = targetPos.startsWith('bottom') ? (offset.bottom || 0) : (offset.top || 0);
-        const topGap = 24; // safe spacing from container edge
+        const topGap = 24;
         const maxHp = `calc(100% - ${verticalOffset + topGap}px)`;
         const calculatedMaxHeight = panel.maxHeight !== undefined ? panel.maxHeight : 490;
         return typeof calculatedMaxHeight === 'number'
@@ -209,12 +215,15 @@ export default function VoiceAgentPanel({
         onToggleCards={undefined}
         isMuted={isMuted}
         onToggleMute={onToggleMute}
+        isExpanded={isExpanded}
+        onToggleExpand={onToggleExpand}
+        onMinimize={onMinimize || onClose}
       />
 
       <style jsx>{`
         @media (max-width: 680px) {
           .voice-widget-panel-body {
-            flex-direction: column !important;
+            flex-direction: column-reverse !important;
             overflow-y: auto !important;
           }
           .voice-widget-main-col {
@@ -227,7 +236,7 @@ export default function VoiceAgentPanel({
             min-width: 100% !important;
             max-width: 100% !important;
             border-left: none !important;
-            border-top: 1px solid var(--voice-widget-border, #E2E8F0) !important;
+            border-bottom: 1px solid var(--voice-widget-border, #E2E8F0) !important;
             max-height: 260px !important;
             flex: none !important;
           }
@@ -283,6 +292,7 @@ export default function VoiceAgentPanel({
             isActive={isActive}
             isMuted={isMuted}
             onToggleMute={onToggleMute}
+            onStartCall={onStartCall}
             onStopCall={onStopCall}
             chatInput={chatInput}
             onChatInputChange={onChatInputChange}

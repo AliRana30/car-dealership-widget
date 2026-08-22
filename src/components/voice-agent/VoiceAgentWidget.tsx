@@ -773,6 +773,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     }, [mergedConfig, activeSessionId, widgetId]);
 
     const [dismissedCardTopic, setDismissedCardTopic] = useState<string | null>(null);
+    const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
 
     const activeCards = React.useMemo(() => {
       if (activeTab === 'text') {
@@ -795,15 +796,15 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       return [];
     }, [activeTab, chatMessages, transcript, voiceResults, dismissedCardTopic]);
 
-    // Send resize postMessage whenever cards expand or collapse
+    // Send resize postMessage whenever cards expand or collapse or manual toggle changes
     useEffect(() => {
       if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
         window.parent.postMessage({
           type: 'widget-resize',
-          expanded: activeCards.length > 0,
+          expanded: activeCards.length > 0 || isManuallyExpanded,
         }, '*');
       }
-    }, [activeCards.length]);
+    }, [activeCards.length, isManuallyExpanded]);
 
     const startCall = useCallback(async () => {
       if (callState !== 'idle' && callState !== 'ended' && callState !== 'error') {
@@ -1645,6 +1646,9 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           onNewChat={handleNewChat}
           cards={activeCards}
           onDismissCards={() => setDismissedCardTopic('dismissed')}
+          isExpanded={activeCards.length > 0 || isManuallyExpanded}
+          onToggleExpand={() => setIsManuallyExpanded(prev => !prev)}
+          onMinimize={() => setIsOpen(false)}
         />
       </div>
     );

@@ -143,24 +143,38 @@
       case 'WIDGET_NAVIGATE':
       case 'widget-navigate':
       case 'navigate':
-        // Top-level host navigation bridge — keep widget open across navigation
         if (data.url && typeof data.url === 'string') {
           console.log('[Widgetized] Agent requested host page navigation to:', data.url);
-          try {
-            // Persist open state BEFORE navigating so the widget reopens on the next page
-            sessionStorage.setItem('myfrontdesk_open_' + widgetId, '1');
-            sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
-            sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, isPanelExpanded ? '1' : '0');
-            // Store last known dimensions so we can restore without waiting for widget-ready
-            if (widgetConfig) {
-              try { sessionStorage.setItem('myfrontdesk_config_' + widgetId, JSON.stringify({ panel: widgetConfig.panel, launcher: widgetConfig.launcher })); } catch(_) {}
-            }
-          } catch (_) {}
           let target = data.url;
-          if (target.startsWith('/')) {
-            target = window.location.origin + target;
+          const isExternal = target.startsWith('http://') || target.startsWith('https://');
+          const isSameOrigin = isExternal ? new URL(target).origin === window.location.origin : true;
+          
+          if (data.newTab || (isExternal && !isSameOrigin)) {
+            // Opening external link in new tab or external site — close widget in current tab
+            try {
+              sessionStorage.setItem('myfrontdesk_open_' + widgetId, '0');
+              sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, '0');
+            } catch (_) {}
+            isPanelExpanded = false;
+            resizeWidget(false);
+            if (isExternal && !isSameOrigin) {
+              window.open(target, '_blank', 'noopener,noreferrer');
+            }
+          } else {
+            // Same origin internal route — navigate host page and persist widget state
+            try {
+              sessionStorage.setItem('myfrontdesk_open_' + widgetId, '1');
+              sessionStorage.setItem('myfrontdesk_reopen_' + widgetId, 'true');
+              sessionStorage.setItem('myfrontdesk_expanded_' + widgetId, isPanelExpanded ? '1' : '0');
+              if (widgetConfig) {
+                try { sessionStorage.setItem('myfrontdesk_config_' + widgetId, JSON.stringify({ panel: widgetConfig.panel, launcher: widgetConfig.launcher })); } catch(_) {}
+              }
+            } catch (_) {}
+            if (target.startsWith('/')) {
+              target = window.location.origin + target;
+            }
+            window.location.href = target;
           }
-          window.location.href = target;
         }
         break;
 

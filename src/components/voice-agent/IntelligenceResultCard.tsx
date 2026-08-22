@@ -400,10 +400,34 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           </div>
         )}
 
-        {/* Bottom Row: Rating / Level on left, Open Page > on right */}
+        {/* Structured Metadata Specs Grid (Matching Image 1 & 3: Body, Drivetrain, Transmission, Fuel, Stock, VIN) */}
+        {hasDetails && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '4px 12px',
+            background: 'rgba(14, 27, 42, 0.03)',
+            padding: '8px 10px',
+            borderRadius: '8px',
+            margin: '6px 0 10px 0',
+            fontSize: '11px',
+            border: '1px solid rgba(14, 27, 42, 0.06)',
+          }}>
+            {detailEntries.slice(0, 6).map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--voice-widget-text-muted, #64748B)', fontWeight: 500 }}>{formatKeyLabel(k)}</span>
+                <span style={{ color: 'var(--voice-widget-text, #0F172A)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px' }}>
+                  {String(v)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Bottom CTA Row: Rating / Level on left, prominent View on site button on right (Image 1 & 3) */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          marginTop: '4px', paddingTop: '4px',
+          marginTop: '6px', paddingTop: '6px', borderTop: '1px solid rgba(14, 27, 42, 0.06)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748B' }}>
             {hasRating ? (
@@ -424,14 +448,19 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '3px',
-                fontSize: '11px',
+                gap: '5px',
+                padding: '5px 12px',
+                borderRadius: '999px',
+                background: 'var(--voice-widget-primary, #2F8FE0)',
+                color: '#FFFFFF',
+                fontSize: '11.5px',
                 fontWeight: 700,
-                color: 'var(--voice-widget-primary, #2F8FE0)',
                 textDecoration: 'none',
+                boxShadow: '0 2px 6px rgba(37,99,235,0.2)',
+                transition: 'all 0.15s ease',
               }}
             >
-              Open Page ›
+              <span>↗ View on site</span>
             </a>
           )}
         </div>
