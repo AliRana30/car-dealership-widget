@@ -115,6 +115,8 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
     let query = supabase.from('widgets').select('*');
     if (isUuid) {
       query = query.or(`id.eq.${normalizedSearchId},website_id.eq.${normalizedSearchId}`);
+    } else if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk') {
+      query = query.or(`widget_id.eq.front-desk,widget_id.eq.default,widget_id.eq.lms`).order('updated_at', { ascending: false });
     } else {
       query = query.eq('widget_id', normalizedSearchId);
     }
@@ -123,30 +125,36 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
       query = query.eq('user_id', userId);
     }
 
-    const { data: widgetRows, error } = await query.limit(1);
+    let { data: widgetRows, error } = await query.limit(1);
 
     if (error || !widgetRows || widgetRows.length === 0) {
       if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk' || normalizedSearchId === 'myfrontdesk') {
-        return {
-          id: '00000000-0000-0000-0000-000000000000',
-          widgetId: 'default',
-          organizationId: '00000000-0000-0000-0000-000000000000',
-          name: 'Front Desk AI Agent',
-          status: 'active',
-          provider: (process.env.VAPI_API_KEY && !process.env.RETELL_API_KEY) ? 'vapi' : 'retell',
-          agentId: process.env.RETELL_AGENT_ID || '',
-          assistantId: process.env.VAPI_ASSISTANT_ID || '',
-          credentialSecretId: '',
-          websiteId: '00000000-0000-0000-0000-000000000000',
-          allowedDomains: ['*'],
-          config: defaultVoiceWidgetConfig,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          retellApiKey: process.env.RETELL_API_KEY || '',
-          vapiApiKey: process.env.VAPI_API_KEY || '',
-        };
+        const { data: fallbackRows } = await supabase.from('widgets').select('*').order('updated_at', { ascending: false }).limit(1);
+        if (fallbackRows && fallbackRows.length > 0) {
+          widgetRows = fallbackRows;
+        } else {
+          return {
+            id: '00000000-0000-0000-0000-000000000000',
+            widgetId: 'default',
+            organizationId: '00000000-0000-0000-0000-000000000000',
+            name: 'Front Desk AI Agent',
+            status: 'active',
+            provider: (process.env.VAPI_API_KEY && !process.env.RETELL_API_KEY) ? 'vapi' : 'retell',
+            agentId: process.env.RETELL_AGENT_ID || '',
+            assistantId: process.env.VAPI_ASSISTANT_ID || '',
+            credentialSecretId: '',
+            websiteId: '00000000-0000-0000-0000-000000000000',
+            allowedDomains: ['*'],
+            config: defaultVoiceWidgetConfig,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            retellApiKey: process.env.RETELL_API_KEY || '',
+            vapiApiKey: process.env.VAPI_API_KEY || '',
+          };
+        }
+      } else {
+        return null;
       }
-      return null;
     }
 
     const widgetRow = widgetRows[0];
@@ -628,7 +636,7 @@ export async function getRelevantWebsiteData(
   query: string
 ): Promise<string> {
   try {
-    const isTargetUuid = isValidUuid(websiteOrWidgetId);
+    const isTargetUuid = isValidUuid(websiteOrWidgetId) && websiteOrWidgetId !== '00000000-0000-0000-0000-000000000000';
     let widgets: any[] | null = null;
     if (isTargetUuid) {
       const res = await supabase
@@ -636,17 +644,19 @@ export async function getRelevantWebsiteData(
         .select('id, widget_id, website_id')
         .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
       widgets = res.data;
-    } else if (websiteOrWidgetId) {
+    } else {
+      const slug = (websiteOrWidgetId || 'front-desk').toLowerCase();
+      const normalizedSlug = (slug === 'default' || slug === 'myfrontdesk' || slug === '00000000-0000-0000-0000-000000000000') ? 'front-desk' : slug;
       const res = await supabase
         .from('widgets')
         .select('id, widget_id, website_id')
-        .eq('widget_id', websiteOrWidgetId);
+        .or(`widget_id.eq.${normalizedSlug},widget_id.eq.front-desk,widget_id.eq.default,widget_id.eq.lms`);
       widgets = res.data;
     }
 
     const widgetIds = new Set<string>();
     if (isTargetUuid) widgetIds.add(websiteOrWidgetId);
-    if (widgets) {
+    if (widgets && widgets.length > 0) {
       widgets.forEach(w => {
         if (isValidUuid(w.id)) widgetIds.add(w.id);
         if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
@@ -654,9 +664,6 @@ export async function getRelevantWebsiteData(
       });
     }
     const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
-    if (filterWidgetIds.length === 0) {
-      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
-    }
 
     const trimmedQuery = query.trim().toLowerCase();
     const isGreetingOrConfirm = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help|yes|yeah|sure|yep|ok|okay|open it|go|please|do it|open that)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
@@ -666,12 +673,17 @@ export async function getRelevantWebsiteData(
 
     const constraints = parseQueryConstraints(query);
 
-    const { data: records, error } = await supabase
-      .from('website_data')
-      .select('*')
-      .in('widget_id', filterWidgetIds);
+    let queryBuilder = supabase.from('website_data').select('*');
+    if (filterWidgetIds.length > 0) {
+      queryBuilder = queryBuilder.in('widget_id', filterWidgetIds);
+    }
+    let { data: records } = await queryBuilder;
+    if ((!records || records.length === 0) && filterWidgetIds.length > 0) {
+      const fallback = await supabase.from('website_data').select('*').limit(25);
+      records = fallback.data;
+    }
 
-    if (error || !records || records.length === 0) {
+    if (!records || records.length === 0) {
       return '';
     }
 
@@ -793,7 +805,7 @@ export async function getRelevantWebsiteRecords(
       return [];
     }
 
-    const isTargetUuid = isValidUuid(websiteOrWidgetId);
+    const isTargetUuid = isValidUuid(websiteOrWidgetId) && websiteOrWidgetId !== '00000000-0000-0000-0000-000000000000';
     let widgets: any[] | null = null;
     if (isTargetUuid) {
       const res = await supabase
@@ -801,17 +813,19 @@ export async function getRelevantWebsiteRecords(
         .select('id, widget_id, website_id')
         .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
       widgets = res.data;
-    } else if (websiteOrWidgetId) {
+    } else {
+      const slug = (websiteOrWidgetId || 'front-desk').toLowerCase();
+      const normalizedSlug = (slug === 'default' || slug === 'myfrontdesk' || slug === '00000000-0000-0000-0000-000000000000') ? 'front-desk' : slug;
       const res = await supabase
         .from('widgets')
         .select('id, widget_id, website_id')
-        .eq('widget_id', websiteOrWidgetId);
+        .or(`widget_id.eq.${normalizedSlug},widget_id.eq.front-desk,widget_id.eq.default,widget_id.eq.lms`);
       widgets = res.data;
     }
 
     const widgetIds = new Set<string>();
     if (isTargetUuid) widgetIds.add(websiteOrWidgetId);
-    if (widgets) {
+    if (widgets && widgets.length > 0) {
       widgets.forEach(w => {
         if (isValidUuid(w.id)) widgetIds.add(w.id);
         if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
@@ -819,14 +833,16 @@ export async function getRelevantWebsiteRecords(
       });
     }
     const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
-    if (filterWidgetIds.length === 0) {
-      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
-    }
 
-    const { data: records, error } = await supabase
-      .from('website_data')
-      .select('*')
-      .in('widget_id', filterWidgetIds);
+    let queryBuilder = supabase.from('website_data').select('*');
+    if (filterWidgetIds.length > 0) {
+      queryBuilder = queryBuilder.in('widget_id', filterWidgetIds);
+    }
+    let { data: records, error } = await queryBuilder;
+    if ((!records || records.length === 0) && filterWidgetIds.length > 0) {
+      const fallback = await supabase.from('website_data').select('*').limit(25);
+      records = fallback.data;
+    }
 
     if (error || !records || records.length === 0) return [];
 
@@ -909,10 +925,19 @@ export async function getRelevantWebsiteRecords(
       candidateList.sort((a, b) => b.score - a.score);
     }
 
-    return candidateList.slice(0, Math.max(limit, 6)).map(s => {
+    // Deduplicate by title to ensure clean card lists
+    const seenTitles = new Set<string>();
+    const uniqueCandidates = candidateList.filter(s => {
+      const t = (s.record.title || '').trim().toLowerCase();
+      if (!t || seenTitles.has(t)) return false;
+      seenTitles.add(t);
+      return true;
+    });
+
+    return uniqueCandidates.slice(0, Math.max(limit, 6)).map(s => {
       const r = s.record;
       const meta = (r.metadata || {}) as Record<string, any>;
-      const result: WebsiteDataRecord & { category?: string; level?: string; metadata?: any } = { entityType: r.entity_type };
+      const result: WebsiteDataRecord & { category?: string; level?: string; metadata?: any; imageUrls?: string[] } = { entityType: r.entity_type };
       if (r.title) result.title = r.title;
       
       if (r.short_description) {
@@ -927,7 +952,10 @@ export async function getRelevantWebsiteRecords(
         result.images = meta.images.filter(Boolean);
       } else if (meta.image) {
         result.images = [String(meta.image)];
+      } else if (meta.thumbnail) {
+        result.images = [String(meta.thumbnail)];
       }
+      result.imageUrls = result.images;
 
       if (meta.price !== undefined && typeof meta.price !== 'object') result.price = meta.price;
       if (meta.currency) result.currency = String(meta.currency);
