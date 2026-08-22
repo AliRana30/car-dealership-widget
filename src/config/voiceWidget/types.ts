@@ -149,6 +149,8 @@ export interface VoiceWidgetAvatarConfig {
    * Use public-facing URLs only — no secrets or signed URLs.
    */
   src?: string;
+  /** Cloudinary public_id for the uploaded avatar — used to delete old assets on replace */
+  cloudinaryPublicId?: string;
   /** Shown if src fails to load. Defaults to assistant initials. */
   fallbackText?: string;
   /** Pixel size of the avatar circle/shape. Default: 44 */

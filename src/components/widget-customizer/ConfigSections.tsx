@@ -2,13 +2,15 @@
 import React from 'react';
 import { VoiceWidgetConfig } from '@/config/voiceWidget/types';
 import { inputStyle, labelStyle, rowStyle, cardStyle } from './formStyles';
+import AvatarUploader from './AvatarUploader';
 
 interface Props {
   draft: VoiceWidgetConfig;
   onChange: (patch: Partial<VoiceWidgetConfig>) => void;
+  widgetId?: string;
 }
 
-export function BrandingSection({ draft, onChange }: Props) {
+export function BrandingSection({ draft, onChange, widgetId = 'front-desk' }: Props) {
   const setBranding = (key: string, val: string) =>
     onChange({ branding: { ...draft.branding, [key]: val } as any });
 
@@ -52,17 +54,20 @@ export function BrandingSection({ draft, onChange }: Props) {
         </div>
 
         {draft.avatar?.enabled && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+            {/* Avatar Image Upload */}
             <div>
-              <label style={labelStyle}>Avatar Image URL</label>
-              <input
-                type="text"
-                placeholder="https://example.com/avatar.png"
-                value={draft.avatar?.src || ''}
-                onChange={(e) => setAvatar('src', e.target.value)}
-                style={inputStyle}
+              <label style={{ ...labelStyle, marginBottom: '8px', display: 'block' }}>Avatar Image</label>
+              <AvatarUploader
+                avatar={draft.avatar || {}}
+                widgetId={widgetId}
+                assistantName={draft.branding?.assistantName || 'AI'}
+                onAvatarChange={(patch) =>
+                  onChange({ avatar: { ...(draft.avatar || { enabled: true, size: 44, shape: 'circle' }), ...patch } as any })
+                }
               />
             </div>
+            {/* Fallback Initials */}
             <div>
               <label style={labelStyle}>Fallback Initials (e.g. FD)</label>
               <input
@@ -73,6 +78,7 @@ export function BrandingSection({ draft, onChange }: Props) {
                 style={inputStyle}
               />
             </div>
+            {/* Avatar Shape */}
             <div>
               <label style={labelStyle}>Avatar Shape</label>
               <select

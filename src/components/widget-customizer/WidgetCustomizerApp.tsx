@@ -516,7 +516,7 @@ export default function WidgetCustomizerApp() {
           </div>
           <div style={styles.editorBody}>
             {activeSection === 'branding' && (
-              <BrandingSection draft={draft} onChange={patchDraft} />
+              <BrandingSection draft={draft} onChange={patchDraft} widgetId={widgetId} />
             )}
             {activeSection === 'colors' && (
               <ColorsSection

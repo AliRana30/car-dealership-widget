@@ -344,6 +344,14 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
   const isCopied = copiedId === widget.id;
   const agentId = widget.config?.provider?.agentId ?? '';
   const launcherColor = widget.config?.theme?.primaryColor ?? '#2F8FE0';
+  const avatarConfig = widget.config?.avatar || widget.config?.branding?.avatar;
+  const showAvatar = avatarConfig?.enabled;
+  const avatarSrc = avatarConfig?.src;
+  const avatarShape = avatarConfig?.shape || 'circle';
+  const fallbackInitials = avatarConfig?.fallbackText || (widget.config?.branding?.assistantName || widget.config?.branding?.companyName || widget.name || 'AI').substring(0, 2).toUpperCase();
+  const [imgError, setImgError] = useState(false);
+
+  const borderRadius = avatarShape === 'square' ? '0px' : avatarShape === 'rounded' ? '6px' : '50%';
 
   return (
     <div style={{
@@ -378,13 +386,31 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
               <ProviderBadge provider={widget.provider} />
             </div>
           </div>
-          {/* Widget mini preview dot */}
+          {/* Widget mini preview dot or avatar */}
           <div style={{
-            width: '36px', height: '36px', borderRadius: '50%',
+            width: '36px', height: '36px', borderRadius,
             background: launcherColor,
             flexShrink: 0,
             boxShadow: `0 2px 8px ${launcherColor}60`,
-          }} />
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#FFFFFF',
+            fontWeight: 700,
+            fontSize: '13px',
+          }}>
+            {showAvatar && avatarSrc && !imgError ? (
+              <img
+                src={avatarSrc}
+                alt={widget.name}
+                onError={() => setImgError(true)}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : showAvatar ? (
+              fallbackInitials
+            ) : null}
+          </div>
         </div>
 
         {/* Credential status */}
