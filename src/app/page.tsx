@@ -63,6 +63,56 @@ const PATHS = {
   widget: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
 };
 
+// ── Scroll Reveal Component ──────────────────────────────────────────────────
+
+function ScrollReveal({
+  children,
+  className = '',
+  style = {},
+  threshold = 0.12,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+  threshold?: number;
+  delay?: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.unobserve(el);
+        }
+      },
+      { threshold, rootMargin: '0px 0px -40px 0px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [threshold]);
+
+  return (
+    <div
+      ref={ref}
+      className={`scroll-reveal ${isVisible ? 'scroll-reveal-visible' : ''} ${className}`}
+      style={{
+        ...style,
+        ...(delay ? { transitionDelay: `${delay}ms` } : {}),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Headline Words for Staggered Animation ──────────────────────────────────
 const LINE1_WORDS = ['Every', 'call', 'answered.'];
 const LINE2_WORDS = ['Every', 'appointment', 'booked.'];
@@ -402,439 +452,453 @@ export default function HomePage() {
       )}
 
       {/* ── Hero Section (With Animated Words & Interactive Visual Card) ── */}
-      <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '56px 32px 56px' }}>
-        <div className="hero-grid-layout" style={{ alignItems: 'center' }}>
+      <ScrollReveal>
+        <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '56px 32px 56px' }}>
+          <div className="hero-grid-layout" style={{ alignItems: 'center' }}>
 
-          {/* Left Hero Copy */}
-          <div>
-            <h1 style={{ fontFamily: "'Figtree', sans-serif", letterSpacing: '-0.025em', margin: '0 0 16px' }}>
-              {/* Line 1 with Word-by-Word Staggered Entrance */}
-              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 0.98, color: '#0E1B2A', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                {LINE1_WORDS.map((w, idx) => (
-                  <span
-                    key={idx}
-                    style={{
-                      display: 'inline-block',
-                      animation: `wordEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.08}s both`,
-                    }}
-                  >
-                    {w}
-                  </span>
-                ))}
+            {/* Left Hero Copy */}
+            <div>
+              <h1 style={{ fontFamily: "'Figtree', sans-serif", letterSpacing: '-0.025em', margin: '0 0 16px' }}>
+                {/* Line 1 with Word-by-Word Staggered Entrance */}
+                <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 0.98, color: '#0E1B2A', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {LINE1_WORDS.map((w, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        display: 'inline-block',
+                        animation: `wordEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${idx * 0.08}s both`,
+                      }}
+                    >
+                      {w}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Line 2 with Word-by-Word Staggered Entrance */}
+                <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 1.05, marginTop: '6px', color: '#2F8FE0', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {LINE2_WORDS.map((w, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        display: 'inline-block',
+                        animation: `wordEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${(idx + 3) * 0.08}s both`,
+                      }}
+                    >
+                      {w}
+                    </span>
+                  ))}
+                </div>
+              </h1>
+
+              <p style={{
+                fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.72)', maxWidth: '460px', margin: '0 0 30px',
+                animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both',
+              }}>
+                An agent trained on your business's own hours, services, and calendar answers the call, books the appointment, and lets you review exactly what happened afterward.
+              </p>
+
+              {/* CTAs */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '22px', flexWrap: 'wrap', marginBottom: '32px',
+                animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.55s both',
+              }}>
+                <Link
+                  href="/signup"
+                  className="btn-hover-lift"
+                  style={{
+                    padding: '14px 30px', borderRadius: '12px',
+                    background: '#2F8FE0', color: '#FFFDF8',
+                    fontSize: '15.5px', fontWeight: 600,
+                    textDecoration: 'none', display: 'inline-block',
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                    boxShadow: '0 10px 24px -8px rgba(14,27,42,0.32)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Sign Up Free
+                </Link>
+                <a
+                  href="#how-it-works"
+                  style={{
+                    fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0',
+                    textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    transition: 'transform 0.2s ease',
+                  }}
+                >
+                  See a call become a booking ↓
+                </a>
               </div>
 
-              {/* Line 2 with Word-by-Word Staggered Entrance */}
-              <div style={{ fontSize: 'clamp(38px, 4.8vw, 62px)', fontWeight: 700, lineHeight: 1.05, marginTop: '6px', color: '#2F8FE0', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                {LINE2_WORDS.map((w, idx) => (
-                  <span
-                    key={idx}
-                    style={{
-                      display: 'inline-block',
-                      animation: `wordEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${(idx + 3) * 0.08}s both`,
-                    }}
-                  >
-                    {w}
+              {/* Feature Checklist */}
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: '18px',
+                animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.65s both',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                    <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
+                  </div>
+                  <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
+                    Answers in under a second — no hold music, no voicemail tree
                   </span>
-                ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                    <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
+                  </div>
+                  <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
+                    Checks your live calendar and books directly into it
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                    <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
+                  </div>
+                  <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
+                    Transcribes the call, notes preferences, and texts the client a confirmation
+                  </span>
+                </div>
               </div>
-            </h1>
+            </div>
 
-            <p style={{
-              fontSize: '18px', lineHeight: 1.6, color: 'rgba(14,27,42,0.72)', maxWidth: '460px', margin: '0 0 30px',
-              animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both',
-            }}>
-              An agent trained on your business's own hours, services, and calendar answers the call, books the appointment, and lets you review exactly what happened afterward.
+            {/* Right Interactive Simulation Card */}
+            <div style={{ animation: 'floatCard 6s ease-in-out infinite' }}>
+              <div style={{
+                position: 'relative', padding: '40px 32px', borderRadius: '24px',
+                background: 'rgba(251,253,255,0.95)', border: '1px solid rgba(14,27,42,0.12)',
+                boxShadow: '0 1px 2px rgba(14,27,42,0.06), 0 30px 60px -30px rgba(14,27,42,0.22)',
+                minHeight: '340px', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: '22px', overflow: 'hidden',
+              }}>
+                {/* Pulsing Icon */}
+                <div style={{
+                  width: '76px', height: '76px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 0 0 rgba(47,143,224,0.45)',
+                  animation: 'pulseRing 2.4s infinite',
+                }}>
+                  <SvgIcon paths={PATHS.phone} size={32} color="#FFFDF8" />
+                </div>
+
+                {/* Animated Sound Wave Bars */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', height: '30px' }}>
+                  {[0.4, 0.8, 0.5, 0.9, 0.6, 0.7, 0.3].map((delay, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        width: '3.5px',
+                        background: '#2F8FE0',
+                        borderRadius: '2px',
+                        animation: `soundWave 1.2s ease-in-out ${delay}s infinite`,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Status Label with Smooth Transition */}
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#0E1B2A', textAlign: 'center', transition: 'all 0.3s ease' }}>
+                  {heroPhase === 0 && 'Inbound call answered'}
+                  {heroPhase === 1 && 'Checking live availability...'}
+                  {heroPhase === 2 && 'Appointment confirmed & calendar synced'}
+                </div>
+
+                {/* Calendar Action Pill */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  padding: '14px 20px', borderRadius: '14px',
+                  background: 'rgba(47,143,224,0.14)', border: '1px solid rgba(47,143,224,0.3)',
+                  boxShadow: '0 2px 8px rgba(47,143,224,0.15)',
+                }}>
+                  <SvgIcon paths={PATHS.calendar} size={18} color="#2F8FE0" />
+                  <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#2F8FE0' }}>
+                    Thu 2:30 PM — booked
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* ── Integrations Marquee ────────────────────────────────────────── */}
+      <ScrollReveal delay={100}>
+        <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 32px' }}>
+          <div style={{ height: '1px', background: 'rgba(14,27,42,0.1)', marginBottom: '20px' }} />
+          <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(217,113,75,0.9)', marginBottom: '18px' }}>
+            Works with what you already use
+          </div>
+          <div style={{ overflow: 'hidden', maskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)', WebkitMaskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)' }}>
+            <div style={{ display: 'flex', width: 'max-content', gap: '56px', animation: 'marqueeScroll 28s linear infinite' }}>
+              {[...integrations, ...integrations].map((item, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'rgba(14,27,42,0.55)', fontWeight: 600, fontSize: '14.5px' }}>
+                  {item.icon}
+                  <span>{item.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ height: '1px', background: 'rgba(14,27,42,0.1)', marginTop: '20px' }} />
+        </section>
+      </ScrollReveal>
+
+      {/* ── Feature Carousel Grid ───────────────────────────────────────── */}
+      <ScrollReveal delay={150}>
+        <section id="features" style={{ maxWidth: '1240px', margin: '0 auto', padding: '64px 32px 56px' }}>
+          <div style={{ maxWidth: '620px', margin: '0 auto 40px', textAlign: 'center' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+              Everything your front desk needs. Nothing it doesn't.
+            </h2>
+            <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
+              Five things, done thoroughly, instead of a hundred things done halfway.
             </p>
+          </div>
 
-            {/* CTAs */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '22px', flexWrap: 'wrap', marginBottom: '32px',
-              animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.55s both',
-            }}>
+          {/* Horizontal Carousel */}
+          <div
+            ref={carouselRef}
+            className="mfd-carousel-scroll"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            style={{
+              display: 'flex', gap: '20px', overflowX: 'auto',
+              scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
+              cursor: 'grab', padding: '8px 4px 16px', userSelect: 'none',
+            }}
+          >
+            {features.map((feat, i) => (
+              <div
+                key={i}
+                style={{
+                  flex: '0 0 320px', minWidth: '320px', scrollSnapAlign: 'start',
+                  padding: '28px', borderRadius: '20px', background: 'rgba(255,255,255,0.92)',
+                  border: '1px solid rgba(14,27,42,0.12)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 16px 32px -16px rgba(14,27,42,0.12)',
+                  display: 'flex', flexDirection: 'column', position: 'relative',
+                }}
+              >
+                <div
+                  onMouseEnter={() => setActiveTooltip(i)}
+                  onMouseLeave={() => setActiveTooltip(null)}
+                  style={{
+                    width: '48px', height: '48px', borderRadius: '14px',
+                    background: '#2F8FE0', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', marginBottom: '18px', position: 'relative',
+                  }}
+                >
+                  {feat.icon}
+                  {activeTooltip === i && (
+                    <div style={{
+                      position: 'absolute', top: '56px', left: 0, zIndex: 10,
+                      width: '240px', padding: '10px 14px', borderRadius: '10px',
+                      background: '#0E1B2A', color: '#FFFDF8', fontSize: '12px',
+                      lineHeight: 1.5, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+                    }}>
+                      {feat.tooltip}
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: '#0E1B2A' }}>
+                  {feat.title}
+                </div>
+                <div style={{ fontSize: '14px', lineHeight: 1.6, color: 'rgba(14,27,42,0.65)' }}>
+                  {feat.detail}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Carousel Dots */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
+            {features.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => scrollToCard(i)}
+                aria-label={`Scroll to feature ${i + 1}`}
+                style={{
+                  width: carouselIndex === i ? '24px' : '8px', height: '8px',
+                  borderRadius: '4px', background: carouselIndex === i ? '#2F8FE0' : 'rgba(14,27,42,0.2)',
+                  border: 'none', padding: 0, cursor: 'pointer', transition: 'all 0.3s ease',
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* ── Capabilities Channels Section ───────────────────────────────── */}
+      <ScrollReveal delay={150}>
+        <section id="channels" style={{ maxWidth: '1240px', margin: '0 auto', padding: '48px 32px' }}>
+          <div style={{ maxWidth: '580px', margin: '0 auto 40px', textAlign: 'center' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+              Works right alongside what you already use
+            </h2>
+            <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
+              No new accounts, no new devices. It plugs into your existing phone line, calendar, and texts.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '18px' }}>
+            {[
+              { name: 'Floating Web Widget', detail: 'Embed on any site via public/widget.js', icon: <SvgIcon paths={PATHS.widget} size={20} color="#2F8FE0" /> },
+              { name: 'Direct Inbound Phone Lines', detail: 'Connect custom SIP & Twilio telephony', icon: <SvgIcon paths={PATHS.phone} size={20} color="#2F8FE0" /> },
+              { name: 'Inventory & Catalog Sync', detail: 'Shopify, WooCommerce & RSS feeds', icon: <SvgIcon paths={PATHS.refresh} size={20} color="#2F8FE0" /> },
+              { name: 'Host Page Navigation', detail: 'Autonomous browser tab navigation', icon: <SvgIcon paths={PATHS.compass} size={20} color="#2F8FE0" /> },
+            ].map((ch, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '20px', borderRadius: '16px', background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(14,27,42,0.12)', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(47,143,224,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {ch.icon}
+                </div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0E1B2A' }}>{ch.name}</div>
+                  <div style={{ fontSize: '12.5px', color: 'rgba(14,27,42,0.6)' }}>{ch.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* ── How It Works (3 Stages) ─────────────────────────────────────── */}
+      <ScrollReveal delay={150}>
+        <section id="how-it-works" style={{ maxWidth: '1100px', margin: '0 auto', padding: '56px 32px 64px' }}>
+          <div style={{ maxWidth: '580px', margin: '0 auto 48px', textAlign: 'center' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
+              What happens on a real call
+            </h2>
+            <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
+              An administrative front desk, start to finish — no clinical decisions, just the calendar and paperwork handled.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+            {[
+              {
+                step: '1',
+                title: 'Visitor Asks by Voice or Text',
+                detail: 'Ultra-low latency speech recognition captures the visitor\'s intent with zero lag.',
+              },
+              {
+                step: '2',
+                title: 'Agent Checks Live Intelligence',
+                detail: 'Grounded RAG retrieval queries crawled website data, vehicle inventory, and service packages.',
+              },
+              {
+                step: '3',
+                title: 'Actions & Navigation Triggered',
+                detail: 'The agent answers questions, opens requested product pages on screen, and schedules appointments.',
+              },
+            ].map((st, i) => (
+              <div key={i} style={{ padding: '32px 24px', borderRadius: '20px', background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(14,27,42,0.12)', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#2F8FE0', color: '#FFFDF8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: 800, marginBottom: '20px' }}>
+                  {st.step}
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: '#0E1B2A', marginBottom: '8px' }}>
+                  {st.title}
+                </div>
+                <div style={{ fontSize: '14px', lineHeight: 1.6, color: 'rgba(14,27,42,0.65)' }}>
+                  {st.detail}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* ── Final Call to Action ────────────────────────────────────────── */}
+      <ScrollReveal delay={150}>
+        <section style={{ maxWidth: '960px', margin: '0 auto', padding: '48px 32px 96px' }}>
+          <div style={{ textAlign: 'center', padding: '64px 36px', borderRadius: '28px', background: '#0E1B2A', color: '#FFFDF8', boxShadow: '0 24px 64px -12px rgba(14,27,42,0.35)' }}>
+            <h2 style={{ fontSize: 'clamp(28px, 3.6vw, 42px)', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 16px' }}>
+              Be one of the first practices on Widgetized
+            </h2>
+            <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.72)', maxWidth: '520px', margin: '0 auto 36px' }}>
+              Start answering every call and booking every appointment automatically.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
               <Link
                 href="/signup"
                 className="btn-hover-lift"
                 style={{
-                  padding: '14px 30px', borderRadius: '12px',
+                  padding: '14px 32px', borderRadius: '12px',
                   background: '#2F8FE0', color: '#FFFDF8',
-                  fontSize: '15.5px', fontWeight: 600,
+                  fontSize: '15px', fontWeight: 700,
                   textDecoration: 'none', display: 'inline-block',
-                  whiteSpace: 'nowrap', flexShrink: 0,
-                  boxShadow: '0 10px 24px -8px rgba(14,27,42,0.32)',
+                  boxShadow: '0 6px 20px rgba(47,143,224,0.4)',
                   cursor: 'pointer',
                 }}
               >
                 Sign Up Free
               </Link>
-              <a
-                href="#how-it-works"
+              <Link
+                href="/login"
                 style={{
-                  fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0',
-                  textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px',
-                  transition: 'transform 0.2s ease',
+                  padding: '14px 28px', borderRadius: '12px',
+                  background: 'rgba(255,255,255,0.12)', color: '#FFFDF8',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  fontSize: '15px', fontWeight: 600,
+                  textDecoration: 'none', display: 'inline-block',
+                  cursor: 'pointer',
                 }}
               >
-                See a call become a booking ↓
-              </a>
-            </div>
-
-            {/* Feature Checklist */}
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: '18px',
-              animation: 'wordEnter 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.65s both',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
-                  <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
-                </div>
-                <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
-                  Answers in under a second — no hold music, no voicemail tree
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
-                  <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
-                </div>
-                <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
-                  Checks your live calendar and books directly into it
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(47,143,224,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
-                  <SvgIcon paths={PATHS.check} size={12} color="#2F8FE0" stroke={2.5} />
-                </div>
-                <span style={{ fontSize: '14.5px', lineHeight: 1.5, color: 'rgba(14,27,42,0.78)' }}>
-                  Transcribes the call, notes preferences, and texts the client a confirmation
-                </span>
-              </div>
+                Login
+              </Link>
             </div>
           </div>
-
-          {/* Right Interactive Simulation Card */}
-          <div style={{ animation: 'floatCard 6s ease-in-out infinite' }}>
-            <div style={{
-              position: 'relative', padding: '40px 32px', borderRadius: '24px',
-              background: 'rgba(251,253,255,0.95)', border: '1px solid rgba(14,27,42,0.12)',
-              boxShadow: '0 1px 2px rgba(14,27,42,0.06), 0 30px 60px -30px rgba(14,27,42,0.22)',
-              minHeight: '340px', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: '22px', overflow: 'hidden',
-            }}>
-              {/* Pulsing Icon */}
-              <div style={{
-                width: '76px', height: '76px', borderRadius: '50%',
-                background: 'linear-gradient(135deg, #2F8FE0, #1D6FB8)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 0 0 rgba(47,143,224,0.45)',
-                animation: 'pulseRing 2.4s infinite',
-              }}>
-                <SvgIcon paths={PATHS.phone} size={32} color="#FFFDF8" />
-              </div>
-
-              {/* Animated Sound Wave Bars */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', height: '30px' }}>
-                {[0.4, 0.8, 0.5, 0.9, 0.6, 0.7, 0.3].map((delay, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: '3.5px',
-                      background: '#2F8FE0',
-                      borderRadius: '2px',
-                      animation: `soundWave 1.2s ease-in-out ${delay}s infinite`,
-                    }}
-                  />
-                ))}
-              </div>
-
-              {/* Status Label with Smooth Transition */}
-              <div style={{ fontSize: '15px', fontWeight: 600, color: '#0E1B2A', textAlign: 'center', transition: 'all 0.3s ease' }}>
-                {heroPhase === 0 && 'Inbound call answered'}
-                {heroPhase === 1 && 'Checking live availability...'}
-                {heroPhase === 2 && 'Appointment confirmed & calendar synced'}
-              </div>
-
-              {/* Calendar Action Pill */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '14px 20px', borderRadius: '14px',
-                background: 'rgba(47,143,224,0.14)', border: '1px solid rgba(47,143,224,0.3)',
-                boxShadow: '0 2px 8px rgba(47,143,224,0.15)',
-              }}>
-                <SvgIcon paths={PATHS.calendar} size={18} color="#2F8FE0" />
-                <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#2F8FE0' }}>
-                  Thu 2:30 PM — booked
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Integrations Marquee ────────────────────────────────────────── */}
-      <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 32px' }}>
-        <div style={{ height: '1px', background: 'rgba(14,27,42,0.1)', marginBottom: '20px' }} />
-        <div style={{ textAlign: 'center', fontSize: '12px', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(217,113,75,0.9)', marginBottom: '18px' }}>
-          Works with what you already use
-        </div>
-        <div style={{ overflow: 'hidden', maskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)', WebkitMaskImage: 'linear-gradient(90deg, transparent, black 8%, black 92%, transparent)' }}>
-          <div style={{ display: 'flex', width: 'max-content', gap: '56px', animation: 'marqueeScroll 28s linear infinite' }}>
-            {[...integrations, ...integrations].map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'rgba(14,27,42,0.55)', fontWeight: 600, fontSize: '14.5px' }}>
-                {item.icon}
-                <span>{item.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{ height: '1px', background: 'rgba(14,27,42,0.1)', marginTop: '20px' }} />
-      </section>
-
-      {/* ── Feature Carousel Grid ───────────────────────────────────────── */}
-      <section id="features" style={{ maxWidth: '1240px', margin: '0 auto', padding: '64px 32px 56px' }}>
-        <div style={{ maxWidth: '620px', margin: '0 auto 40px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
-            Everything your front desk needs. Nothing it doesn't.
-          </h2>
-          <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
-            Five things, done thoroughly, instead of a hundred things done halfway.
-          </p>
-        </div>
-
-        {/* Horizontal Carousel */}
-        <div
-          ref={carouselRef}
-          className="mfd-carousel-scroll"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-          style={{
-            display: 'flex', gap: '20px', overflowX: 'auto',
-            scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch',
-            cursor: 'grab', padding: '8px 4px 16px', userSelect: 'none',
-          }}
-        >
-          {features.map((feat, i) => (
-            <div
-              key={i}
-              style={{
-                flex: '0 0 320px', minWidth: '320px', scrollSnapAlign: 'start',
-                padding: '28px', borderRadius: '20px', background: 'rgba(255,255,255,0.92)',
-                border: '1px solid rgba(14,27,42,0.12)',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 16px 32px -16px rgba(14,27,42,0.12)',
-                display: 'flex', flexDirection: 'column', position: 'relative',
-              }}
-            >
-              <div
-                onMouseEnter={() => setActiveTooltip(i)}
-                onMouseLeave={() => setActiveTooltip(null)}
-                style={{
-                  width: '48px', height: '48px', borderRadius: '14px',
-                  background: '#2F8FE0', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', marginBottom: '18px', position: 'relative',
-                }}
-              >
-                {feat.icon}
-                {activeTooltip === i && (
-                  <div style={{
-                    position: 'absolute', top: '56px', left: 0, zIndex: 10,
-                    width: '240px', padding: '10px 14px', borderRadius: '10px',
-                    background: '#0E1B2A', color: '#FFFDF8', fontSize: '12px',
-                    lineHeight: 1.5, boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-                  }}>
-                    {feat.tooltip}
-                  </div>
-                )}
-              </div>
-              <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: '#0E1B2A' }}>
-                {feat.title}
-              </div>
-              <div style={{ fontSize: '14px', lineHeight: 1.6, color: 'rgba(14,27,42,0.65)' }}>
-                {feat.detail}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Carousel Dots */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px' }}>
-          {features.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => scrollToCard(i)}
-              aria-label={`Scroll to feature ${i + 1}`}
-              style={{
-                width: carouselIndex === i ? '24px' : '8px', height: '8px',
-                borderRadius: '4px', background: carouselIndex === i ? '#2F8FE0' : 'rgba(14,27,42,0.2)',
-                border: 'none', padding: 0, cursor: 'pointer', transition: 'all 0.3s ease',
-              }}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* ── Capabilities Channels Section ───────────────────────────────── */}
-      <section id="channels" style={{ maxWidth: '1240px', margin: '0 auto', padding: '48px 32px' }}>
-        <div style={{ maxWidth: '580px', margin: '0 auto 40px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
-            Works right alongside what you already use
-          </h2>
-          <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
-            No new accounts, no new devices. It plugs into your existing phone line, calendar, and texts.
-          </p>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '18px' }}>
-          {[
-            { name: 'Floating Web Widget', detail: 'Embed on any site via public/widget.js', icon: <SvgIcon paths={PATHS.widget} size={20} color="#2F8FE0" /> },
-            { name: 'Direct Inbound Phone Lines', detail: 'Connect custom SIP & Twilio telephony', icon: <SvgIcon paths={PATHS.phone} size={20} color="#2F8FE0" /> },
-            { name: 'Inventory & Catalog Sync', detail: 'Shopify, WooCommerce & RSS feeds', icon: <SvgIcon paths={PATHS.refresh} size={20} color="#2F8FE0" /> },
-            { name: 'Host Page Navigation', detail: 'Autonomous browser tab navigation', icon: <SvgIcon paths={PATHS.compass} size={20} color="#2F8FE0" /> },
-          ].map((ch, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '20px', borderRadius: '16px', background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(14,27,42,0.12)', boxShadow: '0 2px 6px rgba(0,0,0,0.03)' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(47,143,224,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {ch.icon}
-              </div>
-              <div>
-                <div style={{ fontSize: '15px', fontWeight: 700, color: '#0E1B2A' }}>{ch.name}</div>
-                <div style={{ fontSize: '12.5px', color: 'rgba(14,27,42,0.6)' }}>{ch.detail}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── How It Works (3 Stages) ─────────────────────────────────────── */}
-      <section id="how-it-works" style={{ maxWidth: '1100px', margin: '0 auto', padding: '56px 32px 64px' }}>
-        <div style={{ maxWidth: '580px', margin: '0 auto 48px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', fontWeight: 700, letterSpacing: '-0.02em', margin: '0 0 12px' }}>
-            What happens on a real call
-          </h2>
-          <p style={{ fontSize: '16px', color: 'rgba(14,27,42,0.68)', margin: 0 }}>
-            An administrative front desk, start to finish — no clinical decisions, just the calendar and paperwork handled.
-          </p>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-          {[
-            {
-              step: '1',
-              title: 'Visitor Asks by Voice or Text',
-              detail: 'Ultra-low latency speech recognition captures the visitor\'s intent with zero lag.',
-            },
-            {
-              step: '2',
-              title: 'Agent Checks Live Intelligence',
-              detail: 'Grounded RAG retrieval queries crawled website data, vehicle inventory, and service packages.',
-            },
-            {
-              step: '3',
-              title: 'Actions & Navigation Triggered',
-              detail: 'The agent answers questions, opens requested product pages on screen, and schedules appointments.',
-            },
-          ].map((st, i) => (
-            <div key={i} style={{ padding: '32px 24px', borderRadius: '20px', background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(14,27,42,0.12)', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#2F8FE0', color: '#FFFDF8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: 800, marginBottom: '20px' }}>
-                {st.step}
-              </div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#0E1B2A', marginBottom: '8px' }}>
-                {st.title}
-              </div>
-              <div style={{ fontSize: '14px', lineHeight: 1.6, color: 'rgba(14,27,42,0.65)' }}>
-                {st.detail}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Final Call to Action ────────────────────────────────────────── */}
-      <section style={{ maxWidth: '960px', margin: '0 auto', padding: '48px 32px 96px' }}>
-        <div style={{ textAlign: 'center', padding: '64px 36px', borderRadius: '28px', background: '#0E1B2A', color: '#FFFDF8', boxShadow: '0 24px 64px -12px rgba(14,27,42,0.35)' }}>
-          <h2 style={{ fontSize: 'clamp(28px, 3.6vw, 42px)', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 16px' }}>
-            Be one of the first practices on Widgetized
-          </h2>
-          <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.72)', maxWidth: '520px', margin: '0 auto 36px' }}>
-            Start answering every call and booking every appointment automatically.
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <Link
-              href="/signup"
-              className="btn-hover-lift"
-              style={{
-                padding: '14px 32px', borderRadius: '12px',
-                background: '#2F8FE0', color: '#FFFDF8',
-                fontSize: '15px', fontWeight: 700,
-                textDecoration: 'none', display: 'inline-block',
-                boxShadow: '0 6px 20px rgba(47,143,224,0.4)',
-                cursor: 'pointer',
-              }}
-            >
-              Sign Up Free
-            </Link>
-            <Link
-              href="/login"
-              style={{
-                padding: '14px 28px', borderRadius: '12px',
-                background: 'rgba(255,255,255,0.12)', color: '#FFFDF8',
-                border: '1px solid rgba(255,255,255,0.2)',
-                fontSize: '15px', fontWeight: 600,
-                textDecoration: 'none', display: 'inline-block',
-                cursor: 'pointer',
-              }}
-            >
-              Login
-            </Link>
-          </div>
-        </div>
-      </section>
+        </section>
+      </ScrollReveal>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <footer style={{ borderTop: '1px solid rgba(14,27,42,0.1)', background: 'rgba(233,242,251,0.6)', padding: '48px 32px 36px' }}>
-        <div style={{ maxWidth: '1240px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '32px', marginBottom: '32px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                <SvgIcon paths={PATHS.widget} size={16} color="#FFFDF8" />
+      <ScrollReveal delay={100}>
+        <footer style={{ borderTop: '1px solid rgba(14,27,42,0.1)', background: 'rgba(233,242,251,0.6)', padding: '48px 32px 36px' }}>
+          <div style={{ maxWidth: '1240px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '32px', marginBottom: '32px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                  <SvgIcon paths={PATHS.widget} size={16} color="#FFFDF8" />
+                </div>
+                <span style={{ fontSize: '18px', fontWeight: 700, color: '#0E1B2A' }}>Widgetized</span>
               </div>
-              <span style={{ fontSize: '18px', fontWeight: 700, color: '#0E1B2A' }}>Widgetized</span>
+              <p style={{ fontSize: '13.5px', color: 'rgba(14,27,42,0.7)', lineHeight: 1.6, maxWidth: '280px', margin: 0 }}>
+                The complete autonomous AI voice, text, and knowledge front-desk platform for modern businesses.
+              </p>
             </div>
-            <p style={{ fontSize: '13.5px', color: 'rgba(14,27,42,0.7)', lineHeight: 1.6, maxWidth: '280px', margin: 0 }}>
-              The complete autonomous AI voice, text, and knowledge front-desk platform for modern businesses.
-            </p>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(217,113,75,0.85)', marginBottom: '12px' }}>
+                Product
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <Link href="/dashboard" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Fleet Dashboard</Link>
+                <a href="#features" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Features & Tools</a>
+                <a href="#how-it-works" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(217,113,75,0.85)', marginBottom: '12px' }}>
+                Account & Access
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <Link href="/login" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Login</Link>
+                <Link href="/signup" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Sign Up</Link>
+                <Link href="/forgot-password" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Reset Password</Link>
+              </div>
+            </div>
           </div>
 
-          <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(217,113,75,0.85)', marginBottom: '12px' }}>
-              Product
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <Link href="/dashboard" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Fleet Dashboard</Link>
-              <a href="#features" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Features & Tools</a>
-              <a href="#how-it-works" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
-            </div>
+          <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '24px', borderTop: '1px solid rgba(14,27,42,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
+              © 2026 Widgetized. All rights reserved.
+            </span>
+            <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
+              Autonomous AI Front Desk Platform
+            </span>
           </div>
-
-          <div>
-            <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(217,113,75,0.85)', marginBottom: '12px' }}>
-              Account & Access
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <Link href="/login" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Login</Link>
-              <Link href="/signup" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Sign Up</Link>
-              <Link href="/forgot-password" style={{ fontSize: '13.5px', color: '#0E1B2A', textDecoration: 'none' }}>Reset Password</Link>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '24px', borderTop: '1px solid rgba(14,27,42,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
-            © 2026 Widgetized. All rights reserved.
-          </span>
-          <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
-            Autonomous AI Front Desk Platform
-          </span>
-        </div>
-      </footer>
+        </footer>
+      </ScrollReveal>
     </div>
   );
 }
