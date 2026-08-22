@@ -362,9 +362,6 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
         (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
       }}
     >
-      {/* Color accent bar */}
-      <div style={{ height: '4px', background: `linear-gradient(90deg, ${launcherColor}, ${launcherColor}99)` }} />
-
       <div style={{ padding: '20px 20px 16px' }}>
         {/* Header row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '12px' }}>
@@ -389,16 +386,6 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
             boxShadow: `0 2px 8px ${launcherColor}60`,
           }} />
         </div>
-
-        {/* Agent ID */}
-        {agentId && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-            <Icon d={ICONS.key[0] ?? ICONS.key} size={12} />
-            <code style={{ fontSize: '10px', color: '#9CA3AF', fontFamily: 'monospace' }}>
-              {agentId.length > 24 ? `${agentId.slice(0, 24)}…` : agentId}
-            </code>
-          </div>
-        )}
 
         {/* Credential status */}
         <CredentialStatus widget={widget} />
@@ -737,11 +724,6 @@ export default function DashboardPage() {
             <img src="/logo.png" alt="Widgetized Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
             <span style={{ fontSize: '17px', fontWeight: 700, letterSpacing: '-0.01em' }}>Widgetized</span>
           </Link>
-
-          <span className="flex-divider" style={{ width: '1px', height: '20px', background: '#E5E7EB' }} />
-          <span className="flex-divider" style={{ fontSize: '13px', color: '#6B7280', fontWeight: 500 }}>
-            Fleet Command
-          </span>
         </div>
 
         {/* Desktop Navigation & Actions */}

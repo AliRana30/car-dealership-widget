@@ -184,6 +184,27 @@ const TOGGLE_CSS = `
       height: 38px !important;
     }
   }
+
+  @media (max-width: 480px) {
+    .customizer-header {
+      padding: 0 8px !important;
+      height: 44px !important;
+    }
+    .customizer-header-divider {
+      display: none !important;
+    }
+    .customizer-header-title {
+      display: none !important;
+    }
+    .customizer-header-actions {
+      gap: 4px !important;
+    }
+    .customizer-header-actions button {
+      padding: 0 8px !important;
+      height: 28px !important;
+      font-size: 11.5px !important;
+    }
+  }
 `;
 
 const SECTION_TITLES: Record<CustomizerSection, string> = {
@@ -434,18 +455,15 @@ export default function WidgetCustomizerApp() {
           <Link href="/dashboard" style={styles.backLink} className="customizer-back-link">
             ← Dashboard
           </Link>
-          <div style={styles.headerDivider} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/logo.png" alt="Logo" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
-            <div style={styles.headerTitle} className="customizer-header-title">Widget Customizer</div>
-          </div>
+          <div style={styles.headerDivider} className="customizer-header-divider" />
+          <div style={styles.headerTitle} className="customizer-header-title">Widget Customizer</div>
         </div>
         <div style={styles.headerActions} className="customizer-header-actions">
-          <button onClick={handleReset} style={styles.btnSecondary}>Reset</button>
+          <button onClick={handleReset} style={styles.btnSecondary} className="customizer-btn-reset">Reset</button>
           <button onClick={handleSave} style={{
             ...styles.btnPrimary,
             background: saved ? '#16a34a' : '#2563eb',
-          }}>
+          }} className="customizer-btn-save">
             {saved ? '✓ Saved' : 'Save'}
           </button>
         </div>

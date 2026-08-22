@@ -409,12 +409,16 @@ Guidelines:
     };
   }
 
-  // Case G: No match found — be honest about what we don't have
-  // Extract the main search term from the query to give a helpful "we don't have X" message
-  const searchTerms = content.trim().split(/\s+/).filter(w => w.length > 3 && !['what', 'does', 'have', 'your', 'offer', 'available', 'about', 'course', 'courses', 'program', 'programs', 'do', 'you', 'with', 'that', 'this', 'there'].includes(w.toLowerCase())).slice(0, 3).join(' ');
+  // Case G: No match found — be honest and concise about what we don't have
+  const searchTerms = content.trim().split(/\s+/).filter(w => w.length > 2 && !['what', 'does', 'have', 'your', 'offer', 'available', 'about', 'course', 'courses', 'program', 'programs', 'do', 'you', 'with', 'that', 'this', 'there', 'any', 'the', 'tell', 'show'].includes(w.toLowerCase())).slice(0, 3).join(' ');
   if (searchTerms) {
     return {
-      text: `I'm sorry, we don't currently offer anything related to "${searchTerms}" at ${businessName}. Our available programs are in web development, backend engineering, and coding interview prep. Would you like me to show you what we do offer?`,
+      text: `We do not currently offer a **${searchTerms}** course at ${businessName}.\n\nOur current available programs focus on:
+• **Leetcode Mastery** ($90) — Coding interview prep & algorithms
+• **MERN Stack Development** ($150) — Full-stack web development
+• **Backend Mastery** ($100) — Server architecture & APIs
+
+Would you like more details on any of these available programs?`,
       navigationUrl: undefined
     };
   }

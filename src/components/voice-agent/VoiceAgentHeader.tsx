@@ -201,7 +201,7 @@ export default function VoiceAgentHeader({
         )}
 
         {/* Close Button */}
-        {showClose && panel.showCloseButton && onClose && (
+        {onClose && (
           <button
             onClick={onClose}
             style={{
@@ -210,12 +210,16 @@ export default function VoiceAgentHeader({
               cursor: 'pointer',
               color: '#64748B',
               display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               padding: '4px',
+              borderRadius: '6px',
+              transition: 'background 0.15s, color 0.15s',
             }}
             title="Close panel"
             aria-label="Close panel"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               {CLOSE_ICON_PATH.map((p, i) => (
                 <path key={i} d={p} />
               ))}

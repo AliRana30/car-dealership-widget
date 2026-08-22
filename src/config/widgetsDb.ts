@@ -910,7 +910,15 @@ export async function getRelevantWebsiteRecords(
     const validMatches = scored.filter(s => s.score > 0);
     if (validMatches.length === 0) return [];
 
-    // If there is an exact/specific item match (e.g. user asked for "mern stack"), isolate to just matching item(s)
+    // If the user query specified specific topic keywords (e.g. "python", "flutter", "java")
+    // and NONE of our catalog items matched those keywords in the title/topic, return [] so the agent can accurately state we don't offer it!
+    if (constraints.specificKeywords.length > 0) {
+      const exactMatches = validMatches.filter(s => s.exactTitleMatch);
+      if (exactMatches.length === 0) {
+        return [];
+      }
+    }
+
     const exactMatches = validMatches.filter(s => s.exactTitleMatch);
     const candidateList = (exactMatches.length > 0 && constraints.specificKeywords.length > 0) ? exactMatches : validMatches;
 
@@ -934,7 +942,8 @@ export async function getRelevantWebsiteRecords(
       return true;
     });
 
-    return uniqueCandidates.slice(0, Math.max(limit, 6)).map(s => {
+    const selected = uniqueCandidates.slice(0, Math.max(limit, 6));
+    return selected.map(s => {
       const r = s.record;
       const meta = (r.metadata || {}) as Record<string, any>;
       const result: WebsiteDataRecord & { category?: string; level?: string; metadata?: any; imageUrls?: string[] } = { entityType: r.entity_type };
@@ -954,6 +963,20 @@ export async function getRelevantWebsiteRecords(
         result.images = [String(meta.image)];
       } else if (meta.thumbnail) {
         result.images = [String(meta.thumbnail)];
+      }
+
+      // If images array is empty, attach clean high-resolution topic imagery so cards are never blank
+      if (!result.images || result.images.length === 0) {
+        const titleLower = (r.title || '').toLowerCase();
+        if (titleLower.includes('leetcode') || titleLower.includes('algorithm') || titleLower.includes('dsa')) {
+          result.images = ['https://images.unsplash.com/photo-1516116211227-bbc14187212e?auto=format&fit=crop&w=600&q=80'];
+        } else if (titleLower.includes('mern') || titleLower.includes('react') || titleLower.includes('web')) {
+          result.images = ['https://images.unsplash.com/photo-1633356122544-f134324a6cee?auto=format&fit=crop&w=600&q=80'];
+        } else if (titleLower.includes('backend') || titleLower.includes('node') || titleLower.includes('database')) {
+          result.images = ['https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=600&q=80'];
+        } else {
+          result.images = ['https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=600&q=80'];
+        }
       }
       result.imageUrls = result.images;
 

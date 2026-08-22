@@ -76,15 +76,14 @@ body {
   background: #E9F2FB;
   min-height: 100%;
   color: #0E1B2A;
-  font-family: 'Figtree', sans-serif;
+  font-family: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
+*, button, input, select, textarea {
   box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+  font-family: inherit;
 }
 
 /* Animations */

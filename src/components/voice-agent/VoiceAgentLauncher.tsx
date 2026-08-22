@@ -38,6 +38,24 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
   const [imageError, setImageError] = useState(false);
 
   const renderIcon = (buttonSize: number) => {
+    if (isOpen) {
+      return (
+        <svg
+          width={buttonSize * 0.42}
+          height={buttonSize * 0.42}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={launcher.iconColor || 'white'}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
+        >
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      );
+    }
+
     // If a logo is provided and hasn't failed to load, render the logo image
     if (launcher.logoSrc && !imageError) {
       const imgSize = Math.round(buttonSize * 0.45);
@@ -93,14 +111,14 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
   const getContainerStyles = (): React.CSSProperties => {
     const styles: React.CSSProperties = {
       position: 'fixed',
-      zIndex: launcher.zIndex ?? 1000,
-      display: isOpen ? 'none' : 'flex',
+      zIndex: (launcher.zIndex ?? 1000) + 10,
+      display: 'flex',
       alignItems: 'center',
       gap: '10px',
-      pointerEvents: isOpen ? 'none' : 'auto',
+      pointerEvents: 'auto',
       fontFamily: config.typography.fontFamily,
-      opacity: isOpen ? 0 : 1,
-      transform: isOpen ? 'scale(0.8)' : 'scale(1)',
+      opacity: 1,
+      transform: 'scale(1)',
       transition: 'opacity 0.2s ease, transform 0.2s ease',
     };
 
@@ -256,8 +274,8 @@ export default function VoiceAgentLauncher({ onClick, config, isOpen, isActive }
         )}
       </button>
 
-      {/* Show external label only for the default icon variant */}
-      {launcher.variant === 'icon' && launcher.label?.show && (
+      {/* Show external label only for the default icon variant when widget is closed */}
+      {launcher.variant === 'icon' && launcher.label?.show && !isOpen && (
         <span style={getLabelStyles()}>{launcher.label.text}</span>
       )}
     </div>

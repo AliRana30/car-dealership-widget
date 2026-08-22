@@ -1,7 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import {
-  Sparkles,
   Palette,
   Type,
   CircleDot,
@@ -12,15 +11,8 @@ import {
   Rocket,
   ChevronLeft,
   ChevronRight,
-  Layers,
-  Moon,
-  Sun,
+  LogOut,
   Home,
-  Users,
-  ShoppingBag,
-  Briefcase,
-  AlertTriangle,
-  Bell,
 } from 'lucide-react';
 import { CustomizerSection, SECTION_NAV } from './customizerTypes';
 
@@ -32,15 +24,15 @@ interface Props {
 }
 
 const SECTION_ICONS: Record<CustomizerSection, React.ReactNode> = {
-  branding: <Home size={18} strokeWidth={2} />,
-  colors: <Palette size={18} strokeWidth={2} />,
-  typography: <Type size={18} strokeWidth={2} />,
-  launcher: <CircleDot size={18} strokeWidth={2} />,
-  panel: <LayoutTemplate size={18} strokeWidth={2} />,
-  behavior: <Sliders size={18} strokeWidth={2} />,
-  responsive: <Smartphone size={18} strokeWidth={2} />,
-  crawler: <Globe2 size={18} strokeWidth={2} />,
-  deploy: <Rocket size={18} strokeWidth={2} />,
+  branding: <Home size={17} strokeWidth={2} />,
+  colors: <Palette size={17} strokeWidth={2} />,
+  typography: <Type size={17} strokeWidth={2} />,
+  launcher: <CircleDot size={17} strokeWidth={2} />,
+  panel: <LayoutTemplate size={17} strokeWidth={2} />,
+  behavior: <Sliders size={17} strokeWidth={2} />,
+  responsive: <Smartphone size={17} strokeWidth={2} />,
+  crawler: <Globe2 size={17} strokeWidth={2} />,
+  deploy: <Rocket size={17} strokeWidth={2} />,
 };
 
 export default function SettingsSidebar({
@@ -49,192 +41,212 @@ export default function SettingsSidebar({
   isCollapsed = false,
   onToggleCollapse,
 }: Props) {
-  const [isDark, setIsDark] = useState(false);
-  const [user, setUser] = useState<{ name: string; role: string; avatar?: string }>({
-    name: 'Ali Mahmood Rana',
-    role: 'admin',
-    avatar: 'https://lh3.googleusercontent.com/a/ACg8ocLglB3D4Kcc5eVz_h0dxZLqZanOJ4JOJAZ3nAiMIjMYYfpnDg=s96-c',
-  });
+  const [userName, setUserName] = useState('Ali Mahmood Rana');
+  const [userAvatar, setUserAvatar] = useState('https://lh3.googleusercontent.com/a/ACg8ocLglB3D4Kcc5eVz_h0dxZLqZanOJ4JOJAZ3nAiMIjMYYfpnDg=s96-c');
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
       .then(res => (res.ok ? res.json() : null))
       .then(data => {
         if (data && data.user) {
-          setUser({
-            name: data.user.name || data.user.email?.split('@')[0] || 'Ali Mahmood Rana',
-            role: data.user.role || 'admin',
-            avatar: data.user.avatar || 'https://lh3.googleusercontent.com/a/ACg8ocLglB3D4Kcc5eVz_h0dxZLqZanOJ4JOJAZ3nAiMIjMYYfpnDg=s96-c',
-          });
+          setUserName(data.user.name || data.user.email?.split('@')[0] || 'Ali Mahmood Rana');
+          if (data.user.avatar) {
+            setUserAvatar(data.user.avatar);
+          }
         }
       })
       .catch(() => {});
   }, []);
 
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) {}
+    window.location.href = '/login';
+  };
+
   return (
-    <aside
-      style={{
-        ...styles.sidebar,
-        width: isCollapsed ? '68px' : '210px',
-        minWidth: isCollapsed ? '68px' : '210px',
-      }}
-      className={`customizer-sidebar ${isCollapsed ? 'is-collapsed' : ''}`}
-    >
-      {/* Floating Top-Right Expand/Collapse Toggle Button */}
-      {onToggleCollapse && (
-        <button
-          onClick={onToggleCollapse}
-          style={styles.floatingToggleBtn}
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? (
-            <ChevronRight size={13} strokeWidth={2.5} color="#475569" />
-          ) : (
-            <ChevronLeft size={13} strokeWidth={2.5} color="#475569" />
-          )}
-        </button>
-      )}
-
-      {/* Top Branding Section */}
-      <div
+    <>
+      <aside
         style={{
-          ...styles.brandContainer,
-          justifyContent: isCollapsed ? 'center' : 'flex-start',
-          padding: isCollapsed ? '16px 8px 12px' : '16px 14px 12px',
+          ...styles.sidebar,
+          width: isCollapsed ? '52px' : '150px',
+          minWidth: isCollapsed ? '52px' : '150px',
         }}
+        className={`customizer-sidebar ${isCollapsed ? 'is-collapsed' : ''}`}
       >
-        <div style={styles.logoBadge}>
-          <Layers size={18} strokeWidth={2.5} color="#FFFFFF" />
-        </div>
-
-        {!isCollapsed && (
-          <div style={styles.brandTextWrapper}>
-            <span style={styles.brandTitle}>Front Desk</span>
-            <span style={styles.brandSubtitle}>ADMIN PANEL</span>
-          </div>
+        {/* Floating Arrow Toggle Button on the sidebar border line at top */}
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            style={styles.floatingArrowBtn}
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? (
+              <ChevronRight size={12} strokeWidth={2.5} color="#2563EB" />
+            ) : (
+              <ChevronLeft size={12} strokeWidth={2.5} color="#2563EB" />
+            )}
+          </button>
         )}
-      </div>
 
-      {/* Category Header */}
-      {!isCollapsed && (
-        <div style={styles.sectionHeader}>
-          <span>MAIN</span>
-        </div>
-      )}
-
-      {/* Navigation List (Scrollbar completely hidden) */}
-      <nav
-        style={{
-          ...styles.nav,
-          padding: isCollapsed ? '8px 8px' : '6px 10px',
-          alignItems: isCollapsed ? 'center' : 'stretch',
-        }}
-        className="sidebar-nav"
-      >
-        {SECTION_NAV.map((item) => {
-          const isActive = active === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => onSelect(item.id)}
-              title={item.label}
-              style={{
-                ...styles.navItem,
-                ...(isActive ? styles.navItemActive : {}),
-                justifyContent: isCollapsed ? 'center' : 'flex-start',
-                padding: isCollapsed ? '10px 0' : '9px 12px',
-              }}
-              className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
-            >
-              {/* Icon */}
-              <span
+        {/* Navigation List starting immediately from top with no blank section */}
+        <nav
+          style={{
+            ...styles.nav,
+            padding: isCollapsed ? '12px 6px 6px' : '12px 8px 6px',
+            alignItems: isCollapsed ? 'center' : 'stretch',
+          }}
+          className="sidebar-nav"
+        >
+          {SECTION_NAV.map((item) => {
+            const isActive = active === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onSelect(item.id)}
+                title={item.label}
                 style={{
-                  ...styles.navIcon,
-                  ...(isActive ? styles.navIconActive : {}),
+                  ...styles.navItem,
+                  ...(isActive ? styles.navItemActive : {}),
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  padding: isCollapsed ? '9px 0' : '8px 10px',
                 }}
+                className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
               >
-                {SECTION_ICONS[item.id]}
-              </span>
-
-              {/* Label */}
-              {!isCollapsed && (
+                {/* Icon */}
                 <span
                   style={{
-                    ...styles.navLabel,
-                    ...(isActive ? styles.navLabelActive : {}),
+                    ...styles.navIcon,
+                    ...(isActive ? styles.navIconActive : {}),
                   }}
-                  className="sidebar-nav-label"
                 >
-                  {item.label}
+                  {SECTION_ICONS[item.id]}
                 </span>
-              )}
 
-              {/* Active Indicator: Dot on right (expanded) or curved outline */}
-              {isActive && !isCollapsed && (
-                <span style={styles.activeOrangeDot} />
-              )}
-            </button>
-          );
-        })}
-      </nav>
+                {/* Label */}
+                {!isCollapsed && (
+                  <span
+                    style={{
+                      ...styles.navLabel,
+                      ...(isActive ? styles.navLabelActive : {}),
+                    }}
+                    className="sidebar-nav-label"
+                  >
+                    {item.label}
+                  </span>
+                )}
 
-      {/* Bottom Footer Section */}
-      <div
-        style={{
-          ...styles.footerContainer,
-          padding: isCollapsed ? '12px 6px' : '12px 10px',
-          alignItems: isCollapsed ? 'center' : 'stretch',
-        }}
-      >
-        {/* Dark Mode Toggle Button */}
-        <button
-          onClick={() => setIsDark(!isDark)}
-          style={{
-            ...styles.darkModeBtn,
-            justifyContent: isCollapsed ? 'center' : 'center',
-            padding: isCollapsed ? '8px 0' : '8px 12px',
-          }}
-          title="Toggle Dark Mode"
-        >
-          {isDark ? (
-            <Sun size={15} color="#F59E0B" strokeWidth={2} />
-          ) : (
-            <Moon size={15} color="#475569" strokeWidth={2} />
-          )}
-          {!isCollapsed && (
-            <span style={styles.darkModeText}>
-              {isDark ? 'Light Mode' : 'Dark Mode'}
-            </span>
-          )}
-        </button>
+                {/* Blue Active Dot on Right (Expanded) */}
+                {isActive && !isCollapsed && (
+                  <span style={styles.activeBlueDot} />
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
-        {/* User Profile Card */}
+        {/* Bottom Footer Section: User Avatar + Name + Logout Icon Button */}
         <div
           style={{
-            ...styles.userProfileCard,
-            justifyContent: isCollapsed ? 'center' : 'flex-start',
-            padding: isCollapsed ? '8px 0 0' : '10px 6px 4px',
+            ...styles.footerContainer,
+            padding: isCollapsed ? '10px 4px' : '10px 8px',
+            alignItems: 'center',
           }}
         >
-          <img
-            src={user.avatar || 'https://lh3.googleusercontent.com/a/ACg8ocLglB3D4Kcc5eVz_h0dxZLqZanOJ4JOJAZ3nAiMIjMYYfpnDg=s96-c'}
-            alt={user.name}
-            style={styles.userAvatar}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://ui-avatars.com/api/?name=Ali+Rana&background=EA580C&color=fff';
+          <div
+            style={{
+              ...styles.userProfileRow,
+              justifyContent: isCollapsed ? 'center' : 'space-between',
             }}
-          />
-
-          {!isCollapsed && (
-            <div style={styles.userInfoWrapper}>
-              <span style={styles.userName} title={user.name}>{user.name}</span>
-              <span style={styles.userRole}>{user.role}</span>
+          >
+            <div style={styles.userInfoGroup} title={userName}>
+              <img
+                src={userAvatar}
+                alt={userName}
+                style={styles.userAvatar}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://ui-avatars.com/api/?name=Ali+Rana&background=2563EB&color=fff';
+                }}
+              />
+              {!isCollapsed && (
+                <span style={styles.userName}>
+                  {userName}
+                </span>
+              )}
             </div>
+
+            {/* Sleek Logout Icon Button */}
+            {!isCollapsed && (
+              <button
+                onClick={() => setShowLogoutModal(true)}
+                style={styles.logoutIconBtn}
+                title="Log out"
+                aria-label="Log out"
+              >
+                <LogOut size={14} strokeWidth={2.2} color="#DC2626" />
+              </button>
+            )}
+          </div>
+
+          {/* If collapsed, show the logout button underneath the avatar */}
+          {isCollapsed && (
+            <button
+              onClick={() => setShowLogoutModal(true)}
+              style={{ ...styles.logoutIconBtn, marginTop: '6px' }}
+              title="Log out"
+              aria-label="Log out"
+            >
+              <LogOut size={13} strokeWidth={2.2} color="#DC2626" />
+            </button>
           )}
         </div>
-      </div>
-    </aside>
+      </aside>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <div
+          onClick={() => !isLoggingOut && setShowLogoutModal(false)}
+          style={styles.modalOverlay}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={styles.modalCard}
+          >
+            <div style={styles.modalHeader}>
+              <div style={styles.modalIconWrap}>
+                <LogOut size={20} color="#DC2626" strokeWidth={2.2} />
+              </div>
+              <div>
+                <h3 style={styles.modalTitle}>Log Out Confirmation</h3>
+                <p style={styles.modalDesc}>Are you sure you want to log out of your session?</p>
+              </div>
+            </div>
+
+            <div style={styles.modalActions}>
+              <button
+                disabled={isLoggingOut}
+                onClick={() => setShowLogoutModal(false)}
+                style={styles.btnCancel}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isLoggingOut}
+                onClick={handleConfirmLogout}
+                style={styles.btnLogout}
+              >
+                {isLoggingOut ? 'Logging out…' : 'Log Out'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -245,85 +257,34 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     flexShrink: 0,
-    transition: 'width 0.22s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+    transition: 'width 0.2s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
     position: 'relative',
-    zIndex: 20,
+    zIndex: 25,
     height: '100%',
-    overflowY: 'auto',
-    overflowX: 'hidden',
-    scrollbarWidth: 'none',
-    msOverflowStyle: 'none',
+    overflow: 'visible',
   },
-  floatingToggleBtn: {
+  floatingArrowBtn: {
     position: 'absolute',
     right: '-11px',
-    top: '20px',
+    top: '12px',
     width: '22px',
     height: '22px',
     borderRadius: '50%',
     background: '#FFFFFF',
     border: '1px solid #CBD5E1',
-    boxShadow: '0 2px 5px rgba(0, 0, 0, 0.1)',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    zIndex: 35,
+    zIndex: 50,
     padding: 0,
     transition: 'transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease',
-  },
-  brandContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    borderBottom: '1px solid #F1F5F9',
-    flexShrink: 0,
-  },
-  logoBadge: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '8px',
-    background: 'linear-gradient(135deg, #F97316 0%, #EA580C 100%)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0 3px 8px rgba(234, 88, 12, 0.28)',
-    flexShrink: 0,
-  },
-  brandTextWrapper: {
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    lineHeight: 1.2,
-  },
-  brandTitle: {
-    fontSize: '14.5px',
-    fontWeight: 700,
-    color: '#0F172A',
-    letterSpacing: '-0.01em',
-    whiteSpace: 'nowrap',
-  },
-  brandSubtitle: {
-    fontSize: '9.5px',
-    fontWeight: 700,
-    letterSpacing: '0.08em',
-    color: '#94A3B8',
-    whiteSpace: 'nowrap',
-    marginTop: '1px',
-  },
-  sectionHeader: {
-    padding: '12px 14px 4px',
-    fontSize: '10.5px',
-    fontWeight: 700,
-    letterSpacing: '0.08em',
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    flexShrink: 0,
   },
   nav: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '4px',
+    gap: '3px',
     flex: '1 1 auto',
     overflowY: 'auto',
     overflowX: 'hidden',
@@ -333,8 +294,8 @@ const styles: Record<string, React.CSSProperties> = {
   navItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: '11px',
-    borderRadius: '10px',
+    gap: '9px',
+    borderRadius: '8px',
     border: 'none',
     background: 'transparent',
     cursor: 'pointer',
@@ -345,13 +306,13 @@ const styles: Record<string, React.CSSProperties> = {
     boxSizing: 'border-box',
   },
   navItemActive: {
-    background: '#FFF7ED',
-    boxShadow: 'inset 3.5px 0 0 0 #EA580C',
-    borderRadius: '10px',
+    background: '#EFF6FF',
+    boxShadow: 'inset 3px 0 0 0 #2563EB',
+    borderRadius: '8px',
   },
   navIcon: {
-    width: '20px',
-    height: '20px',
+    width: '18px',
+    height: '18px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -360,10 +321,10 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'color 0.15s ease',
   },
   navIconActive: {
-    color: '#EA580C',
+    color: '#2563EB',
   },
   navLabel: {
-    fontSize: '13px',
+    fontSize: '12.5px',
     fontWeight: 500,
     color: '#334155',
     whiteSpace: 'nowrap',
@@ -373,14 +334,14 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'color 0.15s ease, font-weight 0.15s ease',
   },
   navLabelActive: {
-    color: '#C2410C',
+    color: '#1D4ED8',
     fontWeight: 600,
   },
-  activeOrangeDot: {
-    width: '6px',
-    height: '6px',
+  activeBlueDot: {
+    width: '5px',
+    height: '5px',
     borderRadius: '50%',
-    background: '#EA580C',
+    background: '#2563EB',
     flexShrink: 0,
     marginLeft: 'auto',
   },
@@ -388,60 +349,124 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: '1px solid #F1F5F9',
     display: 'flex',
     flexDirection: 'column',
-    gap: '8px',
     marginTop: 'auto',
     flexShrink: 0,
-  },
-  darkModeBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    borderRadius: '8px',
-    background: '#F8FAFC',
-    border: '1px solid #E2E8F0',
-    cursor: 'pointer',
     width: '100%',
     boxSizing: 'border-box',
-    transition: 'background-color 0.15s ease',
   },
-  darkModeText: {
-    fontSize: '12px',
-    fontWeight: 500,
-    color: '#475569',
-    whiteSpace: 'nowrap',
-  },
-  userProfileCard: {
+  userProfileRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '9px',
     width: '100%',
     boxSizing: 'border-box',
+  },
+  userInfoGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '7px',
+    overflow: 'hidden',
+    flex: 1,
   },
   userAvatar: {
-    width: '32px',
-    height: '32px',
+    width: '26px',
+    height: '26px',
     borderRadius: '50%',
     objectFit: 'cover',
-    border: '1.5px solid #EA580C',
+    border: '1.5px solid #2563EB',
     flexShrink: 0,
   },
-  userInfoWrapper: {
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    lineHeight: 1.2,
-  },
   userName: {
-    fontSize: '12.5px',
+    fontSize: '11px',
     fontWeight: 600,
     color: '#0F172A',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
-  userRole: {
-    fontSize: '10.5px',
+  logoutIconBtn: {
+    background: '#FEF2F2',
+    border: '1px solid #FECACA',
+    borderRadius: '6px',
+    width: '24px',
+    height: '24px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    padding: 0,
+    flexShrink: 0,
+    transition: 'background-color 0.15s ease, border-color 0.15s ease',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(15, 23, 42, 0.45)',
+    backdropFilter: 'blur(4px)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  },
+  modalCard: {
+    background: '#FFFFFF',
+    borderRadius: '14px',
+    padding: '22px 24px',
+    maxWidth: '360px',
+    width: '90%',
+    boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
+  },
+  modalHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '12px',
+    marginBottom: '18px',
+  },
+  modalIconWrap: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '10px',
+    background: '#FEE2E2',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  modalTitle: {
+    fontSize: '15px',
+    fontWeight: 700,
+    color: '#0F172A',
+    margin: '0 0 4px',
+  },
+  modalDesc: {
+    fontSize: '12.5px',
     color: '#64748B',
-    textTransform: 'lowercase',
+    margin: 0,
+    lineHeight: 1.4,
+  },
+  modalActions: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: '8px',
+  },
+  btnCancel: {
+    padding: '7px 14px',
+    borderRadius: '8px',
+    border: '1px solid #E2E8F0',
+    background: '#FFFFFF',
+    fontSize: '12.5px',
+    fontWeight: 500,
+    color: '#475569',
+    cursor: 'pointer',
+  },
+  btnLogout: {
+    padding: '7px 14px',
+    borderRadius: '8px',
+    border: 'none',
+    background: '#DC2626',
+    fontSize: '12.5px',
+    fontWeight: 600,
+    color: '#FFFFFF',
+    cursor: 'pointer',
   },
 };
