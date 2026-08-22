@@ -14,6 +14,7 @@ interface VoiceAgentStatusProps {
   agentSpeaking: boolean;
   userSpeaking: boolean;
   onStartCall: () => void;
+  chatTyping?: boolean;
 }
 
 const PHONE_PATH = [
@@ -33,8 +34,12 @@ export default function VoiceAgentStatus({
   agentSpeaking,
   userSpeaking,
   onStartCall,
+  chatTyping = false,
 }: VoiceAgentStatusProps) {
   const { branding, panel, behavior, theme, audioVisualizer } = config;
+
+  const isVoiceOperating = isActive || isLoading || ['connecting', 'connected', 'agent_speaking', 'user_listening', 'muted', 'permission_required'].includes(callState);
+  const isChatOperating = chatTyping;
 
   const formatTime = (secCount: number) => {
     const m = Math.floor(secCount / 60).toString().padStart(2, '0');
@@ -204,8 +209,8 @@ export default function VoiceAgentStatus({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: 'center', gap: spacing.gap }}>
-      {/* Tab Selector - Only show when callState is 'idle' and text chat is allowed */}
-      {callState === 'idle' && panel.showTabs && behavior.allowTextChat && (
+      {/* Tab Selector - ALWAYS visible when enabled, with clean mutual-exclusion disabling */}
+      {panel.showTabs && behavior.allowTextChat && behavior.allowVoiceChat && (
         <div
           style={{
             display: 'flex',
@@ -220,7 +225,11 @@ export default function VoiceAgentStatus({
         >
           <button
             type="button"
-            onClick={() => onTabChange('text')}
+            disabled={isVoiceOperating}
+            onClick={() => {
+              if (!isVoiceOperating) onTabChange('text');
+            }}
+            title={isVoiceOperating ? 'Voice call in progress' : 'Switch to Text Chat'}
             style={{
               flex: 1,
               padding: '6px 12px',
@@ -230,7 +239,8 @@ export default function VoiceAgentStatus({
               color: activeTab === 'text' ? '#0F172A' : '#64748B',
               fontWeight: 700,
               fontSize: '12px',
-              cursor: 'pointer',
+              cursor: isVoiceOperating ? 'not-allowed' : 'pointer',
+              opacity: isVoiceOperating && activeTab !== 'text' ? 0.45 : 1,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -247,7 +257,11 @@ export default function VoiceAgentStatus({
 
           <button
             type="button"
-            onClick={() => onTabChange('voice')}
+            disabled={isChatOperating}
+            onClick={() => {
+              if (!isChatOperating) onTabChange('voice');
+            }}
+            title={isChatOperating ? 'Chat response in progress' : 'Switch to Voice Agent'}
             style={{
               flex: 1,
               padding: '6px 12px',
@@ -257,7 +271,8 @@ export default function VoiceAgentStatus({
               color: activeTab === 'voice' ? '#0F172A' : '#64748B',
               fontWeight: 700,
               fontSize: '12px',
-              cursor: 'pointer',
+              cursor: isChatOperating ? 'not-allowed' : 'pointer',
+              opacity: isChatOperating && activeTab !== 'voice' ? 0.45 : 1,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',

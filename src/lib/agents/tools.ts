@@ -158,7 +158,7 @@ export async function searchEntities(
         const images = Array.isArray(r.images) ? r.images : [];
 
         return {
-          id: `${widgetId}-item-${idx}`,
+          id: r.id || `${widgetId}-item-${idx}`,
           widgetId,
           title: r.title || 'Untitled',
           shortDescription: r.description || '',

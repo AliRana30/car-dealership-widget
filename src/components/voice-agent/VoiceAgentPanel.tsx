@@ -239,6 +239,7 @@ export default function VoiceAgentPanel({
             agentSpeaking={agentSpeaking}
             userSpeaking={userSpeaking}
             onStartCall={onStartCall}
+            chatTyping={chatTyping}
           />
 
           <VoiceAgentTranscript

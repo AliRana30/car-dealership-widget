@@ -601,7 +601,7 @@ export default function WidgetCustomizerApp() {
 
         {/* CENTER: Live preview */}
         <div style={styles.previewCol} className="customizer-preview-col">
-          <PreviewArea draft={draft} widgetId={widgetId} />
+          <PreviewArea draft={draft} widgetId={widgetId} onUpdateDraft={patchDraft} />
         </div>
 
         {/* RIGHT: Color editor (ONLY visible on colors section) */}

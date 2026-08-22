@@ -100,7 +100,7 @@ function isExplicitNavigationIntent(query: string): boolean {
   const q = query.trim().toLowerCase();
   return (
     /^(?:take me to|navigate me to|navigate to|open|go to|redirect me to|redirect to|bring me to|launch|show me the page for|show me the|open the page for|visit|take me|can you take me to|can you navigate me to|lead me to)\b/i.test(q) ||
-    /\b(?:navigate|navigation|redirect|redirecting|go to|open up|open page|open course)\b/i.test(q) ||
+    /\b(?:navigate|navigation|redirect|redirecting|go to|open up|open page|open course|open product|open item)\b/i.test(q) ||
     /\b(?:page|url|website|tab|screen)\s*(?:please|now)?$/i.test(q)
   );
 }
@@ -109,6 +109,69 @@ interface ChatFallbackResult {
   text: string;
   navigationUrl?: string;
   suggestedUrl?: string;
+}
+
+function resolveFollowUpEntity(content: string, history: any[]): { resolvedQuery: string; targetEntityTitle?: string; targetUrl?: string } {
+  const lower = content.trim().toLowerCase();
+  
+  // 1. Find last agent message with structured results OR bold title in content
+  let lastResults: WebsiteDataRecord[] = [];
+  let lastBoldTitle: string | undefined;
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const msg = history[i];
+    if (msg.role === 'agent') {
+      if (Array.isArray(msg.results) && msg.results.length > 0 && lastResults.length === 0) {
+        lastResults = msg.results;
+      }
+      if (!lastBoldTitle && typeof msg.content === 'string') {
+        const boldMatch = msg.content.match(/\*\*([^*]+)\*\*/);
+        if (boldMatch && boldMatch[1].trim().length > 2) {
+          lastBoldTitle = boldMatch[1].trim();
+        }
+      }
+    }
+  }
+
+  // Check for ordinal references (e.g. "the second one", "2nd item", "first course")
+  const ordinalMap: Record<string, number> = {
+    'first': 0, '1st': 0,
+    'second': 1, '2nd': 1,
+    'third': 2, '3rd': 2,
+    'fourth': 3, '4th': 3,
+    'fifth': 4, '5th': 4,
+    'last': lastResults.length > 0 ? lastResults.length - 1 : 0,
+  };
+
+  const ordinalMatch = lower.match(/\b(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|last)\b/i);
+  if (ordinalMatch && lastResults.length > 0) {
+    const word = ordinalMatch[1].toLowerCase();
+    const idx = ordinalMap[word];
+    if (idx !== undefined && idx >= 0 && idx < lastResults.length) {
+      const item = lastResults[idx];
+      if (item?.title) {
+        const isPriceQuery = /(?:price|cost|how much|fee|rate|tuition)/i.test(lower);
+        const resolvedQuery = isPriceQuery ? `${item.title} price` : item.title;
+        return { resolvedQuery, targetEntityTitle: item.title, targetUrl: item.sourceUrl };
+      }
+    }
+  }
+
+  // Check for anaphoric / pronoun queries (e.g. "what's its price?", "how much is it?", "tell me about it", "open it", "what is the price?")
+  const isAnaphoric = /\b(it|its|it's|that|that's|this|the item|the course|the product|the vehicle|the service|the offering)\b/i.test(lower) ||
+    /^(?:what(?:'s| is) (?:the )?(?:price|cost|fee|rate|tuition)\??|how much(?: is it)?\??|tell me more\??|open it\??|details\??)$/i.test(lower);
+
+  if (isAnaphoric) {
+    const targetTitle = lastBoldTitle || lastResults[0]?.title;
+    if (targetTitle) {
+      const isPriceQuery = /(?:price|cost|how much|fee|rate|tuition)/i.test(lower);
+      const resolvedQuery = isPriceQuery ? `${targetTitle} price` : targetTitle;
+      const matchedItem = lastResults.find(r => r.title?.toLowerCase() === targetTitle.toLowerCase()) || lastResults[0];
+      return { resolvedQuery, targetEntityTitle: targetTitle, targetUrl: matchedItem?.sourceUrl };
+    }
+  }
+
+  return { resolvedQuery: content };
 }
 
 async function generateChatFallbackResponse(
@@ -127,7 +190,7 @@ async function generateChatFallbackResponse(
   const isGreeting = /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|start|help)$/i.test(trimmed);
   if (isGreeting) {
     return {
-      text: `Hello! I'm your AI front desk receptionist for ${businessName}. How can I help you today? Feel free to ask about our courses, pricing, admissions, or policies.`
+      text: `Hello! I'm your AI assistant for ${businessName}. How can I help you today? Feel free to ask about our offerings, pricing, details, or policies.`
     };
   }
 
@@ -139,62 +202,54 @@ async function generateChatFallbackResponse(
       navigationUrl: lastNavUrl,
     };
   }
-  // If "yes" but no pending URL, ask what they mean
   if (isYesConfirmation && !lastNavUrl) {
     return {
-      text: `Sure! What would you like me to help with? You can ask about our courses, pricing, or I can navigate you to a specific page.`,
+      text: `Sure! What would you like me to help with? You can ask about our offerings, pricing, or I can navigate you to a specific page.`,
     };
   }
 
-  // 1. Explicit & Specific Navigation Intent Handling
+  // 1. Explicit Navigation Intent Handling
   if (isExplicit) {
     // 1a. Navigation to About Page
     if (/\b(?:about|who\s+are\s+you|mission|story|company|founder|developer|team)\b/i.test(trimmed)) {
       const match = matchedRecords.find(r => /about/i.test(r.title || '') || /about/i.test(r.sourceUrl || ''));
-      const url = match?.sourceUrl || 'https://lms-e-learning-system.vercel.app/about';
-      return {
-        text: `Navigating you to our About page now so you can learn more about ${businessName}!`,
-        navigationUrl: url
-      };
+      if (match?.sourceUrl) {
+        return {
+          text: `Navigating you to our About page now so you can learn more about ${businessName}!`,
+          navigationUrl: match.sourceUrl
+        };
+      }
     }
 
     // 1b. Navigation to Policies & Terms
     if (/\b(?:policy|policies|terms|privacy|gdpr|refund|legal)\b/i.test(trimmed)) {
       const match = matchedRecords.find(r => /policy|terms|privacy/i.test(r.title || '') || /policy|terms/i.test(r.sourceUrl || ''));
-      const url = match?.sourceUrl || 'https://lms-e-learning-system.vercel.app/policy';
-      return {
-        text: `Opening our Policies & Terms page on your screen now!`,
-        navigationUrl: url
-      };
+      if (match?.sourceUrl) {
+        return {
+          text: `Opening our Policies & Terms page on your screen now!`,
+          navigationUrl: match.sourceUrl
+        };
+      }
     }
 
     // 1c. Navigation to FAQ / Help / Contact
     if (/\b(?:faq|frequently asked|questions?|help|contact|support)\b/i.test(trimmed)) {
       const isFaq = /\b(?:faq|frequently asked|questions?|help)\b/i.test(trimmed);
       const match = matchedRecords.find(r => (isFaq ? /faq/i : /contact/i).test(r.title || '') || (isFaq ? /faq/i : /contact/i).test(r.sourceUrl || ''));
-      const url = match?.sourceUrl || (isFaq ? 'https://lms-e-learning-system.vercel.app/faq' : 'https://lms-e-learning-system.vercel.app/contact');
-      return {
-        text: `Navigating you to our ${isFaq ? 'FAQ' : 'Contact'} page now!`,
-        navigationUrl: url
-      };
+      if (match?.sourceUrl) {
+        return {
+          text: `Navigating you to our ${isFaq ? 'FAQ' : 'Contact'} page now!`,
+          navigationUrl: match.sourceUrl
+        };
+      }
     }
 
-    // 1d. Navigation to all courses / general catalog directory (e.g. "navigate me to courses", "open catalog", "browse courses")
-    if (/\b(?:all\s+courses|courses|catalog|inventory|shop|all\s+programs|offerings)\b/i.test(trimmed)) {
-      const catalogMatch = matchedRecords.find(r => /\/(courses|catalog|inventory|shop)\/?$/i.test(r.sourceUrl || ''));
-      const url = catalogMatch?.sourceUrl || 'https://lms-e-learning-system.vercel.app/courses';
-      return {
-        text: `Opening our courses catalog on your screen now! Feel free to explore our offerings or ask me about any specific course.`,
-        navigationUrl: url
-      };
-    }
-
-    // 1e. Navigation to a specific named course or product item (e.g. "navigate to mern stack", "open backend mastery")
-    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'me', 'the', 'you', 'show', 'to', 'can'].includes(w));
+    // 1d. Navigation to specific named item or general catalog
+    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'product', 'item', 'me', 'the', 'you', 'show', 'to', 'can'].includes(w));
     const targetItem = matchedRecords.find(r => {
       const t = (r.title || '').toLowerCase();
       return queryWords.some(w => t.includes(w));
-    });
+    }) || matchedRecords[0];
 
     if (targetItem?.sourceUrl) {
       return {
@@ -203,67 +258,31 @@ async function generateChatFallbackResponse(
       };
     }
 
-    // 1f. Vague navigation with no recognizable destination — ask which page
-    if (queryWords.length === 0 || (queryWords.length === 1 && ['page', 'site', 'website', 'somewhere'].includes(queryWords[0]))) {
+    if (queryWords.length === 0) {
       return {
-        text: `Sure! Which page would you like me to open? For example you can say "navigate to About", "open Courses", "go to FAQ", or name a specific item.`,
+        text: `Sure! Which page would you like me to open? You can ask for our catalog, about page, contact page, or name a specific item.`,
         navigationUrl: undefined,
       };
     }
 
-    // 1g. Explicit navigation but nothing matched — ask for clarification
     return {
-      text: `I couldn't find a page matching "${queryWords.join(' ')}" in our site. Would you like me to open the main courses directory instead, or can you be more specific?`,
+      text: `I couldn't find a matching page for "${queryWords.join(' ')}" in our website. Would you like to explore our main offerings instead?`,
       navigationUrl: undefined,
     };
   }
 
-  // 2. Check for Admissions & Enrollment Intent (e.g. "How do I apply?", "Admission requirements?")
-  const isAdmissionsQuery = /\b(?:admission|admissions|enroll|enrollment|apply|application|requirements?|prerequisites?|how to join|how do i apply|register)\b/i.test(trimmed);
-  if (isAdmissionsQuery) {
-    return {
-      text: `Enrolling at ${businessName} is fast and straightforward! Simply browse our courses, select the program that fits your goals (such as **MERN Stack Development**, **Backend Mastery**, or **Leetcode Mastery**), and click **Enroll Now** on the course page for immediate access to curriculum modules, codebases, and student channels. Beginner tracks have no prerequisites.`,
-      navigationUrl: undefined
-    };
-  }
-
-  // 3. Check for Informational Queries (About Us, Policies, FAQ, Contact)
-  const isAboutQuery = /\b(?:about|who\s+are\s+you|mission|story|company|founder|developer|background|team|who\s+built)\b/i.test(trimmed);
-  const isPolicyQuery = /\b(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)\b/i.test(trimmed);
-  const isFaqQuery = /\b(?:faq|frequently asked|questions?|help center)\b/i.test(trimmed);
-  const isContactQuery = /\b(?:contact|reach out|email|phone|address|location|support team|talk to advisor|speak with advisor)\b/i.test(trimmed);
-
-  if (isAboutQuery) {
-    return {
-      text: `At ${businessName}, our mission is to make high-quality education and practical engineering skills accessible to learners worldwide through hands-on instruction and modern technology.`,
-      navigationUrl: undefined
-    };
-  }
-
-  if (isPolicyQuery) {
-    return {
-      text: `Our policies at ${businessName} ensure bank-level 256-bit encryption, full GDPR compliance, and a 30-day refund window on course purchases. Your personal data is never shared with third parties.`,
-      navigationUrl: undefined
-    };
-  }
-
-  if (isFaqQuery || isContactQuery) {
-    return {
-      text: `You can find answers to common questions, support options, and direct contact details on our ${isFaqQuery ? 'FAQ' : 'contact'} page. Let me know what specific questions you have!`,
-      navigationUrl: undefined
-    };
-  }
-
-  // 4. Try LLMs (OpenAI, Gemini, Groq) if API keys are available
+  // 2. Try LLMs (OpenAI, Gemini, Groq) with strict anti-hallucination prompt if keys exist
   const systemPrompt = `You are a helpful AI receptionist and assistant for ${businessName}.
-Use this relevant website information to answer accurately and concisely:
-${relevantData || 'No additional scraped content.'}
+Use ONLY the following website information to answer accurately and concisely.
+If the answer is NOT present in the website information below, or if the user asks about an item/course/product that is NOT listed below, clearly state: "I couldn't find that in the available website information." Do NOT invent or guess any website information.
+
+Relevant Website Information:
+${relevantData || 'No specific matching records found.'}
 
 Guidelines:
 - Provide clear, professional, and friendly answers.
-- Format course/product lists cleanly using bullet points, titles, and prices when available.
-- If the user asks about something we DO NOT offer (e.g. a Python course when we only have MERN/Backend/Leetcode courses), clearly say we don't currently offer that, and suggest the closest available alternative.
-- If the user asks general questions about courses or offerings, present the top 5-6 options with hyperlinks and ask which one they'd like more details on.
+- Format item lists cleanly using bullet points, titles, and prices when available.
+- If the user asks about a specific item that does not exist in the information, say you couldn't find a matching offering.
 - Keep responses concise (under 120 words).`;
 
   if (openAiKey) {
@@ -280,7 +299,7 @@ Guidelines:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: content.trim() }
           ],
-          temperature: 0.7,
+          temperature: 0.3,
           max_tokens: 250,
         }),
       });
@@ -304,7 +323,7 @@ Guidelines:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question: ${content.trim()}` }] }],
-          generationConfig: { maxOutputTokens: 250, temperature: 0.7 },
+          generationConfig: { maxOutputTokens: 250, temperature: 0.3 },
         }),
       });
       if (res.ok) {
@@ -328,7 +347,7 @@ Guidelines:
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: content.trim() }],
-          temperature: 0.7,
+          temperature: 0.3,
           max_tokens: 250,
         }),
       });
@@ -345,86 +364,81 @@ Guidelines:
     }
   }
 
-  // 5. Zero-LLM Adaptive Dynamic Synthesis Engine
+  // 3. Dynamic Structured Synthesis Engine (Zero-LLM Fallback)
 
-  // Case A: Explicit single item navigation request (e.g. "take me to mern course")
-  if (isExplicit && matchedRecords.length > 0) {
-    const item = matchedRecords[0];
-    return {
-      text: `Opening the page for **${item.title}** on your screen now! Let me know if you have any questions about it.`,
-      navigationUrl: item.sourceUrl
-    };
-  }
-
-  // Case B: Pricing, Tuition & Payment Inquiries (e.g. "What are the tuition rates and pricing options?")
-  const isPricingQuery = /(?:pricing|price|prices|cost|costs|tuition|rate|rates|fee|fees|how much|payment|options|subscription)/i.test(trimmed);
+  // Case A: Pricing & Rates Inquiries
+  const isPricingQuery = /(?:pricing|price|prices|cost|costs|tuition|rate|rates|fee|fees|how much|payment|subscription)/i.test(trimmed);
   if (isPricingQuery && matchedRecords.length > 0) {
     const priceRecords = matchedRecords.filter(r => r.price);
-    const priceLines = (priceRecords.length > 0 ? priceRecords : matchedRecords)
-      .slice(0, 5)
-      .map(item => {
-        const rawPrice = String(item.price || '').trim();
-        const cleanPrice = rawPrice ? (rawPrice.startsWith('$') ? rawPrice : `$${rawPrice}`) : 'Standard Rate';
-        const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
-        return `• ${link}: **${cleanPrice}**`;
-      })
-      .join('\n');
+    const targetRecords = priceRecords.length > 0 ? priceRecords : matchedRecords;
+    
+    if (targetRecords.length === 1) {
+      const item = targetRecords[0];
+      const rawPrice = String(item.price || '').trim();
+      const cleanPrice = rawPrice ? (rawPrice.startsWith('$') ? rawPrice : `$${rawPrice}`) : 'Standard Rate';
+      const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
+      return {
+        text: `The pricing for ${link} is **${cleanPrice}**. Would you like me to open the details page on your screen?`,
+        suggestedUrl: item.sourceUrl,
+      };
+    }
+
+    const priceLines = targetRecords.slice(0, 5).map(item => {
+      const rawPrice = String(item.price || '').trim();
+      const cleanPrice = rawPrice ? (rawPrice.startsWith('$') ? rawPrice : `$${rawPrice}`) : 'Contact for pricing';
+      const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
+      return `• ${link}: **${cleanPrice}**`;
+    }).join('\n');
 
     return {
-      text: `Here are the tuition rates and pricing options for ${businessName}:\n\n${priceLines}\n\nAll programs include lifetime access, project codebases, and a 30-day money-back guarantee. Would you like more details on a specific course?`,
+      text: `Here are the pricing options for ${businessName}:\n\n${priceLines}\n\nWould you like more details on a specific item?`,
       navigationUrl: undefined
     };
   }
 
-  // Case E: Specific Single Item Detail Query (e.g. "tell me about mern stack course")
+  // Case B: Specific Single Item Detail Query
   if (matchedRecords.length === 1) {
     const item = matchedRecords[0];
     const rawPrice = String(item.price || '').trim();
     const priceText = rawPrice ? ` (${rawPrice.startsWith('$') ? rawPrice : '$' + rawPrice})` : '';
-    const descText = item.description ? item.description.substring(0, 180).trim() : '';
-    const linkText = item.sourceUrl ? `\n\n[View Full Course Page](${item.sourceUrl})` : '';
+    const descText = item.description ? item.description.substring(0, 200).trim() : '';
+    const linkText = item.sourceUrl ? `\n\n[View Full Page](${item.sourceUrl})` : '';
     return {
-      text: `Here are the details for **${item.title}**${priceText}:\n\n${descText}${linkText}\n\nWould you like me to open the course page on your screen?`,
+      text: `Here are the details for **${item.title}**${priceText}:\n\n${descText}${linkText}\n\nWould you like me to open the page on your screen?`,
       navigationUrl: undefined,
       suggestedUrl: item.sourceUrl,
     };
   }
 
-  // Case F: Catalog / Multi-item Query (e.g. "which courses do you offer?", "all courses")
+  // Case C: Catalog / Multi-item Query
   if (matchedRecords.length > 1) {
-    const topRecords = matchedRecords.slice(0, 6);
-    const itemsList = topRecords
-      .map(item => {
-        const rawPrice = String(item.price || '').trim();
-        const price = rawPrice ? ` (${rawPrice.startsWith('$') ? rawPrice : '$' + rawPrice})` : '';
-        const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
-        const desc = item.description ? `: ${item.description.substring(0, 90).trim()}...` : '';
-        return `• ${link}${price}${desc}`;
-      })
-      .join('\n');
+    const topRecords = matchedRecords.slice(0, 5);
+    const itemsList = topRecords.map(item => {
+      const rawPrice = String(item.price || '').trim();
+      const price = rawPrice ? ` (${rawPrice.startsWith('$') ? rawPrice : '$' + rawPrice})` : '';
+      const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
+      const desc = item.description ? `: ${item.description.substring(0, 90).trim()}...` : '';
+      return `• ${link}${price}${desc}`;
+    }).join('\n');
 
     return {
-      text: `We offer several popular courses and programs at ${businessName}:\n\n${itemsList}\n\nWhich of these would you like to explore or get more details on? You can also ask me to open any course page directly on your screen!`,
+      text: `Here are the available offerings for ${businessName}:\n\n${itemsList}\n\nWhich of these would you like to explore or get more details on?`,
       navigationUrl: undefined
     };
   }
 
-  // Case G: No match found — be honest and concise about what we don't have
-  const searchTerms = content.trim().split(/\s+/).filter(w => w.length > 2 && !['what', 'does', 'have', 'your', 'offer', 'available', 'about', 'course', 'courses', 'program', 'programs', 'do', 'you', 'with', 'that', 'this', 'there', 'any', 'the', 'tell', 'show'].includes(w.toLowerCase())).slice(0, 3).join(' ');
+  // Case D: No match found — strict anti-hallucination response
+  const searchTerms = content.trim().split(/\s+/).filter(w => w.length > 2 && !['what', 'does', 'have', 'your', 'offer', 'available', 'about', 'course', 'courses', 'product', 'products', 'program', 'programs', 'do', 'you', 'with', 'that', 'this', 'there', 'any', 'the', 'tell', 'show', 'how', 'much'].includes(w.toLowerCase())).slice(0, 3).join(' ');
+
   if (searchTerms) {
     return {
-      text: `We do not currently offer a **${searchTerms}** course at ${businessName}.\n\nOur current available programs focus on:
-• **Leetcode Mastery** ($90) — Coding interview prep & algorithms
-• **MERN Stack Development** ($150) — Full-stack web development
-• **Backend Mastery** ($100) — Server architecture & APIs
-
-Would you like more details on any of these available programs?`,
+      text: `I couldn't find a matching offering for "${searchTerms}" in the available website information. Would you like to explore our general catalog or ask about another topic?`,
       navigationUrl: undefined
     };
   }
 
   return {
-    text: `I'm happy to help you with ${businessName}. We have courses, services, and live support available. What specific topic or program can I help you find?`,
+    text: `I'm happy to help you with ${businessName}. Feel free to ask about our offerings, services, or pricing!`,
     navigationUrl: undefined
   };
 }
@@ -462,7 +476,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { chatId?: string | null; content?: string; widgetId?: string; sessionId?: string; lastNavUrl?: string | null } = {};
+  let body: { chatId?: string | null; content?: string; widgetId?: string; sessionId?: string; lastNavUrl?: string | null; history?: any[] } = {};
   try {
     body = (await req.json()) ?? {};
   } catch {
@@ -473,6 +487,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { widgetId, sessionId: incomingSessionId, lastNavUrl } = body;
+  const history: any[] = Array.isArray(body.history) ? body.history : [];
   let { chatId } = body;
   const rawContent = body.content;
   const sessionId = incomingSessionId && typeof incomingSessionId === 'string' ? incomingSessionId : randomUUID();
@@ -624,24 +639,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Conversational Follow-Up Resolution ──────────────────────────────────
+  const { resolvedQuery, targetEntityTitle, targetUrl } = resolveFollowUpEntity(content, history);
+
   // Resolve relevant website intelligence data dynamically through the backend
   const websiteId = widget.websiteId || '00000000-0000-0000-0000-000000000000';
-  // Run text context + structured records retrieval in parallel
+  // Run text context + structured records retrieval in parallel using the resolved query
   const [relevantData, relevantRecords] = await Promise.all([
-    getRelevantWebsiteData(websiteId, content),
-    getRelevantWebsiteRecords(websiteId, content),
+    getRelevantWebsiteData(websiteId, resolvedQuery),
+    getRelevantWebsiteRecords(websiteId, resolvedQuery),
   ]);
+
+  const effectiveNavUrl = targetUrl || lastNavUrl;
 
   if (!apiKey || !agentId) {
     const fallbackResult = await generateChatFallbackResponse(
-      content,
+      resolvedQuery !== content ? resolvedQuery : content,
       relevantData,
       widget.name || widget.config?.branding?.companyName || 'our business',
       relevantRecords,
-      lastNavUrl
+      effectiveNavUrl
     );
 
-    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
     const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
 
     const fallbackMessages = [
@@ -781,14 +800,13 @@ export async function POST(req: NextRequest) {
     console.warn('[retell/chat] Retell API error, falling back to intelligent knowledge chat:', errMsg);
 
     const fallbackResult = await generateChatFallbackResponse(
-      content,
+      resolvedQuery !== content ? resolvedQuery : content,
       relevantData,
       widget.name || widget.config?.branding?.companyName || 'our business',
       relevantRecords,
-      lastNavUrl
+      effectiveNavUrl
     );
 
-    const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing/i.test(content.trim());
     const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
 
     const fallbackMessages = [

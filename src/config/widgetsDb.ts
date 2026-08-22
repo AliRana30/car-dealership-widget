@@ -557,10 +557,10 @@ export function isValidUuid(str?: string | null): boolean {
 }
 
 function parsePriceValue(price: any): number | null {
-  if (typeof price === 'number') return price;
+  if (typeof price === 'number') return isNaN(price) ? null : price;
   if (!price) return null;
   const str = String(price).replace(/,/g, '');
-  const m = str.match(/\$?\s*(\d+(?:\.\d+)?)/);
+  const m = str.match(/(\d+(?:\.\d+)?)/);
   return m ? parseFloat(m[1]) : null;
 }
 
@@ -584,13 +584,13 @@ function parseQueryConstraints(query: string): ParsedQueryConstraints {
   let minPrice: number | undefined;
   let sortByPrice: 'asc' | 'desc' | undefined;
   
-  const underMatch = lower.match(/(?:under|below|less than|cheaper than|max(?:imum)?|<=?)\s*\$?(\d+)/i);
+  const underMatch = lower.match(/(?:under|below|less than|cheaper than|max(?:imum)?|<=?)\s*\$?(\d+(?:\.\d+)?)/i);
   if (underMatch) maxPrice = parseFloat(underMatch[1]);
 
-  const overMatch = lower.match(/(?:above|over|more than|greater than|min(?:imum)?|>=?)\s*\$?(\d+)/i);
+  const overMatch = lower.match(/(?:above|over|more than|greater than|min(?:imum)?|>=?)\s*\$?(\d+(?:\.\d+)?)/i);
   if (overMatch) minPrice = parseFloat(overMatch[1]);
 
-  const betweenMatch = lower.match(/between\s*\$?(\d+)\s*(?:and|-|to)\s*\$?(\d+)/i);
+  const betweenMatch = lower.match(/between\s*\$?(\d+(?:\.\d+)?)\s*(?:and|-|to)\s*\$?(\d+(?:\.\d+)?)/i);
   if (betweenMatch) {
     minPrice = parseFloat(betweenMatch[1]);
     maxPrice = parseFloat(betweenMatch[2]);
@@ -602,16 +602,28 @@ function parseQueryConstraints(query: string): ParsedQueryConstraints {
     sortByPrice = 'desc';
   }
 
-  const sortByRating = /(?:best rated|top rated|highest rated|top reviews|5 star|best courses?|top courses?|best products?|top products?)/i.test(lower);
+  const sortByRating = /(?:best rated|top rated|highest rated|top reviews|5 star|best |top |most popular)/i.test(lower);
 
-  const isAboutQuery = /(?:about|who are you|mission|story|company|founder|developer|background|team|who built)/i.test(lower);
+  const isAboutQuery = /(?:about (?:us|the company|your team|you)|who (?:are you|made you|built you)|company mission|our story|company story|team members|founder)/i.test(lower);
   const isPolicyQuery = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(lower);
-  const isFaqQuery = /(?:faq|frequently asked|questions|help)/i.test(lower);
-  const isContactQuery = /(?:contact|reach out|email|phone|address|location|support)/i.test(lower);
-  const isCatalogQuery = !isAboutQuery && !isPolicyQuery && !isFaqQuery && !isContactQuery && /(?:course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing|stock)/i.test(lower);
+  const isFaqQuery = /(?:faq|frequently asked|questions|help center)/i.test(lower);
+  const isContactQuery = /(?:contact (?:us|team)|reach out|email address|phone number|office location|support team)/i.test(lower);
+  const isCatalogQuery = !isAboutQuery && !isPolicyQuery && !isFaqQuery && !isContactQuery && /(?:course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing|stock|menu|vehicle|vehicles|properties|plans)/i.test(lower);
 
-  const stopWords = new Set(['show', 'me', 'the', 'a', 'an', 'what', 'is', 'your', 'tell', 'about', 'can', 'you', 'give', 'details', 'for', 'of', 'in', 'at', 'with', 'course', 'courses', 'product', 'products', 'service', 'services']);
-  const words = lower.split(/\W+/).filter(w => w.length > 2 && !stopWords.has(w));
+  const stopWords = new Set([
+    'show', 'me', 'the', 'a', 'an', 'what', 'is', 'your', 'tell', 'about',
+    'can', 'you', 'give', 'details', 'for', 'of', 'in', 'at', 'with', 'do',
+    'have', 'offer', 'available', 'there', 'any', 'how', 'much', 'are', 'i',
+    'want', 'to', 'know', 'see', 'find', 'looking', 'get', 'more', 'info',
+    'course', 'courses', 'product', 'products', 'service', 'services', 'offering',
+    'offerings', 'program', 'programs', 'item', 'items', 'class', 'classes',
+    'under', 'below', 'less', 'than', 'cheaper', 'max', 'maximum', 'above',
+    'over', 'more', 'greater', 'min', 'minimum', 'between', 'and', 'or',
+    'budget', 'affordable', 'least', 'most', 'expensive', 'cheapest', 'best',
+    'top', 'rated', 'popular', 'price', 'pricing', 'cost', 'costs', 'fee', 'fees',
+    'tuition', 'dollar', 'dollars', 'bucks'
+  ]);
+  const words = lower.split(/[^a-z0-9_-]+/).filter(w => w.length > 2 && !/^\d+$/.test(w) && !stopWords.has(w));
 
   return {
     maxPrice,
@@ -629,7 +641,7 @@ function parseQueryConstraints(query: string): ParsedQueryConstraints {
 
 /**
  * Returns the most relevant crawled text chunks for an agent context prompt.
- * Uses query constraints (price, rating, intent) and entity matching.
+ * Uses query constraints (price, rating, intent) and hierarchical entity matching.
  */
 export async function getRelevantWebsiteData(
   websiteOrWidgetId: string,
@@ -679,7 +691,7 @@ export async function getRelevantWebsiteData(
     }
     let { data: records } = await queryBuilder;
     if ((!records || records.length === 0) && filterWidgetIds.length > 0) {
-      const fallback = await supabase.from('website_data').select('*').limit(25);
+      const fallback = await supabase.from('website_data').select('*').limit(35);
       records = fallback.data;
     }
 
@@ -692,32 +704,31 @@ export async function getRelevantWebsiteData(
       const titleLower = (record.title || '').toLowerCase();
       const contentLower = (record.content || '').toLowerCase();
       const meta = (record.metadata || {}) as Record<string, any>;
-      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice);
+      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice || record.price);
       const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
       const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length);
-      const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(record.entity_type) || hasPricingOrMedia;
+      const isCatalogEntity = ['service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan'].includes(record.entity_type) || hasPricingOrMedia;
       const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal|security/.test(titleLower);
-      const isAboutEntity = /about|mission|story|empowering|founder|developer/.test(titleLower);
+      const isAboutEntity = /about|mission|story|empowering|founder|developer|team/.test(titleLower);
       const isFaqEntity = ['faq'].includes(record.entity_type) || /faq|frequently asked|questions/.test(titleLower);
 
       // Specific intent routing
-      if (constraints.isAboutQuery && isAboutEntity) score += 100;
-      if (constraints.isPolicyQuery && isPolicyEntity) score += 100;
-      if (constraints.isFaqQuery && isFaqEntity) score += 100;
+      if (constraints.isAboutQuery && isAboutEntity) score += 120;
+      if (constraints.isPolicyQuery && isPolicyEntity) score += 120;
+      if (constraints.isFaqQuery && isFaqEntity) score += 120;
 
       // Penalize mismatched intents
       if (constraints.isAboutQuery && (isCatalogEntity || isPolicyEntity)) score -= 80;
       if (constraints.isPolicyQuery && isCatalogEntity) score -= 80;
-      if (constraints.isCatalogQuery && (isPolicyEntity || isAboutEntity)) score -= 80;
 
       // Budget filtering
       if (constraints.maxPrice !== undefined) {
-        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 60;
-        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 100;
+        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 80;
+        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 300;
       }
       if (constraints.minPrice !== undefined) {
-        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 60;
-        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 100;
+        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 80;
+        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 300;
       }
 
       // Rating boost
@@ -725,40 +736,76 @@ export async function getRelevantWebsiteData(
         score += rating * 10;
       }
 
-      // Specific keyword matching (e.g. "mern", "leetcode", "wrangler")
+      // Exact title match (highest priority)
+      let exactTitleMatch = false;
+      if (titleLower && (trimmedQuery.includes(titleLower) || titleLower.includes(trimmedQuery))) {
+        score += 200;
+        exactTitleMatch = true;
+      }
+
+      // Specific keyword matching
+      let titleHits = 0;
+      let contentHits = 0;
+      const metaCategory = String(meta.category || meta.tags || meta.level || '').toLowerCase();
+
       if (constraints.specificKeywords.length > 0) {
         for (const word of constraints.specificKeywords) {
-          if (titleLower.includes(word)) score += 50;
-          if (contentLower.includes(word)) score += 15;
+          if (titleLower.includes(word) || metaCategory.includes(word)) {
+            score += 80;
+            titleHits++;
+          } else if (contentLower.includes(word)) {
+            score += 10;
+            contentHits++;
+          }
         }
       }
 
-      if (titleLower.includes(trimmedQuery)) score += 40;
+      // If specific search keywords were provided, strictly require a match in title or category/tags
+      if (constraints.specificKeywords.length > 0) {
+        if (!exactTitleMatch && titleHits === 0) {
+          return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
+        }
+      }
 
       if (constraints.isCatalogQuery && hasPricingOrMedia) score += 30;
 
-      return { record, score, itemPrice, rating };
+      return { record, score, itemPrice, rating, exactTitleMatch, titleHits, contentHits };
     });
+
+    // Check if query had specific keywords that were NOT matched anywhere
+    if (constraints.specificKeywords.length > 0) {
+      const anyKeywordMatch = scored.some(s => s.titleHits > 0 || s.exactTitleMatch);
+      if (!anyKeywordMatch && !constraints.isAboutQuery && !constraints.isPolicyQuery && !constraints.isFaqQuery) {
+        return '';
+      }
+    }
 
     const validMatches = scored.filter(s => s.score > 0);
     if (validMatches.length === 0) return '';
 
+    // If there is an exact title match, prioritize exact match
+    const exactMatches = validMatches.filter(s => s.exactTitleMatch);
+    const candidateList = exactMatches.length > 0 ? exactMatches : validMatches;
+
     // Apply sorting
     if (constraints.sortByPrice === 'asc') {
-      validMatches.sort((a, b) => (a.itemPrice ?? 999999) - (b.itemPrice ?? 999999));
+      candidateList.sort((a, b) => (a.itemPrice ?? 999999) - (b.itemPrice ?? 999999));
     } else if (constraints.sortByPrice === 'desc') {
-      validMatches.sort((a, b) => (b.itemPrice ?? 0) - (a.itemPrice ?? 0));
+      candidateList.sort((a, b) => (b.itemPrice ?? 0) - (a.itemPrice ?? 0));
     } else if (constraints.sortByRating) {
-      validMatches.sort((a, b) => b.rating - a.rating);
+      candidateList.sort((a, b) => b.rating - a.rating);
     } else {
-      validMatches.sort((a, b) => b.score - a.score);
+      candidateList.sort((a, b) => b.score - a.score);
     }
 
-    return validMatches.slice(0, 3).map(s => {
+    const topMatches = candidateList.slice(0, 4);
+    return topMatches.map(s => {
       const r = s.record;
-      const price = r.metadata?.price ? ` [Price: ${r.metadata.price}]` : '';
+      const meta = (r.metadata || {}) as Record<string, any>;
+      const price = meta.price || r.price ? ` [Price: ${meta.price || r.price}]` : '';
       const url = r.source_url ? ` [SourceURL: ${r.source_url}]` : '';
-      return `Title: ${r.title}${price}${url}\nContent: ${r.content}`;
+      const desc = r.short_description ? `Description: ${r.short_description}\n` : '';
+      return `Title: ${r.title}${price}${url}\n${desc}Content: ${r.content}`;
     }).join('\n\n');
   } catch (err) {
     console.error(`[widgetsDb] Error in getRelevantWebsiteData:`, err);
@@ -769,9 +816,12 @@ export async function getRelevantWebsiteData(
 // ── Structured result objects for frontend rendering ──────────────────────────
 
 export interface WebsiteDataRecord {
+  id?: string;
   title?: string;
   description?: string;
+  shortDescription?: string;
   images?: string[];
+  imageUrls?: string[];
   price?: string | number;
   currency?: string;
   availability?: string;
@@ -780,6 +830,9 @@ export interface WebsiteDataRecord {
   attributes?: Record<string, string | number | boolean>;
   sourceUrl?: string;
   entityType?: string;
+  category?: string;
+  level?: string;
+  metadata?: any;
 }
 
 /**
@@ -800,7 +853,7 @@ export async function getRelevantWebsiteRecords(
     }
 
     const constraints = parseQueryConstraints(query);
-    // If user asked about About, Policy, FAQ, or Contact info, return 0 catalog cards!
+    // If user asked purely about About, Policy, FAQ, or Contact info, return 0 catalog cards!
     if (constraints.isAboutQuery || constraints.isPolicyQuery || constraints.isFaqQuery || constraints.isContactQuery) {
       return [];
     }
@@ -840,7 +893,7 @@ export async function getRelevantWebsiteRecords(
     }
     let { data: records, error } = await queryBuilder;
     if ((!records || records.length === 0) && filterWidgetIds.length > 0) {
-      const fallback = await supabase.from('website_data').select('*').limit(25);
+      const fallback = await supabase.from('website_data').select('*').limit(35);
       records = fallback.data;
     }
 
@@ -851,22 +904,22 @@ export async function getRelevantWebsiteRecords(
       const titleLower = (record.title || '').toLowerCase();
       const contentLower = (record.content || '').toLowerCase();
       const meta = (record.metadata || {}) as Record<string, any>;
-      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice);
+      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice || record.price);
       const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
-      const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length);
-      const isCatalogEntity = ['service', 'product', 'course', 'pricing'].includes(record.entity_type) || hasPricingOrMedia;
+      const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length) || Boolean(meta.images?.length);
+      const isCatalogEntity = ['service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan'].includes(record.entity_type) || hasPricingOrMedia;
       const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal/.test(titleLower);
 
-      if (!isCatalogEntity || isPolicyEntity) return { record, score: -100, itemPrice, rating, exactTitleMatch: false };
+      if (!isCatalogEntity || isPolicyEntity) return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
 
       // Budget filtering
       if (constraints.maxPrice !== undefined) {
-        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 60;
-        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 200;
+        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 80;
+        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 300;
       }
       if (constraints.minPrice !== undefined) {
-        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 60;
-        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 200;
+        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 80;
+        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 300;
       }
 
       // Rating boost
@@ -874,53 +927,66 @@ export async function getRelevantWebsiteRecords(
         score += rating * 10;
       }
 
-      // Exact or specific keyword match
+      // Exact title / entity match
       let exactTitleMatch = false;
-      if (constraints.specificKeywords.length > 0) {
-        let matchedKeywords = 0;
-        for (const word of constraints.specificKeywords) {
-          if (titleLower.includes(word)) {
-            score += 60;
-            matchedKeywords++;
-          }
-          if (contentLower.includes(word)) score += 15;
-        }
-        if (matchedKeywords >= 1) exactTitleMatch = true;
+      if (titleLower && (trimmedQuery.includes(titleLower) || titleLower.includes(trimmedQuery))) {
+        score += 200;
+        exactTitleMatch = true;
       }
 
-      if (titleLower.includes(trimmedQuery)) {
-        score += 80;
-        exactTitleMatch = true;
+      // Specific keyword match in title, category, tags
+      let titleHits = 0;
+      let contentHits = 0;
+      const metaCategory = String(meta.category || meta.tags || meta.level || '').toLowerCase();
+
+      if (constraints.specificKeywords.length > 0) {
+        for (const word of constraints.specificKeywords) {
+          if (titleLower.includes(word) || metaCategory.includes(word)) {
+            score += 80;
+            titleHits++;
+          } else if (contentLower.includes(word)) {
+            score += 10;
+            contentHits++;
+          }
+        }
+      }
+
+      // If specific search keywords were provided, strictly require a match in title or category/tags
+      if (constraints.specificKeywords.length > 0) {
+        if (!exactTitleMatch && titleHits === 0) {
+          return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
+        }
       }
 
       const isDirectoryPage = record.source_url && /\/(courses|products|services|catalog|inventory|shop|all)\/?$/i.test(record.source_url) && !itemPrice;
       if (isDirectoryPage) {
-        score -= 60; // Directory/category page ranks below individual items
+        score -= 60;
       }
 
       if (itemPrice !== null && itemPrice > 0) {
-        score += 80; // Definite priced item gets priority
+        score += 50;
       }
 
-      if (hasPricingOrMedia) score += 40;
+      if (hasPricingOrMedia) score += 30;
 
-      return { record, score, itemPrice, rating, exactTitleMatch };
+      return { record, score, itemPrice, rating, exactTitleMatch, titleHits, contentHits };
     });
 
-    const validMatches = scored.filter(s => s.score > 0);
-    if (validMatches.length === 0) return [];
-
-    // If the user query specified specific topic keywords (e.g. "python", "flutter", "java")
-    // and NONE of our catalog items matched those keywords in the title/topic, return [] so the agent can accurately state we don't offer it!
+    // If specific topic keywords were asked (e.g. "frontend", "python", "flutter")
+    // and NO catalog item matched those keywords, return [] so the agent can accurately state that we don't offer it!
     if (constraints.specificKeywords.length > 0) {
-      const exactMatches = validMatches.filter(s => s.exactTitleMatch);
-      if (exactMatches.length === 0) {
+      const anyKeywordMatch = scored.some(s => s.exactTitleMatch || s.titleHits > 0);
+      if (!anyKeywordMatch) {
         return [];
       }
     }
 
+    const validMatches = scored.filter(s => s.score > 0);
+    if (validMatches.length === 0) return [];
+
+    // If an exact title match was found for a single specific item, return ONLY that specific item
     const exactMatches = validMatches.filter(s => s.exactTitleMatch);
-    const candidateList = (exactMatches.length > 0 && constraints.specificKeywords.length > 0) ? exactMatches : validMatches;
+    const candidateList = exactMatches.length > 0 ? exactMatches : validMatches;
 
     // Apply sorting
     if (constraints.sortByPrice === 'asc') {
@@ -933,7 +999,7 @@ export async function getRelevantWebsiteRecords(
       candidateList.sort((a, b) => b.score - a.score);
     }
 
-    // Deduplicate by title to ensure clean card lists
+    // Deduplicate by title
     const seenTitles = new Set<string>();
     const uniqueCandidates = candidateList.filter(s => {
       const t = (s.record.title || '').trim().toLowerCase();
@@ -942,46 +1008,55 @@ export async function getRelevantWebsiteRecords(
       return true;
     });
 
-    const selected = uniqueCandidates.slice(0, Math.max(limit, 6));
+    const maxItems = exactMatches.length > 0 ? 1 : Math.max(limit, 6);
+    const selected = uniqueCandidates.slice(0, maxItems);
+
     return selected.map(s => {
       const r = s.record;
       const meta = (r.metadata || {}) as Record<string, any>;
-      const result: WebsiteDataRecord & { category?: string; level?: string; metadata?: any; imageUrls?: string[] } = { entityType: r.entity_type };
-      if (r.title) result.title = r.title;
+      const result: WebsiteDataRecord = {
+        id: r.id,
+        entityType: r.entity_type,
+        title: r.title || 'Untitled',
+      };
       
       if (r.short_description) {
         result.description = r.short_description;
+        result.shortDescription = r.short_description;
       } else if (r.content) {
-        result.description = r.content.substring(0, 300).trimEnd() + (r.content.length > 300 ? '…' : '');
+        const cleanContent = r.content.substring(0, 300).trimEnd();
+        result.description = cleanContent + (r.content.length > 300 ? '…' : '');
+        result.shortDescription = result.description;
       }
       
-      if (Array.isArray(r.image_urls) && r.image_urls.length > 0) {
-        result.images = r.image_urls;
-      } else if (meta.images && Array.isArray(meta.images)) {
-        result.images = meta.images.filter(Boolean);
-      } else if (meta.image) {
-        result.images = [String(meta.image)];
-      } else if (meta.thumbnail) {
-        result.images = [String(meta.thumbnail)];
+      // Extract real images only from crawled/connector metadata
+      const collectedImages: string[] = [];
+      if (Array.isArray(r.image_urls)) {
+        r.image_urls.forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) collectedImages.push(img); });
+      }
+      if (Array.isArray(meta.images)) {
+        meta.images.forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) collectedImages.push(img); });
+      }
+      if (typeof meta.image === 'string' && meta.image.startsWith('http')) {
+        collectedImages.push(meta.image);
+      }
+      if (typeof meta.photoUrl === 'string' && meta.photoUrl.startsWith('http')) {
+        collectedImages.push(meta.photoUrl);
+      }
+      if (typeof meta.thumbnail === 'string' && meta.thumbnail.startsWith('http')) {
+        collectedImages.push(meta.thumbnail);
       }
 
-      // If images array is empty, attach clean high-resolution topic imagery so cards are never blank
-      if (!result.images || result.images.length === 0) {
-        const titleLower = (r.title || '').toLowerCase();
-        if (titleLower.includes('leetcode') || titleLower.includes('algorithm') || titleLower.includes('dsa')) {
-          result.images = ['https://images.unsplash.com/photo-1516116211227-bbc14187212e?auto=format&fit=crop&w=600&q=80'];
-        } else if (titleLower.includes('mern') || titleLower.includes('react') || titleLower.includes('web')) {
-          result.images = ['https://images.unsplash.com/photo-1633356122544-f134324a6cee?auto=format&fit=crop&w=600&q=80'];
-        } else if (titleLower.includes('backend') || titleLower.includes('node') || titleLower.includes('database')) {
-          result.images = ['https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=600&q=80'];
-        } else {
-          result.images = ['https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=600&q=80'];
-        }
-      }
-      result.imageUrls = result.images;
+      const realImages = Array.from(new Set(collectedImages));
+      result.images = realImages;
+      result.imageUrls = realImages;
 
-      if (meta.price !== undefined && typeof meta.price !== 'object') result.price = meta.price;
+      if (meta.price !== undefined && typeof meta.price !== 'object') result.price = String(meta.price).replace(/^\$+/, '$');
+      else if (r.price !== undefined) result.price = String(r.price).replace(/^\$+/, '$');
+
       if (meta.currency) result.currency = String(meta.currency);
+      else if (r.currency) result.currency = String(r.currency);
+
       if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
       if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
       if (meta.ratings !== undefined && typeof meta.ratings !== 'object') result.rating = meta.ratings;
@@ -1060,15 +1135,15 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
       return '';
     }
 
-    const catalogItems = records.filter(r => ['service', 'product', 'course', 'pricing'].includes(r.entity_type) || Boolean(r.metadata?.price));
+    const catalogItems = records.filter(r => ['service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan'].includes(r.entity_type) || Boolean(r.metadata?.price));
     const infoPages = records.filter(r => !catalogItems.includes(r));
 
     const parts: string[] = [
       'VOICE AGENT OPERATING INSTRUCTIONS:',
       '- You are the official AI receptionist and voice assistant for this website.',
       '- You have complete, authoritative knowledge of all items, offerings, and routes listed below.',
-      '- When a user asks for the "best", "top-selling", "highest rated", or "most popular" item, confidently recommend the top items from your catalog (such as MERN Stack Development Course with 5-star rating and top reviews, or Leetcode Mastery for beginners). Never say "I don\'t have sales rankings" or "I am an AI without real-time data".',
-      '- When asked to navigate to or open any page (e.g. "navigate to about page", "open courses"), say: "Opening the About page on your screen now!" or "Opening our courses catalog now!". NEVER read out raw URL links (such as "https://...") aloud over voice telephony.',
+      '- When a user asks for the "best", "top-selling", "highest rated", or "most popular" item, confidently recommend the top items from your catalog based on their rating, reviews, or featured status. Never say "I don\'t have sales rankings" or "I am an AI without real-time data".',
+      '- When asked to navigate to or open any page (e.g. "navigate to about page", "open courses"), say: "Opening the [Page Name] page on your screen now!". NEVER read out raw URL links (such as "https://...") aloud over voice telephony.',
       '',
       'Website Catalog & Offerings:'
     ];
@@ -1079,8 +1154,8 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
         const price = meta.price ? ` (${meta.price})` : '';
         const level = meta.level ? ` [Level: ${meta.level}]` : '';
         const rating = meta.rating || meta.ratings ? ` [Rating: ${meta.rating || meta.ratings}★]` : '';
-        const reviews = meta.reviews ? (Array.isArray(meta.reviews) ? ` [${meta.reviews.length} student reviews]` : ` [${meta.reviews} reviews]`) : '';
-        const bestSeller = meta.purchased && meta.purchased > 0 ? ` [Top Best Seller - ${meta.purchased} enrolled]` : (rating.includes('5') ? ' [Top Rated / Best Seller]' : '');
+        const reviews = meta.reviews ? (Array.isArray(meta.reviews) ? ` [${meta.reviews.length} reviews]` : ` [${meta.reviews} reviews]`) : '';
+        const bestSeller = meta.purchased && meta.purchased > 0 ? ` [Top Best Seller - ${meta.purchased} ordered]` : (rating.includes('5') ? ' [Top Rated / Best Seller]' : '');
         const desc = c.short_description || meta.description || (c.content ? c.content.substring(0, 100).replace(/\s+/g, ' ') : '');
         const url = c.source_url ? ` [URL: ${c.source_url}]` : '';
         parts.push(`• ${c.title}${price}${level}${rating}${reviews}${bestSeller}${url}: ${desc}`);

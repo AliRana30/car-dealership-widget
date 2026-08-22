@@ -233,12 +233,6 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               targetUrl = '/policy';
             } else if (/\b(?:faq|frequently asked|help)\b/i.test(textLower)) {
               targetUrl = '/faq';
-            } else if (/\b(?:mern)\b/i.test(textLower)) {
-              targetUrl = 'https://lms-e-learning-system.vercel.app/course/6945abe7c4769ef223f140fd';
-            } else if (/\b(?:backend)\b/i.test(textLower)) {
-              targetUrl = 'https://lms-e-learning-system.vercel.app/course/6a8885e7b07fd83e210c84d6';
-            } else if (/\b(?:leetcode)\b/i.test(textLower)) {
-              targetUrl = 'https://lms-e-learning-system.vercel.app/course/69309149f53ad74946204d40';
             }
           }
 
@@ -595,31 +589,6 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         setChatMessages((prev) => [...prev, userMsg]);
         setChatTyping(true);
 
-        if (isDemo) {
-          const t = setTimeout(() => {
-            let response = "I received your message! Since we are in the customization preview, this is a simulated response. Once deployed, the agent will reply using your website intelligence.";
-            
-            const lowerText = text.toLowerCase();
-            if (lowerText.includes('hello') || lowerText.includes('hi') || lowerText.includes('hey')) {
-              response = `Hello! How can I help you with ${mergedConfig.branding.companyName || 'our services'} today?`;
-            } else if (lowerText.includes('price') || lowerText.includes('cost') || lowerText.includes('pricing') || lowerText.includes('tuition')) {
-              response = `Our pricing packages are customizable! You can configure them in the settings. In a live environment, I would retrieve current pricing data directly from your crawled website pages.`;
-            } else if (lowerText.includes('course') || lowerText.includes('program') || lowerText.includes('class')) {
-              response = `We offer several comprehensive training tracks and courses! You can explore full details and course syllabus options in our catalog.`;
-            } else if (lowerText.includes('test') || lowerText.includes('working')) {
-              response = "Yes, the test chat is fully working! The widget preview responds in real-time to your configuration changes.";
-            }
-
-            setChatMessages((prev) => [
-              ...prev,
-              { role: 'agent', content: response }
-            ]);
-            setChatTyping(false);
-          }, 1000);
-          demoTimersRef.current.push(t);
-          return;
-        }
-
         try {
           const res = await fetch('/api/retell/chat', {
             method: 'POST',
@@ -628,7 +597,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               chatId,
               content: text,
               widgetId: widgetId || 'default',
-              history: chatMessages.slice(-6),
+              history: chatMessages.slice(-8),
               lastNavUrl: lastPendingNavUrlRef.current,
             }),
           });

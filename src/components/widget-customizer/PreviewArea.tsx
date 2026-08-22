@@ -12,6 +12,7 @@ const VoiceAgentWidget = dynamic(
 interface Props {
   draft: VoiceWidgetConfig;
   widgetId?: string;
+  onUpdateDraft?: (patch: Partial<VoiceWidgetConfig>) => void;
 }
 
 type DevicePreset = 'mobile' | 'mobile-lg' | 'tablet' | 'desktop' | 'fluid';
@@ -24,7 +25,7 @@ const PRESET_WIDTHS: Record<DevicePreset, number | string> = {
   'fluid': '100%',
 };
 
-export default function PreviewArea({ draft, widgetId }: Props) {
+export default function PreviewArea({ draft, widgetId, onUpdateDraft }: Props) {
   const [activePreset, setActivePreset] = useState<DevicePreset>('fluid');
   const [customWidth, setCustomWidth] = useState<number>(680);
   const [isDragging, setIsDragging] = useState<'left' | 'right' | null>(null);
@@ -274,7 +275,7 @@ export default function PreviewArea({ draft, widgetId }: Props) {
 
             {/* Real widget rendered inside preview */}
             <div style={styles.widgetWrapper}>
-              <VoiceAgentWidget config={previewConfig} widgetId={widgetId} isDemo={true} initialOpen={true} />
+              <VoiceAgentWidget config={previewConfig} widgetId={widgetId} isDemo={false} initialOpen={true} />
             </div>
           </div>
 
