@@ -89,9 +89,17 @@ const TOGGLE_CSS = `
 
     .customizer-sidebar {
       height: 100% !important;
-      border-right: 1px solid #e5e7eb !important;
-      background: #fafafa !important;
+      border-right: 1px solid #e2e8f0 !important;
+      background: #ffffff !important;
       flex-shrink: 0 !important;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+    .customizer-sidebar::-webkit-scrollbar,
+    .customizer-sidebar *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
     }
     .customizer-editor-col {
       width: 100% !important;
@@ -160,14 +168,14 @@ const TOGGLE_CSS = `
       font-size: 12px !important;
     }
     .customizer-sidebar {
-      width: 46px !important;
-      min-width: 46px !important;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
     }
-    .customizer-sidebar .sidebar-header {
-      padding: 8px 4px !important;
-    }
-    .customizer-sidebar .sidebar-nav {
-      padding: 4px 4px !important;
+    .customizer-sidebar::-webkit-scrollbar,
+    .customizer-sidebar *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
     }
     .customizer-editor-col {
       padding: 10px 8px 30px !important;
