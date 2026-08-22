@@ -128,32 +128,29 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
     let { data: widgetRows, error } = await query.limit(1);
 
     if (error || !widgetRows || widgetRows.length === 0) {
-      if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk' || normalizedSearchId === 'myfrontdesk') {
-        const { data: fallbackRows } = await supabase.from('widgets').select('*').order('updated_at', { ascending: false }).limit(1);
-        if (fallbackRows && fallbackRows.length > 0) {
-          widgetRows = fallbackRows;
-        } else {
-          return {
-            id: '00000000-0000-0000-0000-000000000000',
-            widgetId: 'default',
-            organizationId: '00000000-0000-0000-0000-000000000000',
-            name: 'Front Desk AI Agent',
-            status: 'active',
-            provider: (process.env.VAPI_API_KEY && !process.env.RETELL_API_KEY) ? 'vapi' : 'retell',
-            agentId: process.env.RETELL_AGENT_ID || '',
-            assistantId: process.env.VAPI_ASSISTANT_ID || '',
-            credentialSecretId: '',
-            websiteId: '00000000-0000-0000-0000-000000000000',
-            allowedDomains: ['*'],
-            config: defaultVoiceWidgetConfig,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            retellApiKey: process.env.RETELL_API_KEY || '',
-            vapiApiKey: process.env.VAPI_API_KEY || '',
-          };
-        }
+      // Fallback query without strict user filter or slug match
+      const { data: fallbackRows } = await supabase.from('widgets').select('*').order('updated_at', { ascending: false }).limit(1);
+      if (fallbackRows && fallbackRows.length > 0) {
+        widgetRows = fallbackRows;
       } else {
-        return null;
+        return {
+          id: '00000000-0000-0000-0000-000000000000',
+          widgetId: normalizedSearchId || 'front-desk',
+          organizationId: '00000000-0000-0000-0000-000000000000',
+          name: 'Front Desk AI Agent',
+          status: 'active',
+          provider: (process.env.VAPI_API_KEY && !process.env.RETELL_API_KEY) ? 'vapi' : 'retell',
+          agentId: process.env.RETELL_AGENT_ID || '',
+          assistantId: process.env.VAPI_ASSISTANT_ID || '',
+          credentialSecretId: '',
+          websiteId: '00000000-0000-0000-0000-000000000000',
+          allowedDomains: ['*'],
+          config: defaultVoiceWidgetConfig,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          retellApiKey: process.env.RETELL_API_KEY || '',
+          vapiApiKey: process.env.VAPI_API_KEY || '',
+        };
       }
     }
 

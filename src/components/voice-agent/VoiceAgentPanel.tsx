@@ -211,9 +211,32 @@ export default function VoiceAgentPanel({
         onToggleMute={onToggleMute}
       />
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', width: '100%', minHeight: 0 }}>
+      <style jsx>{`
+        @media (max-width: 680px) {
+          .voice-widget-panel-body {
+            flex-direction: column !important;
+            overflow-y: auto !important;
+          }
+          .voice-widget-main-col {
+            min-width: 100% !important;
+            width: 100% !important;
+            flex: none !important;
+          }
+          .voice-widget-cards-pane {
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+            border-left: none !important;
+            border-top: 1px solid var(--voice-widget-border, #E2E8F0) !important;
+            max-height: 260px !important;
+            flex: none !important;
+          }
+        }
+      `}</style>
+      <div className="voice-widget-panel-body" style={{ display: 'flex', flex: 1, overflow: 'hidden', width: '100%', minHeight: 0 }}>
         {/* Main Conversation Column */}
         <div
+          className="voice-widget-main-col"
           style={{
             padding: bodyPadding,
             display: 'flex',
@@ -221,7 +244,7 @@ export default function VoiceAgentPanel({
             alignItems: 'center',
             gap: '10px',
             flex: '1 1 auto',
-            minWidth: hasCards ? '340px' : '100%',
+            minWidth: hasCards ? 'min(320px, 100%)' : '100%',
             overflowY: 'auto',
             boxSizing: 'border-box',
           }}

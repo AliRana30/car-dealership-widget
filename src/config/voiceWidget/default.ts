@@ -150,7 +150,7 @@ export const defaultVoiceWidgetConfig: VoiceWidgetConfig = {
     showWaveform: true,
     allowTextChat: true,
     allowVoiceChat: true,
-    allowAgentNavigation: false,
+    allowAgentNavigation: true,
     defaultTab: 'voice',
     autoResetEndedTimeout: 5000,
     connectionTimeout: 15000,

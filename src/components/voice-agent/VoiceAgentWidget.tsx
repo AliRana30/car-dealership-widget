@@ -223,16 +223,20 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           const urlMatch = content.match(/https?:\/\/[^\s<>"')]+|\/(?:about|courses|policy|faq|contact|course\/[a-z0-9_-]+|product\/[a-z0-9_-]+)/i);
           let targetUrl = urlMatch ? urlMatch[0] : null;
 
-          // Check for explicit spoken navigation requests
-          if (!targetUrl && /\b(?:navigate|take me to|open|go to|redirect|visit|browse)\b/i.test(textLower)) {
-            if (/\b(?:about|who are you|mission|story)\b/i.test(textLower)) {
-              targetUrl = '/about';
-            } else if (/\b(?:courses|catalog|inventory|shop|all programs|offerings)\b/i.test(textLower)) {
-              targetUrl = '/courses';
-            } else if (/\b(?:policy|policies|terms|privacy|refund)\b/i.test(textLower)) {
-              targetUrl = '/policy';
-            } else if (/\b(?:faq|frequently asked|help)\b/i.test(textLower)) {
-              targetUrl = '/faq';
+          // Check for explicit spoken navigation requests (including past/present participles)
+          if (!targetUrl) {
+            const hasNavIntent = /\b(?:navigate|navigating|navigation|take|taking|open|opening|go|going|redirect|redirecting|visit|visiting|browse|browsing|transfer|transferring|head|heading)\b/i.test(textLower) || /\b(?:page|screen|section|site|website|url)\b/i.test(textLower);
+            
+            if (hasNavIntent || /\b(?:about|courses|catalog|policy|policies|faq)\b/i.test(textLower)) {
+              if (/\b(?:about|who are you|mission|story)\b/i.test(textLower)) {
+                targetUrl = '/about';
+              } else if (/\b(?:courses|catalog|inventory|shop|all programs|offerings|program|programs)\b/i.test(textLower)) {
+                targetUrl = '/courses';
+              } else if (/\b(?:policy|policies|terms|privacy|refund)\b/i.test(textLower)) {
+                targetUrl = '/policy';
+              } else if (/\b(?:faq|frequently asked|help)\b/i.test(textLower)) {
+                targetUrl = '/faq';
+              }
             }
           }
 
@@ -252,15 +256,22 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
         // 2. Real-time Voice Result Cards (Pictures, Ratings, Prices)
         if (!fetchedContents.current.has(content) && !isGreetingOrGeneric(content)) {
-          const hasCatalogIntent = /\b(?:course|courses|program|programs|class|classes|pricing|price|cost|tier|service|services|offering|inventory|product|learn|best|selling|popular|top|mern|backend|leetcode|recommend)\b/i.test(content);
+          const hasCatalogIntent = /\b(?:course|courses|program|programs|class|classes|pricing|price|cost|tier|service|services|offering|inventory|product|learn|best|selling|popular|top|mern|backend|leetcode|recommend|picture|pictures|photo|photos|image|images|show|see|view|look|card|cards|details)\b/i.test(content);
           if (hasCatalogIntent) {
             fetchedContents.current.add(content);
+
+            // If query is generic like "show me pictures", build search string from recent context
+            let searchQuery = content;
+            if (/\b(?:picture|pictures|photo|photos|image|images|show|see|look)\b/i.test(content) && content.length < 35) {
+              const recentText = latestMessages.map(m => m.content).join(' ');
+              searchQuery = `${content} ${recentText} courses`;
+            }
 
             // Query entity search for cards
             fetch(`/api/widgets/${widgetId || 'default'}/entities/search`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query: content, limit: 3 }),
+              body: JSON.stringify({ query: searchQuery, limit: 3 }),
             })
               .then((res) => res.json())
               .then((data) => {
@@ -1539,10 +1550,13 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             height: ${mobileLauncherSize} !important;
           }
           .voice-widget-panel-container {
-            width: ${mobilePanelWidth} !important;
+            width: min(calc(100vw - 24px), 420px) !important;
+            max-width: calc(100vw - 24px) !important;
             max-height: ${mobilePanelMaxHeight} !important;
+            left: 50% !important;
+            right: auto !important;
+            transform: translateX(-50%) !important;
             ${panelVertProp}: ${mergedConfig.responsive.fullscreenOnMobile ? '0' : mobileBottomOffset} !important;
-            ${panelHorizProp}: ${mergedConfig.responsive.fullscreenOnMobile ? '0' : mobileHorizontalOffset} !important;
             ${mergedConfig.responsive.fullscreenOnMobile ? `
               position: fixed !important;
               width: 100vw !important;
@@ -1554,6 +1568,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               bottom: 0 !important;
               left: 0 !important;
               right: 0 !important;
+              transform: none !important;
               z-index: ${(mergedConfig.launcher.zIndex ?? 1000) + 1} !important;
             ` : ''}
           }

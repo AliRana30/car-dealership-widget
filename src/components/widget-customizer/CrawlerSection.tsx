@@ -1038,22 +1038,8 @@ function WebsiteConnectedPanel({
               }}>
                 <ShoppingBag size={10} /> WooCommerce
               </span>
-            ) : detectedPlatform === 'd2cmedia' ? (
-              <span style={{
-                fontSize: '9px', fontWeight: 700, background: '#FEF3C7', color: '#B45309',
-                padding: '2px 6px', borderRadius: '5px', display: 'inline-flex', alignItems: 'center', gap: '3px'
-              }}>
-                🚗 D2C Dealership
-              </span>
-            ) : detectedPlatform === 'dealer_dot_com' || detectedPlatform === 'dealer_inspire' ? (
-              <span style={{
-                fontSize: '9px', fontWeight: 700, background: '#E0F2FE', color: '#0369A1',
-                padding: '2px 6px', borderRadius: '5px', display: 'inline-flex', alignItems: 'center', gap: '3px'
-              }}>
-                🚗 Auto Dealer
-              </span>
             ) : null}
-            <span style={{ color: '#0F172A', fontWeight: 700, maxWidth: '120px', textAlign: 'right', wordBreak: 'break-all' }}>{websiteName}</span>
+            <span style={{ color: '#0F172A', fontWeight: 700, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>{websiteName}</span>
             <button onClick={() => { setEditName(websiteName || ''); setEditingName(true); }} title="Edit website name"
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '2px', display: 'flex', alignItems: 'center' }}
             >
