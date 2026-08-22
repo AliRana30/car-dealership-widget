@@ -366,8 +366,8 @@ function WidgetCard({ widget, onDelete, onCopySnippet, copiedId, origin }: {
         {/* Header row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '12px' }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {widget.name}
+            <h3 style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: 700, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {widget.config?.branding?.companyName || widget.name}
             </h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <code style={{

@@ -274,7 +274,7 @@ export default function PreviewArea({ draft, widgetId }: Props) {
 
             {/* Real widget rendered inside preview */}
             <div style={styles.widgetWrapper}>
-              <VoiceAgentWidget config={previewConfig} widgetId={widgetId} isDemo={false} />
+              <VoiceAgentWidget config={previewConfig} widgetId={widgetId} isDemo={true} initialOpen={true} />
             </div>
           </div>
 

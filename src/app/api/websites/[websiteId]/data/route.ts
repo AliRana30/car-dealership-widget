@@ -338,8 +338,9 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             margin: 0;
             padding: 2.5rem 1.5rem;
             line-height: 1.6;
+            overflow-x: hidden;
           }
-          .container { max-width: 1080px; margin: 0 auto; }
+          .container { max-width: 1080px; margin: 0 auto; width: 100%; }
           .header {
             display: flex;
             justify-content: space-between;
@@ -415,7 +416,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
           /* Filter Toolbar */
           .toolbar {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-start;
             align-items: center;
             flex-wrap: wrap;
             gap: 0.75rem;
@@ -425,9 +426,11 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             border-radius: 10px;
             border: 1px solid #E2E8F0;
             box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+            width: 100%;
           }
-          .filter-group { display: flex; align-items: center; gap: 0.5rem; }
-          .filter-label { font-size: 0.825rem; font-weight: 700; color: #475569; }
+          .filter-group { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+          .filter-group.search-group { flex: 1; min-width: 160px; }
+          .filter-label { font-size: 0.825rem; font-weight: 700; color: #475569; white-space: nowrap; }
           select, input {
             padding: 0.45rem 0.75rem;
             border-radius: 7px;
@@ -437,6 +440,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             color: #1E293B;
             outline: none;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            max-width: 100%;
           }
           select:focus, input:focus { border-color: #2563EB; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
           .counter-badge {
@@ -446,6 +450,21 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
             background: #F1F5F9;
             padding: 0.25rem 0.6rem;
             border-radius: 999px;
+            white-space: nowrap;
+          }
+          @media (max-width: 640px) {
+            body { padding: 1.25rem 1rem; }
+            .toolbar { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+            .filter-group { width: 100%; justify-content: space-between; }
+            .filter-group.search-group { width: 100%; }
+            select { flex: 1; }
+            input { width: 100%; }
+            h1 { font-size: 1.25rem; }
+            .tab-btn { font-size: 0.8rem; padding: 0.5rem 0.75rem; }
+            .card { padding: 1rem; }
+            .card-top { flex-direction: column; gap: 0.5rem; }
+            .media-grid { gap: 0.5rem; }
+            .media-thumb { height: 76px; width: 110px; }
           }
 
           /* Cards */
@@ -704,9 +723,11 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 <option value="all">All Types</option>
                 <option value="product">Products / Inventory</option>
                 <option value="service">Services / Programs</option>
-                <option value="article">Articles</option>
+                <option value="course">Courses</option>
+                <option value="article">Articles / Blog</option>
                 <option value="faq">FAQs</option>
                 <option value="page">Pages / Content</option>
+                <option value="info">General Info</option>
               </select>
             </div>
             <div class="filter-group">
@@ -721,7 +742,7 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
                 <option value="html_fallback">HTML DOM</option>
               </select>
             </div>
-            <div class="filter-group" style="flex: 1; max-width: 300px;">
+            <div class="filter-group search-group">
               <span class="filter-label">Search:</span>
               <input type="text" id="searchInput" style="width: 100%;" placeholder="Keywords, titles, VIN..." oninput="applyFilters()" />
             </div>
@@ -874,19 +895,26 @@ export async function GET(req: NextRequest, { params }: { params: any }) {
 
             cards.forEach(card => {
               const isEntity = card.getAttribute('data-is-entity') === 'true';
-              const entityType = card.getAttribute('data-entity-type') || '';
-              const source = card.getAttribute('data-source') || '';
-              const tier = card.getAttribute('data-tier') || '';
-              const text = card.getAttribute('data-text') || '';
+              const entityType = (card.getAttribute('data-entity-type') || '').toLowerCase();
+              const source = (card.getAttribute('data-source') || '').toLowerCase();
+              const tier = (card.getAttribute('data-tier') || '').toLowerCase();
+              const text = (card.getAttribute('data-text') || '').toLowerCase();
 
               // Tab matching
               let matchesTab = true;
               if (currentTab === 'entities') matchesTab = isEntity;
               if (currentTab === 'pages') matchesTab = !isEntity;
 
-              const matchesSource = selectedSource === 'all' || source === selectedSource;
-              const matchesType = selectedType === 'all' || entityType === selectedType;
-              const matchesTier = selectedTier === 'all' || tier === selectedTier;
+              // Source filter: exact match on data-source
+              const matchesSource = selectedSource === 'all' || source === selectedSource || source.includes(selectedSource);
+
+              // Type filter: partial match so "product" matches "product", "products" etc.
+              const matchesType = selectedType === 'all' || entityType === selectedType || entityType.startsWith(selectedType) || (selectedType === 'article' && (entityType === 'article' || entityType === 'blog' || entityType === 'post')) || (selectedType === 'page' && (entityType === 'page' || entityType === 'content' || entityType === 'info'));
+
+              // Tier filter: exact match
+              const matchesTier = selectedTier === 'all' || tier === selectedTier || tier.includes(selectedTier);
+
+              // Search: full-text match across title and content
               const matchesSearch = !searchText || text.includes(searchText);
 
               if (matchesTab && matchesSource && matchesType && matchesTier && matchesSearch) {
