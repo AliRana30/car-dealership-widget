@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { embedText } from '@/lib/embeddings';
 import { Entity } from '@/lib/crawler/types';
 import { broadcastToSession } from '@/lib/realtime/session';
+import { resolveEntityByQuery, resolveTopEntity } from './entityResolver';
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -67,7 +68,7 @@ export function calculateFreshness(lastSeen?: string, stillListed?: boolean): Fr
       freshnessStatus: 'recent',
       hoursSinceLastSeen: Math.round(hours * 10) / 10,
       lastSeenHuman: `${Math.round(hours)}h ago`,
-      hedgeInstruction: 'Hedge lightly (e.g. "As of our last update earlier today...").',
+      hedgeInstruction: 'Hedge lightly (e.g. "As of our last check...").',
     };
   }
 
@@ -85,9 +86,9 @@ export function calculateFreshness(lastSeen?: string, stillListed?: boolean): Fr
  */
 export function mapRowToEntity(row: any): Entity {
   const meta = (row.metadata || {}) as Record<string, any>;
-  const imageUrls = Array.isArray(row.image_urls)
+  const imageUrls = Array.isArray(row.image_urls) && row.image_urls.length > 0
     ? row.image_urls
-    : meta.images && Array.isArray(meta.images)
+    : meta.images && Array.isArray(meta.images) && meta.images.length > 0
     ? meta.images
     : meta.image
     ? [String(meta.image)]
@@ -141,7 +142,11 @@ export function mapRowToEntity(row: any): Entity {
 }
 
 /**
- * Searches the knowledge base for a specific widget using pgvector similarity or keyword matching.
+ * Searches the knowledge base for a specific widget using 4-tier universal entity resolution:
+ * 1. Exact title match
+ * 2. Partial/alias match
+ * 3. Fuzzy token match (Levenshtein ≤ 2)
+ * 4. Broad semantic match
  */
 export async function searchEntities(
   widgetId: string,
@@ -151,33 +156,36 @@ export async function searchEntities(
   if (!query || !query.trim() || !widgetId) return [];
 
   try {
-    const { getRelevantWebsiteRecords } = await import('@/config/widgetsDb');
-    const records = await getRelevantWebsiteRecords(widgetId, query, limit);
-    if (records && records.length > 0) {
-      return records.slice(0, limit).map((r, idx) => {
-        const images = Array.isArray(r.images) ? r.images : [];
+    const resolvedEntities = await resolveEntityByQuery(widgetId, query, limit);
+    if (resolvedEntities && resolvedEntities.length > 0) {
+      return resolvedEntities.slice(0, limit).map((re, idx) => {
+        const r = re.record;
+        const images = Array.isArray(r.imageUrls) && r.imageUrls.length > 0
+          ? r.imageUrls
+          : Array.isArray(r.images) ? r.images : [];
 
         return {
-          id: r.id || `${widgetId}-item-${idx}`,
+          id: r.id || re.entityId || `${widgetId}-item-${idx}`,
           widgetId,
-          title: r.title || 'Untitled',
-          shortDescription: r.description || '',
+          title: r.title || re.title || 'Untitled',
+          shortDescription: r.description || r.shortDescription || '',
           imageUrls: images,
           images,
-          price: r.price,
-          currency: r.currency || 'USD',
-          rating: r.rating || 5,
-          reviews: r.reviews,
-          availability: r.availability,
+          price: r.price ?? (r.metadata?.price as string | undefined),
+          currency: r.currency ?? (r.metadata?.currency as string | undefined),
+          rating: r.rating ?? (r.metadata?.rating as number | undefined),
+          reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),
+          availability: r.availability ?? (r.metadata?.availability as string | undefined),
           sourceUrl: r.sourceUrl,
           entityType: r.entityType || 'product',
           metadata: {
-            price: r.price,
-            currency: r.currency,
-            rating: r.rating,
-            reviews: r.reviews,
+            price: r.price ?? (r.metadata?.price as string | undefined),
+            currency: r.currency ?? (r.metadata?.currency as string | undefined),
+            rating: r.rating ?? (r.metadata?.rating as number | undefined),
+            reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),
             images,
             attributes: r.attributes,
+            confidence: re.confidence,
           },
           firstSeen: new Date().toISOString(),
           lastSeen: new Date().toISOString(),
@@ -198,7 +206,7 @@ export async function searchEntities(
 }
 
 /**
- * Retrieves full details for a single entity by ID, strictly scoped to the widget.
+ * Retrieves full details for a single entity by ID or title alias, strictly scoped to the widget.
  */
 export async function getEntityDetails(
   widgetId: string,
@@ -220,15 +228,43 @@ export async function getEntityDetails(
     if (row) return mapRowToEntity(row);
   }
 
-  // 2. Try title match, URL match, or keyword match
-  const { data: rows } = await supabase
-    .from('website_data')
-    .select('*')
-    .or(`title.ilike.%${cleanKey}%,source_url.ilike.%${cleanKey}%`)
-    .limit(5);
-
-  if (rows && rows.length > 0) {
-    return mapRowToEntity(rows[0]);
+  // 2. Try 4-tier universal entity resolver (exact/partial/fuzzy/semantic)
+  const resolved = await resolveTopEntity(widgetId, cleanKey);
+  if (resolved?.record) {
+    const r = resolved.record;
+    const images = Array.isArray(r.imageUrls) && r.imageUrls.length > 0 ? r.imageUrls : (r.images || []);
+    return {
+      id: r.id || resolved.entityId,
+      widgetId,
+      title: r.title || resolved.title,
+      shortDescription: r.description || r.shortDescription || '',
+      imageUrls: images,
+      images,
+      price: r.price ?? (r.metadata?.price as string | undefined),
+      currency: r.currency ?? (r.metadata?.currency as string | undefined),
+      rating: r.rating ?? (r.metadata?.rating as number | undefined),
+      reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),
+      availability: r.availability ?? (r.metadata?.availability as string | undefined),
+      sourceUrl: r.sourceUrl,
+      entityType: r.entityType || 'product',
+      metadata: {
+        price: r.price ?? (r.metadata?.price as string | undefined),
+        currency: r.currency ?? (r.metadata?.currency as string | undefined),
+        rating: r.rating ?? (r.metadata?.rating as number | undefined),
+        reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),
+        images,
+        attributes: r.attributes,
+        confidence: resolved.confidence,
+      },
+      firstSeen: new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+      stillListed: true,
+      freshnessStatus: 'fresh',
+      dataType: 'crawl',
+      categoryPath: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as any;
   }
 
   return null;
@@ -375,28 +411,49 @@ export async function executeAgentTool(
       const query = String(args.query || args.search || args.q || args.keyword || args.input || '');
       const limit = typeof args.limit === 'number' ? Math.min(Math.max(1, args.limit), 10) : 3;
       const entities = await searchEntities(widgetId, query, limit);
+
+      const formattedResults = entities.map(e => {
+        const anyE = e as any;
+        const item: Record<string, any> = {
+          id: e.id,
+          title: e.title,
+          type: e.entityType,
+          description: e.shortDescription,
+          imageUrls: e.imageUrls || anyE.images || [],
+          images: e.imageUrls || anyE.images || [],
+          canonicalUrl: e.sourceUrl,
+          sourceUrl: e.sourceUrl,
+          firstSeen: e.firstSeen,
+          lastSeen: e.lastSeen,
+          stillListed: e.stillListed,
+          freshnessStatus: e.freshnessStatus,
+          lastSeenHuman: (e.metadata as any)?.lastSeenHuman,
+          hedgeInstruction: (e.metadata as any)?.hedgeInstruction,
+          metadata: e.metadata,
+        };
+        const price = anyE.price ?? anyE.metadata?.price;
+        const currency = anyE.currency ?? anyE.metadata?.currency;
+        const rating = anyE.rating ?? anyE.metadata?.rating;
+        const availability = anyE.availability ?? anyE.metadata?.availability;
+        if (price !== undefined) item.price = price;
+        if (currency !== undefined) item.currency = currency;
+        if (rating !== undefined) item.rating = rating;
+        if (availability !== undefined) item.availability = availability;
+        return item;
+      });
+
+      // Broadcast cards to widget during voice call if session context exists
+      if (context?.sessionId && formattedResults.length > 0) {
+        broadcastToSession(context.sessionId, 'voice_results', { results: formattedResults }).catch(() => {});
+        broadcastToSession(context.sessionId, 'entity_cards', { results: formattedResults }).catch(() => {});
+      }
+
       return {
         success: true,
         data: {
           count: entities.length,
           query,
-          results: entities.map(e => ({
-            id: e.id,
-            title: e.title,
-            description: e.shortDescription,
-            type: e.entityType,
-            price: e.metadata?.price,
-            availability: e.metadata?.availability,
-            sourceUrl: e.sourceUrl,
-            images: e.imageUrls,
-            firstSeen: e.firstSeen,
-            lastSeen: e.lastSeen,
-            stillListed: e.stillListed,
-            freshnessStatus: e.freshnessStatus,
-            lastSeenHuman: (e.metadata as any)?.lastSeenHuman,
-            hedgeInstruction: (e.metadata as any)?.hedgeInstruction,
-            metadata: e.metadata,
-          })),
+          results: formattedResults,
         },
       };
     }
@@ -407,27 +464,43 @@ export async function executeAgentTool(
       if (!entity) {
         return { success: false, error: `Entity '${entityId}' not found for this widget.` };
       }
+
+      const anyEntity = entity as any;
+      const formattedEntity: Record<string, any> = {
+        id: entity.id,
+        title: entity.title,
+        type: entity.entityType,
+        description: entity.shortDescription,
+        imageUrls: entity.imageUrls || anyEntity.images || [],
+        images: entity.imageUrls || anyEntity.images || [],
+        canonicalUrl: entity.sourceUrl,
+        sourceUrl: entity.sourceUrl,
+        categoryPath: entity.categoryPath,
+        firstSeen: entity.firstSeen,
+        lastSeen: entity.lastSeen,
+        stillListed: entity.stillListed,
+        freshnessStatus: entity.freshnessStatus,
+        lastSeenHuman: (entity.metadata as any)?.lastSeenHuman,
+        hedgeInstruction: (entity.metadata as any)?.hedgeInstruction,
+        metadata: entity.metadata,
+      };
+      const price = anyEntity.price ?? anyEntity.metadata?.price;
+      const currency = anyEntity.currency ?? anyEntity.metadata?.currency;
+      const rating = anyEntity.rating ?? anyEntity.metadata?.rating;
+      const availability = anyEntity.availability ?? anyEntity.metadata?.availability;
+      if (price !== undefined) formattedEntity.price = price;
+      if (currency !== undefined) formattedEntity.currency = currency;
+      if (rating !== undefined) formattedEntity.rating = rating;
+      if (availability !== undefined) formattedEntity.availability = availability;
+
+      if (context?.sessionId) {
+        broadcastToSession(context.sessionId, 'voice_results', { results: [formattedEntity] }).catch(() => {});
+        broadcastToSession(context.sessionId, 'entity_cards', { results: [formattedEntity] }).catch(() => {});
+      }
+
       return {
         success: true,
-        data: {
-          id: entity.id,
-          title: entity.title,
-          description: entity.shortDescription,
-          type: entity.entityType,
-          price: entity.metadata?.price,
-          currency: entity.metadata?.currency || 'USD',
-          availability: entity.metadata?.availability,
-          images: entity.imageUrls,
-          sourceUrl: entity.sourceUrl,
-          categoryPath: entity.categoryPath,
-          firstSeen: entity.firstSeen,
-          lastSeen: entity.lastSeen,
-          stillListed: entity.stillListed,
-          freshnessStatus: entity.freshnessStatus,
-          lastSeenHuman: (entity.metadata as any)?.lastSeenHuman,
-          hedgeInstruction: (entity.metadata as any)?.hedgeInstruction,
-          metadata: entity.metadata,
-        },
+        data: formattedEntity,
       };
     }
 

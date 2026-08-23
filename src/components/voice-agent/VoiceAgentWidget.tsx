@@ -256,16 +256,14 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
         // 2. Real-time Voice Result Cards (Pictures, Ratings, Prices)
         if (!fetchedContents.current.has(content) && !isGreetingOrGeneric(content)) {
-          const hasCatalogIntent = /\b(?:course|courses|program|programs|class|classes|pricing|price|cost|tier|service|services|offering|inventory|product|learn|best|selling|popular|top|mern|backend|leetcode|recommend|picture|pictures|photo|photos|image|images|show|see|view|look|card|cards|details)\b/i.test(content);
-          if (hasCatalogIntent) {
-            fetchedContents.current.add(content);
+          fetchedContents.current.add(content);
 
-            // If query is generic like "show me pictures", build search string from recent context
-            let searchQuery = content;
-            if (/\b(?:picture|pictures|photo|photos|image|images|show|see|look)\b/i.test(content) && content.length < 35) {
-              const recentText = latestMessages.map(m => m.content).join(' ');
-              searchQuery = `${content} ${recentText} courses`;
-            }
+          // If query is generic like "show me pictures", build search string from recent context
+          let searchQuery = content;
+          if (/\b(?:picture|pictures|photo|photos|image|images|show|see|look)\b/i.test(content) && content.length < 35) {
+            const recentText = latestMessages.map(m => m.content).join(' ');
+            searchQuery = `${content} ${recentText}`;
+          }
 
             // Query entity search for cards
             fetch(`/api/widgets/${widgetId || 'default'}/entities/search`, {
@@ -286,7 +284,6 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               .catch((err) => {
                 console.warn('[voice-agent] Failed to search website records for:', content, err);
               });
-          }
         }
       }
     }, [transcript, callState, widgetId, mergedConfig.behavior.allowAgentNavigation]);
@@ -593,7 +590,8 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     const sendChatMessage = useCallback(
       async (overrideText?: string) => {
         const text = (typeof overrideText === 'string' ? overrideText : chatInput).trim();
-        if (!text || chatTyping) return;
+        const isVoiceOperating = ['connecting', 'permission_required', 'connected', 'agent_speaking', 'user_listening', 'muted', 'ending'].includes(callState);
+        if (!text || chatTyping || isVoiceOperating) return;
 
         setChatInput('');
         const userMsg: TranscriptMessage = { role: 'user', content: text };
@@ -650,10 +648,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             if (agentMsgs.length > 0) {
               // ── Search entity cards for the agent's reply and attach to message ──
               const agentContent = agentMsgs[0]?.content || '';
-              const shouldSearchCards = !isGreetingOrGeneric(agentContent) && (
-                /\b(?:course|program|class|service|product|pricing|price|cost|mern|backend|leetcode|offering)\b/i.test(agentContent) ||
-                /\b(?:course|program|class|service|product|pricing|price|cost|mern|backend|leetcode|offering)\b/i.test(text)
-              );
+              const shouldSearchCards = !isGreetingOrGeneric(agentContent) && !isGreetingOrGeneric(text);
 
               if (shouldSearchCards && !agentMsgs[0].results) {
                 // Fire async entity search and update the message when done

@@ -366,6 +366,13 @@ export default function VoiceAgentTranscript({
                     {renderFormattedContent(msg.content)}
                   </span>
                 </div>
+                {!isUser && msg.results && Array.isArray(msg.results) && msg.results.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px', width: '100%' }}>
+                    {msg.results.map((res: any, rIdx: number) => (
+                      <LazyResultCard key={res.id || rIdx} result={res} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

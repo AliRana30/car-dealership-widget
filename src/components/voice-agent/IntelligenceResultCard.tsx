@@ -166,8 +166,12 @@ function StarRating({ rating }: { rating: number | string }) {
 
 function ImageGallery({ images, title }: { images: string[]; title?: string }) {
   const [activeIdx, setActiveIdx] = useState(0);
-  const valid = images.filter(Boolean).slice(0, 4);
+  const [failedImages, setFailedImages] = useState<Set<number>>(new Set());
+
+  const valid = images.filter((src, idx) => Boolean(src) && !failedImages.has(idx)).slice(0, 4);
   if (valid.length === 0) return null;
+
+  const currentSrc = valid[Math.min(activeIdx, valid.length - 1)];
 
   return (
     <div style={{ marginBottom: '10px' }}>
@@ -178,10 +182,12 @@ function ImageGallery({ images, title }: { images: string[]; title?: string }) {
         position: 'relative',
       }}>
         <img
-          src={valid[activeIdx]}
+          src={currentSrc}
           alt={title || 'Result image'}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          onError={() => {
+            setFailedImages((prev) => new Set(prev).add(activeIdx));
+          }}
         />
       </div>
       {/* Thumbnails */}
@@ -202,7 +208,9 @@ function ImageGallery({ images, title }: { images: string[]; title?: string }) {
                 src={src}
                 alt=""
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                onError={() => {
+                  setFailedImages((prev) => new Set(prev).add(i));
+                }}
               />
             </button>
           ))}
@@ -241,12 +249,13 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
     (meta.image ? [String(meta.image)] : []);
 
   const images = Array.isArray(rawImages) ? rawImages.filter(img => typeof img === 'string' && img.length > 0) : [];
-  const hasImages = images.length > 0;
+  const [bannerFailed, setBannerFailed] = useState(false);
+  const hasImages = images.length > 0 && !bannerFailed;
 
   const rawPrice = (result as any).price ?? meta.price;
   const price = typeof rawPrice === 'object' ? undefined : rawPrice;
 
-  const currency = typeof (result as any).currency === 'string' ? (result as any).currency : typeof meta.currency === 'string' ? meta.currency : 'USD';
+  const currency = typeof (result as any).currency === 'string' ? (result as any).currency : typeof meta.currency === 'string' ? meta.currency : undefined;
   
   const rawAvailability = (result as any).availability ?? meta.availability;
   const availability = typeof rawAvailability === 'object' ? undefined : (rawAvailability ? String(rawAvailability) : undefined);
@@ -262,9 +271,9 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
     reviewsCount = rawReviews;
   }
 
-  const rawSourceUrl = (result as any).sourceUrl || (result as any).source_url || meta.sourceUrl;
+  const rawSourceUrl = (result as any).canonicalUrl || (result as any).sourceUrl || (result as any).source_url || meta.sourceUrl;
   const sourceUrl = typeof rawSourceUrl === 'string' ? rawSourceUrl : undefined;
-  const entityType = typeof result.entityType === 'string' ? result.entityType : 'Info';
+  const entityType = typeof result.entityType === 'string' ? result.entityType : typeof (result as any).type === 'string' ? (result as any).type : 'Info';
 
   const hasPrice = price !== undefined && price !== null && price !== '';
   const hasRating = rating !== undefined && rating !== null && rating !== '';
@@ -284,7 +293,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
 
   const hasDetails = detailEntries.length > 0;
 
-  const categoryTag = meta.category || (result as any).category || (entityType !== 'text' && entityType !== 'Info' ? entityType : '');
+  const categoryTag = meta.category || (result as any).category || (entityType !== 'text' && entityType !== 'Info' && entityType !== 'product' ? entityType : '');
   const levelTag = meta.level || (result as any).level || '';
 
   const handleCardClick = (e: React.MouseEvent) => {
@@ -315,7 +324,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
             src={images[0]}
             alt={title}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            onError={() => setBannerFailed(true)}
           />
           {categoryTag && (
             <div style={{
@@ -379,6 +388,10 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
             color: 'var(--voice-widget-text, #0F172A)',
             lineHeight: '1.3',
             marginBottom: '3px',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
           }}>
             {title}
           </div>
@@ -400,7 +413,7 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           </div>
         )}
 
-        {/* Structured Metadata Specs Grid (Matching Image 1 & 3: Body, Drivetrain, Transmission, Fuel, Stock, VIN) */}
+        {/* Structured Metadata Specs Grid */}
         {hasDetails && (
           <div style={{
             display: 'grid',
@@ -424,16 +437,18 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           </div>
         )}
 
-        {/* Bottom CTA Row: Rating / Level on left, prominent View on site button on right (Image 1 & 3) */}
+        {/* Bottom CTA Row: Rating / Availability on left, View on site button on right */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           marginTop: '6px', paddingTop: '6px', borderTop: '1px solid rgba(14, 27, 42, 0.06)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748B' }}>
             {hasRating ? (
-              <span style={{ fontWeight: 600, color: '#0F172A' }}>★ {Number(rating).toFixed(0)}</span>
+              <StarRating rating={rating!} />
+            ) : availability ? (
+              <AvailabilityBadge value={availability} />
             ) : (
-              <span style={{ fontWeight: 600, color: '#0F172A' }}>★ 5</span>
+              <span />
             )}
             {levelTag && <span>• {String(levelTag).toLowerCase()}</span>}
             {reviewsCount !== undefined && !levelTag && <span>• ({String(reviewsCount)} reviews)</span>}

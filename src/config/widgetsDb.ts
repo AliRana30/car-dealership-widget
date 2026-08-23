@@ -704,7 +704,11 @@ export async function getRelevantWebsiteData(
       const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice || record.price);
       const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
       const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length);
-      const isCatalogEntity = ['service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan'].includes(record.entity_type) || hasPricingOrMedia;
+      // Expanded catalog entity check — vertical-agnostic (covers dealerships, real-estate, etc.)
+      const isCatalogEntity = [
+        'service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan',
+        'car', 'truck', 'suv', 'listing', 'make', 'model', 'inventory', 'item',
+      ].includes((record.entity_type || '').toLowerCase()) || hasPricingOrMedia;
       const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal|security/.test(titleLower);
       const isAboutEntity = /about|mission|story|empowering|founder|developer|team/.test(titleLower);
       const isFaqEntity = ['faq'].includes(record.entity_type) || /faq|frequently asked|questions/.test(titleLower);
@@ -740,7 +744,7 @@ export async function getRelevantWebsiteData(
         exactTitleMatch = true;
       }
 
-      // Specific keyword matching
+      // Specific keyword matching — title/category hits score highest, content hits score lower
       let titleHits = 0;
       let contentHits = 0;
       const metaCategory = String(meta.category || meta.tags || meta.level || '').toLowerCase();
@@ -751,16 +755,32 @@ export async function getRelevantWebsiteData(
             score += 80;
             titleHits++;
           } else if (contentLower.includes(word)) {
-            score += 10;
+            score += 15;
             contentHits++;
           }
         }
       }
 
-      // If specific search keywords were provided, strictly require a match in title or category/tags
-      if (constraints.specificKeywords.length > 0) {
-        if (!exactTitleMatch && titleHits === 0) {
+      // Relaxed filter: when specific keywords are provided but no title/category hit is found,
+      // only hard-eliminate clearly irrelevant pages (policy/about/faq). Catalog entities that
+      // matched content keywords still pass with a reduced score so broad/synonym queries
+      // (e.g. "show me your cars" when titles say "2024 Jeep Wrangler") still surface results.
+      if (constraints.specificKeywords.length > 0 && !exactTitleMatch && titleHits === 0) {
+        if (isPolicyEntity || isAboutEntity || isFaqEntity) {
+          // Clearly irrelevant — hard eliminate
+          return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits };
+        }
+        if (contentHits === 0 && !isCatalogEntity) {
+          // Not a catalog item and no keyword hit anywhere — eliminate
           return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
+        }
+        // Catalog entity with at least a content hit → keep with modest base score
+        if (contentHits > 0) {
+          score = Math.max(score, 5);
+        } else if (isCatalogEntity) {
+          // Catalog entity, no keyword match at all — give it a low base score so broad catalog
+          // queries ("what do you have?") still return *something* rather than empty
+          score = Math.max(score, 1);
         }
       }
 
@@ -769,10 +789,13 @@ export async function getRelevantWebsiteData(
       return { record, score, itemPrice, rating, exactTitleMatch, titleHits, contentHits };
     });
 
-    // Check if query had specific keywords that were NOT matched anywhere
+    // When specific keywords were given but NOTHING matched title/category, fall back to any
+    // content-level matches before giving up. Only return empty when there's truly no signal.
     if (constraints.specificKeywords.length > 0) {
-      const anyKeywordMatch = scored.some(s => s.titleHits > 0 || s.exactTitleMatch);
-      if (!anyKeywordMatch && !constraints.isAboutQuery && !constraints.isPolicyQuery && !constraints.isFaqQuery) {
+      const anyTitleMatch = scored.some(s => s.titleHits > 0 || s.exactTitleMatch);
+      const anyContentMatch = scored.some(s => (s as any).contentHits > 0);
+      if (!anyTitleMatch && !anyContentMatch && !constraints.isAboutQuery && !constraints.isPolicyQuery && !constraints.isFaqQuery) {
+        // Absolute zero signal — return empty so LLM can honestly say "not found"
         return '';
       }
     }
@@ -904,7 +927,11 @@ export async function getRelevantWebsiteRecords(
       const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice || record.price);
       const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
       const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length) || Boolean(meta.images?.length);
-      const isCatalogEntity = ['service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan'].includes(record.entity_type) || hasPricingOrMedia;
+      // Expanded catalog entity check — vertical-agnostic (dealerships, real-estate, etc.)
+      const isCatalogEntity = [
+        'service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan',
+        'car', 'truck', 'suv', 'listing', 'make', 'model', 'inventory', 'item',
+      ].includes((record.entity_type || '').toLowerCase()) || hasPricingOrMedia;
       const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal/.test(titleLower);
 
       if (!isCatalogEntity || isPolicyEntity) return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
@@ -926,9 +953,13 @@ export async function getRelevantWebsiteRecords(
 
       // Exact title / entity match
       let exactTitleMatch = false;
-      if (titleLower && (trimmedQuery.includes(titleLower) || titleLower.includes(trimmedQuery))) {
-        score += 200;
+      const normTitleStr = (titleLower || '').replace(/[^a-z0-9]/g, '');
+      const normQueryStr = (trimmedQuery || '').replace(/[^a-z0-9]/g, '');
+      if (normTitleStr.length > 0 && normTitleStr === normQueryStr) {
+        score += 300;
         exactTitleMatch = true;
+      } else if (titleLower && (trimmedQuery.includes(titleLower) || titleLower.includes(trimmedQuery))) {
+        score += 120;
       }
 
       // Specific keyword match in title, category, tags
@@ -942,16 +973,23 @@ export async function getRelevantWebsiteRecords(
             score += 80;
             titleHits++;
           } else if (contentLower.includes(word)) {
-            score += 10;
+            score += 15;
             contentHits++;
           }
         }
       }
 
-      // If specific search keywords were provided, strictly require a match in title or category/tags
-      if (constraints.specificKeywords.length > 0) {
-        if (!exactTitleMatch && titleHits === 0) {
-          return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
+      // Relaxed keyword filter: when specific keywords were given but no title/category hit,
+      // keep catalog entities with at least a content hit (broad/synonym queries). Only
+      // hard-eliminate items that matched nothing at all.
+      if (constraints.specificKeywords.length > 0 && !exactTitleMatch && titleHits === 0) {
+        if (contentHits === 0) {
+          // Catalog item with zero keyword signal — give it a small base score for broad queries
+          // ("what cars do you have?") rather than a hard -100 that empties all results.
+          score = Math.max(score, 2);
+        } else {
+          // Content hit present — keep with modest score
+          score = Math.max(score, 10);
         }
       }
 
@@ -969,11 +1007,17 @@ export async function getRelevantWebsiteRecords(
       return { record, score, itemPrice, rating, exactTitleMatch, titleHits, contentHits };
     });
 
-    // If specific topic keywords were asked (e.g. "frontend", "python", "flutter")
-    // and NO catalog item matched those keywords, return [] so the agent can accurately state that we don't offer it!
-    if (constraints.specificKeywords.length > 0) {
-      const anyKeywordMatch = scored.some(s => s.exactTitleMatch || s.titleHits > 0);
-      if (!anyKeywordMatch) {
+    // If specific topic keywords were asked and NOTHING in the catalog matched title, category,
+    // OR content, return [] so the agent correctly says "not found" rather than hallucinating.
+    // We keep results when content-level hits exist (broad/synonym queries like "show me cars").
+    // Filter out broad generic catalog words so "all offerings" is treated as broad catalog search
+    const BROAD_CATALOG_WORDS = new Set(['offering', 'offerings', 'program', 'programs', 'course', 'courses', 'product', 'products', 'service', 'services', 'inventory', 'catalog', 'all', 'item', 'items', 'list', 'show']);
+    const trueSpecificKeywords = constraints.specificKeywords.filter(w => !BROAD_CATALOG_WORDS.has(w));
+
+    if (trueSpecificKeywords.length > 0) {
+      const anyTitleMatch = scored.some(s => s.exactTitleMatch || s.titleHits > 0);
+      const anyContentMatch = scored.some(s => (s as any).contentHits > 0);
+      if (!anyTitleMatch && !anyContentMatch) {
         return [];
       }
     }
@@ -1005,7 +1049,7 @@ export async function getRelevantWebsiteRecords(
       return true;
     });
 
-    const maxItems = exactMatches.length > 0 ? 1 : Math.max(limit, 6);
+    const maxItems = exactMatches.length > 0 ? 1 : limit;
     const selected = uniqueCandidates.slice(0, maxItems);
 
     return selected.map(s => {

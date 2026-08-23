@@ -31,8 +31,10 @@ export default function VoiceAgentControls({
   chatTyping,
 }: VoiceAgentControlsProps) {
   const { branding } = config;
-  const isConnecting = ['connecting', 'permission_required'].includes(callState);
+  const isVoiceConnecting = ['connecting', 'permission_required'].includes(callState);
+  const isVoiceOperating = isActive || isVoiceConnecting || ['connected', 'agent_speaking', 'user_listening', 'muted', 'ending'].includes(callState);
   const isEnding = callState === 'ending';
+  const isChatActive = chatTyping;
 
   return (
     <div
@@ -46,17 +48,17 @@ export default function VoiceAgentControls({
         boxSizing: 'border-box',
       }}
     >
-      {/* 1. Main Action Pill Button: Tap to Talk / End Call (Matching Image 4) */}
+      {/* 1. Main Action Pill Button: Tap to Talk / End Call */}
       {!isActive ? (
         <button
           type="button"
           onClick={onStartCall}
-          disabled={isConnecting}
+          disabled={isVoiceOperating || isChatActive || isEnding}
           style={{
             width: '100%',
             padding: '12px 18px',
             borderRadius: '999px',
-            background: 'var(--voice-widget-primary, #2F8FE0)',
+            background: isChatActive ? '#94A3B8' : 'var(--voice-widget-primary, #2F8FE0)',
             color: '#FFFFFF',
             border: 'none',
             fontSize: '14px',
@@ -65,11 +67,12 @@ export default function VoiceAgentControls({
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            cursor: isConnecting ? 'wait' : 'pointer',
-            boxShadow: '0 4px 14px rgba(37,99,235,0.22)',
+            cursor: isVoiceConnecting ? 'wait' : (isChatActive || isVoiceOperating ? 'not-allowed' : 'pointer'),
+            boxShadow: isChatActive ? 'none' : '0 4px 14px rgba(37,99,235,0.22)',
             transition: 'transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease',
-            opacity: isConnecting ? 0.8 : 1,
+            opacity: isVoiceConnecting || isChatActive ? 0.7 : 1,
           }}
+          title={isChatActive ? 'Sending chat message...' : isVoiceConnecting ? 'Connecting...' : 'Tap to talk'}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
@@ -77,7 +80,7 @@ export default function VoiceAgentControls({
             <line x1="12" y1="19" x2="12" y2="22" />
             <line x1="8" y1="22" x2="16" y2="22" />
           </svg>
-          <span>{isConnecting ? (branding.connectingLabel || 'Connecting...') : (branding.startLabel || 'Tap to talk')}</span>
+          <span>{isVoiceConnecting ? (branding.connectingLabel || 'Connecting...') : (branding.startLabel || 'Tap to talk')}</span>
         </button>
       ) : (
         /* Active Call Controls Row */
@@ -156,7 +159,7 @@ export default function VoiceAgentControls({
         </div>
       )}
 
-      {/* 2. Text Input Row: "Type a message instead..." (Matching Image 4) */}
+      {/* 2. Text Input Row: Disabled when Voice is active or connecting */}
       <form
         onSubmit={onSendChatMessage}
         style={{
@@ -169,14 +172,15 @@ export default function VoiceAgentControls({
           borderRadius: '999px',
           padding: '3px 4px 3px 14px',
           boxSizing: 'border-box',
+          opacity: isVoiceOperating ? 0.5 : 1,
         }}
       >
         <input
           type="text"
           value={chatInput}
           onChange={(e) => onChatInputChange(e.target.value)}
-          placeholder={branding.placeholderText || "Type a message instead..."}
-          disabled={chatTyping}
+          placeholder={isVoiceOperating ? "Voice call active..." : (branding.placeholderText || "Type a message instead...")}
+          disabled={chatTyping || isVoiceOperating}
           style={{
             flex: 1,
             padding: '7px 0',
@@ -185,26 +189,27 @@ export default function VoiceAgentControls({
             fontSize: '12.5px',
             color: 'var(--voice-widget-text, #0F172A)',
             background: 'transparent',
+            cursor: isVoiceOperating ? 'not-allowed' : 'text',
           }}
         />
         <button
           type="submit"
-          disabled={chatTyping || !chatInput.trim()}
+          disabled={chatTyping || isVoiceOperating || !chatInput.trim()}
           style={{
             width: '30px',
             height: '30px',
             borderRadius: '50%',
-            background: chatInput.trim() && !chatTyping ? 'var(--voice-widget-primary, #2F8FE0)' : 'rgba(14,27,42,0.1)',
-            color: chatInput.trim() && !chatTyping ? '#FFFFFF' : '#94A3B8',
+            background: chatInput.trim() && !chatTyping && !isVoiceOperating ? 'var(--voice-widget-primary, #2F8FE0)' : 'rgba(14,27,42,0.1)',
+            color: chatInput.trim() && !chatTyping && !isVoiceOperating ? '#FFFFFF' : '#94A3B8',
             border: 'none',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: chatInput.trim() && !chatTyping ? 'pointer' : 'default',
+            cursor: chatInput.trim() && !chatTyping && !isVoiceOperating ? 'pointer' : 'not-allowed',
             transition: 'all 0.15s ease',
             flexShrink: 0,
           }}
-          title="Send message"
+          title={isVoiceOperating ? 'Voice call in progress' : 'Send message'}
           aria-label="Send message"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">

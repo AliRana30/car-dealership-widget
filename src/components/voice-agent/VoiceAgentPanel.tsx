@@ -345,33 +345,25 @@ export default function VoiceAgentPanel({
             </div>
 
             {/* Footer Navigation Links */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              paddingTop: '10px', marginTop: '8px', borderTop: '1px solid #E2E8F0',
-              fontSize: '11px', flexShrink: 0,
-            }}>
-              <button
-                type="button"
-                onClick={() => handleNavigate('/courses')}
-                style={{
-                  background: 'none', border: 'none', padding: 0,
-                  color: 'var(--voice-widget-primary, #2F8FE0)',
-                  fontWeight: 600, cursor: 'pointer',
-                }}
-              >
-                View All Courses →
-              </button>
-              <button
-                type="button"
-                onClick={() => handleNavigate('/policy')}
-                style={{
-                  background: 'none', border: 'none', padding: 0,
-                  color: '#64748B', cursor: 'pointer',
-                }}
-              >
-                Policies
-              </button>
-            </div>
+            {cards[0]?.sourceUrl && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+                paddingTop: '10px', marginTop: '8px', borderTop: '1px solid #E2E8F0',
+                fontSize: '11px', flexShrink: 0,
+              }}>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate(cards[0].sourceUrl!)}
+                  style={{
+                    background: 'none', border: 'none', padding: 0,
+                    color: 'var(--voice-widget-primary, #2F8FE0)',
+                    fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  View Details on Site →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

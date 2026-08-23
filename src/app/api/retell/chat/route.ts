@@ -22,6 +22,17 @@ import {
   validateMessageLength,
 } from '@/lib/chat/chatLimiter';
 import { checkAndIncrementUsage } from '@/lib/usage/spendLimiter';
+import {
+  resolveEntityByQuery,
+  resolveAnaphora,
+  type ResolvedEntity,
+} from '@/lib/agents/entityResolver';
+import {
+  getSessionContext,
+  updateSessionContext,
+  pinEntity,
+  setLastResults,
+} from '@/lib/agents/sessionContext';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -111,67 +122,75 @@ interface ChatFallbackResult {
   suggestedUrl?: string;
 }
 
-function resolveFollowUpEntity(content: string, history: any[]): { resolvedQuery: string; targetEntityTitle?: string; targetUrl?: string } {
-  const lower = content.trim().toLowerCase();
-  
-  // 1. Find last agent message with structured results OR bold title in content
-  let lastResults: WebsiteDataRecord[] = [];
-  let lastBoldTitle: string | undefined;
+// ── Entity resolution + session context integration ─────────────────────────
+//
+// This replaces the old resolveFollowUpEntity() function.
+// Resolution order:
+//  1. Anaphora check (it/this/that/first one) against pinned session entity
+//  2. 4-tier entity resolver: exact → partial → fuzzy → semantic
+//  3. Update session context with resolved entity + result set
+//
+// Returns the resolved entity record (with real images from DB) OR null.
 
-  for (let i = history.length - 1; i >= 0; i--) {
-    const msg = history[i];
-    if (msg.role === 'agent') {
-      if (Array.isArray(msg.results) && msg.results.length > 0 && lastResults.length === 0) {
-        lastResults = msg.results;
-      }
-      if (!lastBoldTitle && typeof msg.content === 'string') {
-        const boldMatch = msg.content.match(/\*\*([^*]+)\*\*/);
-        if (boldMatch && boldMatch[1].trim().length > 2) {
-          lastBoldTitle = boldMatch[1].trim();
-        }
-      }
-    }
+async function resolveEntityForTurn(
+  content: string,
+  sessionId: string,
+  widgetId: string,
+  history: any[],
+): Promise<{
+  resolvedQuery: string;
+  pinnedEntity: ResolvedEntity | null;
+  records: WebsiteDataRecord[];
+}> {
+  // Load server-side session context
+  const ctx = getSessionContext(sessionId, widgetId);
+
+  // 1. Try anaphora resolution first (pronouns, ordinals)
+  const anaphoric = resolveAnaphora(
+    content,
+    ctx.pinnedEntity,
+    ctx.lastResults,
+    history,
+  );
+
+  if (anaphoric.wasAnaphoric && anaphoric.resolvedEntity) {
+    // Carry over the pinned entity; make the query specific to trigger retrieval
+    const resolvedQuery = `${anaphoric.resolvedEntity.title} ${content}`;
+    return {
+      resolvedQuery,
+      pinnedEntity: anaphoric.resolvedEntity,
+      records: anaphoric.resolvedEntity.record ? [anaphoric.resolvedEntity.record] : ctx.lastResults,
+    };
   }
 
-  // Check for ordinal references (e.g. "the second one", "2nd item", "first course")
-  const ordinalMap: Record<string, number> = {
-    'first': 0, '1st': 0,
-    'second': 1, '2nd': 1,
-    'third': 2, '3rd': 2,
-    'fourth': 3, '4th': 3,
-    'fifth': 4, '5th': 4,
-    'last': lastResults.length > 0 ? lastResults.length - 1 : 0,
-  };
+  // 2. Run 4-tier entity resolution on the user's query
+  const isGreeting = /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|start|help)$/i.test(content.trim());
+  const isYes = /^(?:yes|yeah|sure|yep|ok|okay|do it|go)[\.!]*$/i.test(content.trim());
 
-  const ordinalMatch = lower.match(/\b(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|last)\b/i);
-  if (ordinalMatch && lastResults.length > 0) {
-    const word = ordinalMatch[1].toLowerCase();
-    const idx = ordinalMap[word];
-    if (idx !== undefined && idx >= 0 && idx < lastResults.length) {
-      const item = lastResults[idx];
-      if (item?.title) {
-        const isPriceQuery = /(?:price|cost|how much|fee|rate|tuition)/i.test(lower);
-        const resolvedQuery = isPriceQuery ? `${item.title} price` : item.title;
-        return { resolvedQuery, targetEntityTitle: item.title, targetUrl: item.sourceUrl };
-      }
-    }
+  if (isGreeting || isYes) {
+    // Don't attempt entity resolution for greetings / yes-confirmations
+    return { resolvedQuery: content, pinnedEntity: ctx.pinnedEntity, records: ctx.lastResults };
   }
 
-  // Check for anaphoric / pronoun queries (e.g. "what's its price?", "how much is it?", "tell me about it", "open it", "what is the price?")
-  const isAnaphoric = /\b(it|its|it's|that|that's|this|the item|the course|the product|the vehicle|the service|the offering)\b/i.test(lower) ||
-    /^(?:what(?:'s| is) (?:the )?(?:price|cost|fee|rate|tuition)\??|how much(?: is it)?\??|tell me more\??|open it\??|details\??)$/i.test(lower);
+  const resolved = await resolveEntityByQuery(widgetId, content, 6);
 
-  if (isAnaphoric) {
-    const targetTitle = lastBoldTitle || lastResults[0]?.title;
-    if (targetTitle) {
-      const isPriceQuery = /(?:price|cost|how much|fee|rate|tuition)/i.test(lower);
-      const resolvedQuery = isPriceQuery ? `${targetTitle} price` : targetTitle;
-      const matchedItem = lastResults.find(r => r.title?.toLowerCase() === targetTitle.toLowerCase()) || lastResults[0];
-      return { resolvedQuery, targetEntityTitle: targetTitle, targetUrl: matchedItem?.sourceUrl };
+  if (resolved.length > 0) {
+    const top = resolved[0];
+    // Pin the top entity when confidence is exact/partial/fuzzy
+    if (top.confidence !== 'semantic' || resolved.length === 1) {
+      pinEntity(sessionId, widgetId, top);
     }
+    setLastResults(sessionId, widgetId, resolved.map((r) => r.record));
+
+    return {
+      resolvedQuery: top.title,
+      pinnedEntity: top,
+      records: resolved.map((r) => r.record),
+    };
   }
 
-  return { resolvedQuery: content };
+  // 3. Nothing resolved — keep existing context, use raw query
+  return { resolvedQuery: content, pinnedEntity: ctx.pinnedEntity, records: [] };
 }
 
 async function generateChatFallbackResponse(
@@ -271,7 +290,17 @@ async function generateChatFallbackResponse(
     };
   }
 
-  // 2. Try LLMs (OpenAI, Gemini, Groq) with strict anti-hallucination prompt if keys exist
+  // 2. Try LLMs (OpenAI, Gemini, Groq) with strict anti-hallucination prompt if keys exist.
+  // Bug 4 fix: if BOTH the retrieved text context AND the structured records are empty,
+  // skip the LLM entirely — it has no grounded data and would hallucinate.
+  // Jump straight to the structured zero-result synthesis engine below.
+  const hasGroundedData = Boolean(relevantData && relevantData.trim()) || matchedRecords.length > 0;
+  if (!hasGroundedData && !isExplicit) {
+    // Fall through to the structured synthesis engine (Cases A-D below) which correctly
+    // says "I couldn't find that" without inventing website information.
+    console.log('[retell/chat] No grounded data for this query — skipping LLM to prevent hallucination.');
+  }
+
   const systemPrompt = `You are a helpful AI receptionist and assistant for ${businessName}.
 Use ONLY the following website information to answer accurately and concisely.
 If the answer is NOT present in the website information below, or if the user asks about an item/course/product that is NOT listed below, clearly state: "I couldn't find that in the available website information." Do NOT invent or guess any website information.
@@ -285,7 +314,7 @@ Guidelines:
 - If the user asks about a specific item that does not exist in the information, say you couldn't find a matching offering.
 - Keep responses concise (under 120 words).`;
 
-  if (openAiKey) {
+  if (hasGroundedData && openAiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -316,7 +345,7 @@ Guidelines:
     }
   }
 
-  if (geminiKey) {
+  if (hasGroundedData && geminiKey) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
         method: 'POST',
@@ -339,7 +368,7 @@ Guidelines:
     }
   }
 
-  if (groqKey) {
+  if (hasGroundedData && groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -639,17 +668,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Conversational Follow-Up Resolution ──────────────────────────────────
-  const { resolvedQuery, targetEntityTitle, targetUrl } = resolveFollowUpEntity(content, history);
+  // ── Conversational Follow-Up & Universal Entity Resolution ───────────────
+  const retrievalId = (widget.id && widget.id !== '00000000-0000-0000-0000-000000000000')
+    ? widget.id
+    : (widget.widgetId || targetId);
 
-  // Resolve relevant website intelligence data dynamically through the backend
-  const websiteId = widget.websiteId || '00000000-0000-0000-0000-000000000000';
-  // Run text context + structured records retrieval in parallel using the resolved query
-  const [relevantData, relevantRecords] = await Promise.all([
-    getRelevantWebsiteData(websiteId, resolvedQuery),
-    getRelevantWebsiteRecords(websiteId, resolvedQuery),
-  ]);
+  const { resolvedQuery, pinnedEntity, records: resolvedRecords } = await resolveEntityForTurn(
+    content,
+    sessionId,
+    retrievalId,
+    history
+  );
 
+  // Retrieve grounded text context using resolved query
+  const relevantData = await getRelevantWebsiteData(retrievalId, resolvedQuery);
+  const relevantRecords = resolvedRecords.length > 0
+    ? resolvedRecords
+    : await getRelevantWebsiteRecords(retrievalId, resolvedQuery);
+
+  const targetUrl = pinnedEntity?.record?.sourceUrl;
   const effectiveNavUrl = targetUrl || lastNavUrl;
 
   if (!apiKey || !agentId) {
@@ -719,8 +756,21 @@ export async function POST(req: NextRequest) {
     // 2. Post user message content to get completion response
     let completion;
     try {
+      // Bug 3 fix: Wrap the website context with an explicit SYSTEM INSTRUCTION header so the
+      // Retell agent treats it as a mandatory data source rather than ordinary user text.
+      // This prevents the Retell LLM from ignoring the context and answering from its own training.
       const promptContent = relevantData
-        ? `[Relevant Website Context:\n${relevantData}\n]\nUser Message: ${content.trim()}`
+        ? [
+            'SYSTEM INSTRUCTION: You MUST base your answer ONLY on the following verified website data.',
+            'Do NOT invent, guess, or add any information that is not explicitly present in the data below.',
+            'If the user asks about something not covered in the data, say: "I couldn\'t find that in the available website information."',
+            '',
+            '=== VERIFIED WEBSITE DATA ===',
+            relevantData,
+            '=== END WEBSITE DATA ===',
+            '',
+            `User Question: ${content.trim()}`,
+          ].join('\n')
         : content.trim();
 
       completion = await client.chat.createChatCompletion({
@@ -738,13 +788,23 @@ export async function POST(req: NextRequest) {
         throw new Error('Failed to create a new chat session during recovery.');
       }
 
-      const promptContent = relevantData
-        ? `[Relevant Website Context:\n${relevantData}\n]\nUser Message: ${content.trim()}`
+      const promptContentRetry = relevantData
+        ? [
+            'SYSTEM INSTRUCTION: You MUST base your answer ONLY on the following verified website data.',
+            'Do NOT invent, guess, or add any information that is not explicitly present in the data below.',
+            'If the user asks about something not covered in the data, say: "I couldn\'t find that in the available website information."',
+            '',
+            '=== VERIFIED WEBSITE DATA ===',
+            relevantData,
+            '=== END WEBSITE DATA ===',
+            '',
+            `User Question: ${content.trim()}`,
+          ].join('\n')
         : content.trim();
 
       completion = await client.chat.createChatCompletion({
         chat_id: chatId,
-        content: promptContent,
+        content: promptContentRetry,
       });
     }
 
@@ -755,19 +815,26 @@ export async function POST(req: NextRequest) {
       let textContent = m.content;
       if (typeof textContent === 'string') {
         textContent = textContent.replace(/\[[a-z_-\s]+\]/gi, '').replace(/\s+/g, ' ').trim();
+        // Strip out our injected system instruction block so the user sees only their own question
+        if (textContent.includes('SYSTEM INSTRUCTION:')) {
+          const endMarker = '=== END WEBSITE DATA ===';
+          const endIdx = textContent.indexOf(endMarker);
+          if (endIdx !== -1) {
+            textContent = textContent.slice(endIdx + endMarker.length).replace(/^[\s\n]*User Question:/i, '').trim();
+          }
+        }
         if (textContent.includes('User Message:')) {
           const parts = textContent.split('User Message:');
           textContent = parts[parts.length - 1].trim();
         }
       }
       const cleaned: any = { ...m, content: textContent };
-      // Attach structured result cards to the last agent message only if user asked about offerings / catalog
-      const isCatalogIntent = /course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you/i.test(content.trim());
+      // Bug 5 fix: attach structured result cards whenever the retrieval found records.
+      // This is now vertical-agnostic — it no longer requires LMS-specific keywords.
       const isLastAgentMsg =
         m.role === 'agent' &&
         idx === rawMessages.length - 1 &&
-        relevantRecords.length > 0 &&
-        isCatalogIntent;
+        relevantRecords.length > 0;
       if (isLastAgentMsg) {
         cleaned.results = relevantRecords;
       }
