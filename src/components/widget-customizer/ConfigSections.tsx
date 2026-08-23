@@ -129,7 +129,7 @@ export function TypographySection({ draft, onChange }: Props) {
     { label: 'System UI (Native Fast)', value: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
   ];
 
-  const currentFont = draft.typography.fontFamily || "'Inter', sans-serif";
+  const currentFont = draft.typography.fontFamily || "'Figtree', sans-serif";
   const isPreset = FONT_PRESETS.some((p) => p.value.toLowerCase() === currentFont.toLowerCase());
 
   return (

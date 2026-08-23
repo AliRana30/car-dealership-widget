@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import { Outfit } from "next/font/google";
+import { Figtree } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import ExtensionErrorSuppressor from "@/components/ExtensionErrorSuppressor";
 import "./globals.css";
 
-const outfit = Outfit({
+const figtree = Figtree({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-outfit",
+  variable: "--font-figtree",
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {
@@ -26,8 +27,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={outfit.variable} suppressHydrationWarning>
-      <body className={outfit.className} suppressHydrationWarning>
+    <html lang="en" className={figtree.variable} suppressHydrationWarning>
+      <body className={figtree.className} suppressHydrationWarning>
         <ExtensionErrorSuppressor />
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         {children}

@@ -247,7 +247,7 @@ export default function HomePage() {
   ];
 
   return (
-    <div suppressHydrationWarning style={{ position: 'relative', isolation: 'isolate', fontFamily: "'Figtree', 'Inter', system-ui, sans-serif", color: '#0E1B2A', minHeight: '100vh', overflowX: 'hidden' }}>
+    <div suppressHydrationWarning style={{ position: 'relative', isolation: 'isolate', fontFamily: "'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", color: '#0E1B2A', minHeight: '100vh', overflowX: 'hidden' }}>
 
       {/* ── Global Styles & Rich Animations ─────────────────────────────── */}
       <style dangerouslySetInnerHTML={{

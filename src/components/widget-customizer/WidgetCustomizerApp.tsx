@@ -625,7 +625,7 @@ const styles: Record<string, React.CSSProperties> = {
     height: '100vh',
     width: '100vw',
     background: '#ffffff',
-    fontFamily: "'Inter', 'Figtree', system-ui, sans-serif",
+    fontFamily: "'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     overflow: 'hidden',
   },
   header: {
