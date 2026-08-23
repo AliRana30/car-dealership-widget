@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import FloatingGlassNavbar from '@/components/navbar/FloatingGlassNavbar';
 
 // ── Icon Helper ─────────────────────────────────────────────────────────────
 
@@ -306,6 +307,8 @@ export default function HomePage() {
           .mobile-hamburger-btn { display: flex !important; }
           .hero-grid-layout { grid-template-columns: 1fr !important; gap: 36px !important; }
         }
+
+        /* Navbar clearance classes are intentionally kept but overridden by inline paddingTop */
       `}} />
 
       {/* ── Ambient Background Layer with Floating Elements ─────────────── */}
@@ -333,127 +336,12 @@ export default function HomePage() {
         <div style={{ position: 'absolute', inset: 0, opacity: 0.07, backgroundImage: "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2744%27 height=%2744%27%3E%3Cpath d=%27M44 0H0V44%27 fill=%27none%27 stroke=%27%236b6656%27 stroke-width=%271%27/%3E%3C/svg%3E')", backgroundSize: '44px 44px' }} />
       </div>
 
-      {/* ── Navigation Bar ──────────────────────────────────────────────── */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(233,242,251,0.88)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(14,27,42,0.08)' }}>
-        <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '0 32px', height: '68px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '24px' }}>
-
-          {/* Logo & Brand */}
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#0E1B2A' }}>
-            <img src="/logo.png" alt="Widgetized Logo" style={{ width: '34px', height: '34px', objectFit: 'contain' }} />
-            <span style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '-0.02em', color: '#0E1B2A' }}>Widgetized</span>
-          </Link>
-
-          {/* Desktop Nav Links */}
-          <nav className="desktop-nav-items" style={{ alignItems: 'center', gap: '28px' }}>
-            <a href="#features" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Features</a>
-            <a href="#channels" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>Capabilities</a>
-            <a href="#how-it-works" style={{ fontSize: '14.5px', fontWeight: 500, color: 'rgba(14,27,42,0.8)', textDecoration: 'none', transition: 'color 0.2s' }}>How It Works</a>
-            <Link href="/dashboard" style={{ fontSize: '14.5px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Dashboard</Link>
-          </nav>
-
-          {/* Desktop Auth & Action Buttons */}
-          <div className="desktop-nav-items" style={{ alignItems: 'center', gap: '12px' }}>
-            <Link
-              href="/login"
-              style={{
-                padding: '9px 20px', borderRadius: '10px',
-                border: '1px solid rgba(14,27,42,0.18)', background: 'rgba(255,255,255,0.85)',
-                color: '#0E1B2A', fontSize: '14px', fontWeight: 600,
-                textDecoration: 'none', display: 'inline-block',
-                cursor: 'pointer',
-              }}
-            >
-              Login
-            </Link>
-            <Link
-              href="/signup"
-              className="btn-hover-lift"
-              style={{
-                padding: '9px 22px', borderRadius: '10px',
-                background: '#2F8FE0', color: '#FFFDF8',
-                fontSize: '14px', fontWeight: 600,
-                textDecoration: 'none', display: 'inline-block',
-                boxShadow: '0 4px 14px rgba(47,143,224,0.3)',
-                cursor: 'pointer',
-              }}
-            >
-              Get Started
-            </Link>
-          </div>
-
-          {/* Mobile Hamburger Button */}
-          <button
-            onClick={() => setMobileMenuOpen(prev => !prev)}
-            className="mobile-hamburger-btn"
-            style={{
-              background: 'none', border: '1px solid rgba(14,27,42,0.15)',
-              borderRadius: '8px', padding: '7px', cursor: 'pointer', color: '#0E1B2A',
-            }}
-            aria-label="Toggle navigation menu"
-          >
-            <SvgIcon paths={mobileMenuOpen ? PATHS.close : PATHS.menu} size={20} />
-          </button>
-        </div>
-      </header>
-
-      {/* ── Mobile Navigation Drawer Overlay ────────────────────────────── */}
-      {mobileMenuOpen && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 60,
-          background: 'rgba(233,242,251,0.98)', backdropFilter: 'blur(16px)',
-          display: 'flex', flexDirection: 'column', padding: '24px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
-            <Link href="/" onClick={() => setMobileMenuOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#0E1B2A' }}>
-              <img src="/logo.png" alt="Widgetized Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
-              <span style={{ fontSize: '18px', fontWeight: 700 }}>Widgetized</span>
-            </Link>
-            <button onClick={() => setMobileMenuOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-              <SvgIcon paths={PATHS.close} size={24} />
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
-            <Link href="/" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Home</Link>
-            <a href="#features" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Features</a>
-            <a href="#channels" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>Capabilities</a>
-            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#0E1B2A', textDecoration: 'none' }}>How It Works</a>
-            <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: '20px', fontWeight: 600, color: '#2F8FE0', textDecoration: 'none' }}>Fleet Dashboard</Link>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '280px', marginTop: '24px' }}>
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                style={{
-                  padding: '12px', borderRadius: '10px',
-                  background: '#FFFFFF', border: '1px solid #E5E7EB',
-                  color: '#0E1B2A', textAlign: 'center', fontWeight: 600,
-                  textDecoration: 'none', cursor: 'pointer',
-                }}
-              >
-                Login
-              </Link>
-              <Link
-                href="/signup"
-                onClick={() => setMobileMenuOpen(false)}
-                style={{
-                  padding: '12px', borderRadius: '10px',
-                  background: '#2F8FE0', color: '#FFFDF8',
-                  textAlign: 'center', fontWeight: 600,
-                  textDecoration: 'none', boxShadow: '0 4px 14px rgba(47,143,224,0.3)',
-                  cursor: 'pointer',
-                }}
-              >
-                Sign Up Free
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Floating Glassmorphism Navbar (Origin UI Pattern) ───────────── */}
+      <FloatingGlassNavbar />
 
       {/* ── Hero Section (With Animated Words & Interactive Visual Card) ── */}
       <ScrollReveal>
-        <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '56px 32px 56px' }}>
+        <section style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '140px', paddingRight: '32px', paddingBottom: '56px', paddingLeft: '32px' }}>
           <div className="hero-grid-layout" style={{ alignItems: 'center' }}>
 
             {/* Left Hero Copy */}
