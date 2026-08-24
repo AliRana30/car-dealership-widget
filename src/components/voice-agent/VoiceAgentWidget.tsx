@@ -223,23 +223,6 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           const urlMatch = content.match(/https?:\/\/[^\s<>"')]+|\/(?:about|courses|policy|faq|contact|course\/[a-z0-9_-]+|product\/[a-z0-9_-]+)/i);
           let targetUrl = urlMatch ? urlMatch[0] : null;
 
-          // Check for explicit spoken navigation requests (including past/present participles)
-          if (!targetUrl) {
-            const hasNavIntent = /\b(?:navigate|navigating|navigation|take|taking|open|opening|go|going|redirect|redirecting|visit|visiting|browse|browsing|transfer|transferring|head|heading)\b/i.test(textLower) || /\b(?:page|screen|section|site|website|url)\b/i.test(textLower);
-            
-            if (hasNavIntent || /\b(?:about|courses|catalog|policy|policies|faq)\b/i.test(textLower)) {
-              if (/\b(?:about|who are you|mission|story)\b/i.test(textLower)) {
-                targetUrl = '/about';
-              } else if (/\b(?:courses|catalog|inventory|shop|all programs|offerings|program|programs)\b/i.test(textLower)) {
-                targetUrl = '/courses';
-              } else if (/\b(?:policy|policies|terms|privacy|refund)\b/i.test(textLower)) {
-                targetUrl = '/policy';
-              } else if (/\b(?:faq|frequently asked|help)\b/i.test(textLower)) {
-                targetUrl = '/faq';
-              }
-            }
-          }
-
           if (targetUrl && lastNavigatedUrlRef.current !== targetUrl) {
             lastNavigatedUrlRef.current = targetUrl;
             console.log('[Voice Navigation] Real-time voice navigation triggered for:', targetUrl);

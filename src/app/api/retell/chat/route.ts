@@ -194,7 +194,7 @@ async function resolveEntityForTurn(
     await setLastResults(sessionId, widgetId, resolved.map((r) => r.record));
 
     return {
-      resolvedQuery: top.title,
+      resolvedQuery: content,
       pinnedEntity: top,
       records: resolved.map((r) => r.record),
     };
@@ -280,8 +280,8 @@ async function generateChatFallbackResponse(
     const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'product', 'item', 'me', 'the', 'you', 'show', 'to', 'can'].includes(w));
     const targetItem = matchedRecords.find(r => {
       const t = (r.title || '').toLowerCase();
-      return queryWords.some(w => t.includes(w));
-    }) || matchedRecords[0];
+      return queryWords.length > 0 && queryWords.some(w => t.includes(w));
+    });
 
     if (targetItem?.sourceUrl) {
       return {
@@ -624,7 +624,7 @@ export async function POST(req: NextRequest) {
   );
 
   // ── Retrieve via Bounded Agentic Query Planner ───────────────────────────
-  const allowNav = widget.config?.behavior?.allowAgentNavigation ?? false;
+  const allowNav = widget?.config?.behavior?.allowAgentNavigation !== false;
   const planResult = await planAndExecute(
     resolvedQuery,
     retrievalId,
@@ -677,21 +677,40 @@ export async function POST(req: NextRequest) {
   const relevantRecords = toolResult.results.map(r => ({
     id: r.id,
     title: r.title,
+    entityType: r.entityType || r.type,
+    entity_type: r.entity_type || r.entityType || r.type,
+    type: r.type || r.entityType,
     description: r.description,
-    shortDescription: r.description,
-    images: r.images,
-    imageUrls: r.imageUrls,
+    shortDescription: r.shortDescription || r.description,
     price: r.price,
+    originalPrice: r.originalPrice ?? r.original_price,
+    original_price: r.original_price ?? r.originalPrice,
     currency: r.currency,
-    availability: r.availability,
     rating: r.rating,
-    sourceUrl: r.sourceUrl,
-    entityType: r.type,
-    freshnessStatus: r.freshnessStatus,
+    availability: r.availability,
+    imageUrls: r.imageUrls || r.images || [],
+    images: r.images || r.imageUrls || [],
+    image_urls: r.image_urls || r.imageUrls || [],
+    sourceUrl: r.sourceUrl || r.source_url,
+    source_url: r.source_url || r.sourceUrl,
+    canonicalUrl: r.canonicalUrl || r.sourceUrl,
+    freshness: r.freshness || r.freshnessStatus || 'unknown',
+    freshnessStatus: r.freshnessStatus || r.freshness || 'unknown',
     firstSeen: r.firstSeen,
     lastSeen: r.lastSeen,
-    metadata: r.metadata,
+    metadata: r.metadata || {},
   }));
+
+  const isDirectOrMedia =
+    planResult.plan.planType === 'direct_entity' ||
+    planResult.plan.planType === 'media_request' ||
+    planResult.plan.planType === 'navigation' ||
+    toolResult.tool === 'get_entity' ||
+    toolResult.tool === 'get_entity_media';
+
+  const targetRecords = isDirectOrMedia
+    ? relevantRecords.slice(0, 1)
+    : relevantRecords.slice(0, 6);
 
   const targetUrl = pinnedEntity?.record?.sourceUrl;
   const effectiveNavUrl = targetUrl || lastNavUrl;
@@ -725,14 +744,14 @@ export async function POST(req: NextRequest) {
       effectiveNavUrl
     );
 
-    const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
+    const isInfoIntent = /^(?:about\s+(?:us|the\s+company|the\s+business)|privacy\s+policy|terms|contact\s+us)$/i.test(content.trim());
 
     const fallbackMessages = [
       { role: 'user', content: content.trim() },
       {
         role: 'agent',
         content: fallbackResult.text,
-        ...(relevantRecords.length > 0 && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
+        ...(targetRecords.length > 0 && !isInfoIntent ? { results: targetRecords } : {}),
         ...(fallbackResult.navigationUrl ? { navigationUrl: fallbackResult.navigationUrl } : {}),
         ...(fallbackResult.suggestedUrl ? { suggestedUrl: fallbackResult.suggestedUrl } : {}),
       },
@@ -824,6 +843,12 @@ export async function POST(req: NextRequest) {
 
     // Clean up response messages
     const rawMessages: any[] = completion.messages || [];
+    const lastAgentIdx = rawMessages.map(m => m.role).lastIndexOf('agent') !== -1
+      ? rawMessages.map(m => m.role).lastIndexOf('agent')
+      : rawMessages.map(m => m.role).lastIndexOf('assistant') !== -1
+      ? rawMessages.map(m => m.role).lastIndexOf('assistant')
+      : rawMessages.length - 1;
+
     const cleanMessages = rawMessages.map((m: any, idx: number) => {
       let textContent = m.content;
       if (typeof textContent === 'string') {
@@ -841,18 +866,22 @@ export async function POST(req: NextRequest) {
         }
       }
       const cleaned: any = { ...m, content: textContent };
-      const isLastAgentMsg =
-        m.role === 'agent' &&
-        idx === rawMessages.length - 1 &&
-        relevantRecords.length > 0;
-      if (isLastAgentMsg) {
-        cleaned.results = relevantRecords;
+      const isTargetMsg =
+        (idx === lastAgentIdx || idx === rawMessages.length - 1) &&
+        m.role !== 'user' &&
+        targetRecords.length > 0;
+      if (isTargetMsg) {
+        cleaned.results = targetRecords;
       }
       return cleaned;
     });
 
-    const isExplicit = isExplicitNavigationIntent(content);
-    const topNavUrl = isExplicit ? (relevantRecords[0]?.sourceUrl || undefined) : undefined;
+    const navStep = planResult.stepResults.find(s => s.tool === 'navigate_to_entity');
+    const topNavUrl = (navStep?.result?.success && navStep.result.sources?.[0]?.url)
+      ? navStep.result.sources[0].url
+      : (toolResult.tool === 'navigate_to_entity' && toolResult.success && toolResult.sources?.[0]?.url)
+      ? toolResult.sources[0].url
+      : undefined;
 
     return NextResponse.json(
       {
@@ -877,14 +906,14 @@ export async function POST(req: NextRequest) {
       effectiveNavUrl
     );
 
-    const isInfoIntent = /about|policy|privacy|terms|faq|contact|support/i.test(content.trim());
+    const isInfoIntent = /^(?:about\s+(?:us|the\s+company|the\s+business)|privacy\s+policy|terms|contact\s+us)$/i.test(content.trim());
 
     const fallbackMessages = [
       { role: 'user', content: content.trim() },
       {
         role: 'agent',
         content: fallbackResult.text,
-        ...(relevantRecords.length > 0 && !isInfoIntent ? { results: relevantRecords.slice(0, 6) } : {}),
+        ...(targetRecords.length > 0 && !isInfoIntent ? { results: targetRecords } : {}),
         ...(fallbackResult.navigationUrl ? { navigationUrl: fallbackResult.navigationUrl } : {}),
         ...(fallbackResult.suggestedUrl ? { suggestedUrl: fallbackResult.suggestedUrl } : {}),
       },

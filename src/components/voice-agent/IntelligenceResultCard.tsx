@@ -249,11 +249,17 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
     (meta.image ? [String(meta.image)] : []);
 
   const images = Array.isArray(rawImages) ? rawImages.filter(img => typeof img === 'string' && img.length > 0) : [];
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [bannerFailed, setBannerFailed] = useState(false);
   const hasImages = images.length > 0 && !bannerFailed;
+  const currentBannerImage = images[Math.min(activeImageIdx, images.length - 1)] || images[0];
 
   const rawPrice = (result as any).price ?? meta.price;
   const price = typeof rawPrice === 'object' ? undefined : rawPrice;
+
+  const rawOriginalPrice = (result as any).originalPrice ?? (result as any).original_price ?? meta.originalPrice ?? meta.original_price ?? meta.compareAtPrice ?? meta.msrp;
+  const originalPrice = typeof rawOriginalPrice === 'object' ? undefined : rawOriginalPrice;
+  const hasOriginalPrice = originalPrice !== undefined && originalPrice !== null && originalPrice !== '' && String(originalPrice) !== String(price);
 
   const currency = typeof (result as any).currency === 'string' ? (result as any).currency : typeof meta.currency === 'string' ? meta.currency : undefined;
   
@@ -319,33 +325,61 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
     >
       {/* Top Banner Image with Badges */}
       {hasImages ? (
-        <div style={{ position: 'relative', width: '100%', height: '110px', background: '#F1F5F9', overflow: 'hidden' }}>
-          <img
-            src={images[0]}
-            alt={title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onError={() => setBannerFailed(true)}
-          />
-          {categoryTag && (
-            <div style={{
-              position: 'absolute', bottom: '8px', left: '8px',
-              background: 'rgba(15, 23, 42, 0.88)', color: '#FFFFFF',
-              padding: '2px 8px', borderRadius: '6px', fontSize: '10px',
-              fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-              backdropFilter: 'blur(4px)',
-            }}>
-              {String(categoryTag)}
-            </div>
-          )}
-          {hasPrice && (
-            <div style={{
-              position: 'absolute', top: '8px', right: '8px',
-              background: '#10B981', color: '#FFFFFF',
-              padding: '3px 8px', borderRadius: '8px', fontSize: '12px',
-              fontWeight: 800, letterSpacing: '-0.01em',
-              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)',
-            }}>
-              {formatPrice(price, currency)}
+        <div>
+          <div style={{ position: 'relative', width: '100%', height: '110px', background: '#F1F5F9', overflow: 'hidden' }}>
+            <img
+              src={currentBannerImage}
+              alt={title}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'opacity 0.2s ease' }}
+              onError={() => setBannerFailed(true)}
+            />
+            {categoryTag && (
+              <div style={{
+                position: 'absolute', bottom: '8px', left: '8px',
+                background: 'rgba(15, 23, 42, 0.88)', color: '#FFFFFF',
+                padding: '2px 8px', borderRadius: '6px', fontSize: '10px',
+                fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                backdropFilter: 'blur(4px)',
+              }}>
+                {String(categoryTag)}
+              </div>
+            )}
+            {hasPrice && (
+              <div style={{
+                position: 'absolute', top: '8px', right: '8px',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                background: '#10B981', color: '#FFFFFF',
+                padding: '3px 8px', borderRadius: '8px', fontSize: '12px',
+                fontWeight: 800, letterSpacing: '-0.01em',
+                boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)',
+              }}>
+                {hasOriginalPrice && (
+                  <span style={{ textDecoration: 'line-through', opacity: 0.75, fontSize: '10px', fontWeight: 600 }}>
+                    {formatPrice(originalPrice, currency)}
+                  </span>
+                )}
+                <span>{formatPrice(price, currency)}</span>
+              </div>
+            )}
+          </div>
+          {/* Multi-image thumbnail gallery */}
+          {images.length > 1 && (
+            <div style={{ display: 'flex', gap: '4px', padding: '6px 10px 0 10px', overflowX: 'auto' }}>
+              {images.slice(0, 5).map((img, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActiveImageIdx(i)}
+                  style={{
+                    width: '28px', height: '28px', borderRadius: '4px',
+                    overflow: 'hidden', padding: 0, cursor: 'pointer',
+                    border: `2px solid ${i === activeImageIdx ? primaryColor : 'transparent'}`,
+                    flexShrink: 0, background: '#F1F5F9',
+                  }}
+                >
+                  <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -367,12 +401,18 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
               </span>
             ) : <span />}
             {hasPrice && (
-              <span style={{
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '4px',
                 background: '#10B981', color: '#FFFFFF',
                 padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 800,
               }}>
-                {formatPrice(price, currency)}
-              </span>
+                {hasOriginalPrice && (
+                  <span style={{ textDecoration: 'line-through', opacity: 0.75, fontSize: '9px', fontWeight: 600 }}>
+                    {formatPrice(originalPrice, currency)}
+                  </span>
+                )}
+                <span>{formatPrice(price, currency)}</span>
+              </div>
             )}
           </div>
         )

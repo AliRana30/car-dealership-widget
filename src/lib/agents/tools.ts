@@ -4,7 +4,7 @@ import { Entity } from '@/lib/crawler/types';
 import { broadcastToSession } from '@/lib/realtime/session';
 import { resolveEntityByQuery, resolveTopEntity } from './entityResolver';
 import { hybridRetrieve } from '@/lib/retrieval/hybridRag';
-import { executeUnifiedTool, normalizeToolName, type UnifiedToolContext } from './unifiedTools';
+import { executeUnifiedTool, normalizeToolName, sanitizeAndRankImages, type UnifiedToolContext } from './unifiedTools';
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -272,7 +272,8 @@ export async function getEntityDetails(
   const resolved = await resolveTopEntity(widgetId, cleanKey);
   if (resolved?.record) {
     const r = resolved.record;
-    const images = Array.isArray(r.imageUrls) && r.imageUrls.length > 0 ? r.imageUrls : (r.images || []);
+    const images = sanitizeAndRankImages(r.imageUrls || r.images || (r as any).image_urls || r.metadata?.images || r.metadata?.imageUrls || r.metadata?.image);
+    const originalPrice = (r as any).originalPrice ?? (r as any).original_price ?? r.metadata?.originalPrice ?? r.metadata?.original_price ?? r.metadata?.compareAtPrice ?? r.metadata?.msrp;
     return {
       id: r.id || resolved.entityId,
       widgetId,
@@ -281,6 +282,8 @@ export async function getEntityDetails(
       imageUrls: images,
       images,
       price: r.price ?? (r.metadata?.price as string | undefined),
+      originalPrice,
+      original_price: originalPrice,
       currency: r.currency ?? (r.metadata?.currency as string | undefined),
       rating: r.rating ?? (r.metadata?.rating as number | undefined),
       reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),
@@ -289,6 +292,7 @@ export async function getEntityDetails(
       entityType: r.entityType || 'product',
       metadata: {
         price: r.price ?? (r.metadata?.price as string | undefined),
+        originalPrice,
         currency: r.currency ?? (r.metadata?.currency as string | undefined),
         rating: r.rating ?? (r.metadata?.rating as number | undefined),
         reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),

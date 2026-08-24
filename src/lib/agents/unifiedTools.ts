@@ -31,32 +31,42 @@ import { getWidget } from '@/config/widgetsDb';
 import { broadcastToSession } from '@/lib/realtime/session';
 import { calculateFreshness, appendResumeParam, getEntityDetails } from './tools';
 import {
+  getSessionContext,
   setLastResults,
   pinEntity,
   setActiveFilters,
   setLastNavigation,
   setLastIntent,
 } from './sessionContext';
+import { resolveNavigationTarget } from './navigationResolver';
 
 // ── Structured Result Types ───────────────────────────────────────────────────
 
 export interface StructuredEntity {
   id: string;
   title: string;
+  entityType: string;
+  entity_type?: string;
   type: string;
   description: string;
+  shortDescription?: string;
+  price?: string | number;
+  originalPrice?: string | number;
+  original_price?: string | number;
+  currency?: string;
+  rating?: number | string;
+  availability?: string;
   imageUrls: string[];
   images: string[];
-  price?: string | number;
-  currency?: string;
-  rating?: number;
-  availability?: string;
+  image_urls?: string[];
   sourceUrl?: string;
+  source_url?: string;
   canonicalUrl?: string;
   firstSeen: string;
   lastSeen: string;
   stillListed: boolean;
-  freshnessStatus: 'fresh' | 'recent' | 'stale_or_unlisted';
+  freshness: 'fresh' | 'recent' | 'stale_or_unlisted' | 'unknown';
+  freshnessStatus: 'fresh' | 'recent' | 'stale_or_unlisted' | 'unknown';
   lastSeenHuman: string;
   hedgeInstruction?: string;
   score?: number;
@@ -126,43 +136,118 @@ export function normalizeToolName(raw: string): string {
   return name;
 }
 
-// ── Entity Formatting Helper ──────────────────────────────────────────────────
+// ── Image Sanitization, Validation & Ranking ──────────────────────────────────
 
-function formatResult(r: any): StructuredEntity {
-  const freshInfo = calculateFreshness(r.lastSeen || r.last_seen, r.stillListed ?? r.still_listed);
-  const imageUrls: string[] = Array.isArray(r.imageUrls) && r.imageUrls.length > 0
-    ? r.imageUrls
-    : Array.isArray(r.images) && r.images.length > 0
-    ? r.images
-    : Array.isArray(r.image_urls) && r.image_urls.length > 0
-    ? r.image_urls
+/**
+ * Sanitizes, validates, and ranks image URLs from crawled entity data.
+ * - Never hallucinates or invents URLs.
+ * - Filters out data URIs, SVG icons, tracking pixels, and empty values.
+ * - Deduplicates URLs.
+ * - Ranks full-resolution / high-quality images before thumbnails.
+ */
+export function sanitizeAndRankImages(rawImages: any): string[] {
+  if (!rawImages) return [];
+  const list: string[] = Array.isArray(rawImages)
+    ? rawImages
+    : typeof rawImages === 'string'
+    ? [rawImages]
     : [];
 
+  const validUrls: string[] = [];
+  const seen = new Set<string>();
+
+  const isInvalid = (url: string): boolean => {
+    if (!url || typeof url !== 'string') return true;
+    const trimmed = url.trim();
+    if (trimmed.length < 5) return true;
+    if (trimmed.startsWith('data:')) return true;
+    // Filter tracking pixels
+    if (/\b(?:pixel\.gif|1x1\.|spacer\.gif|beacon\.gif|blank\.gif|tracking)\b/i.test(trimmed)) return true;
+    // Filter UI icons / svgs that are not entity photos
+    if (/\.(?:svg)(?:\?.*)?$/i.test(trimmed) && /(?:icon|logo|arrow|star|badge|menu|close|social|facebook|twitter|instagram)/i.test(trimmed)) return true;
+    return false;
+  };
+
+  for (const raw of list) {
+    if (typeof raw !== 'string') continue;
+    const url = raw.trim();
+    if (isInvalid(url)) continue;
+    if (!seen.has(url)) {
+      seen.add(url);
+      validUrls.push(url);
+    }
+  }
+
+  // Rank: full resolution images preferred over small thumbnails
+  validUrls.sort((a, b) => {
+    const isThumbA = /\b(?:_thumb|_50x50|_100x100|size=small|w=50|w=100|preview)\b/i.test(a);
+    const isThumbB = /\b(?:_thumb|_50x50|_100x100|size=small|w=50|w=100|preview)\b/i.test(b);
+    if (isThumbA && !isThumbB) return 1;
+    if (!isThumbA && isThumbB) return -1;
+    return 0;
+  });
+
+  return validUrls;
+}
+
+// ── Entity Formatting Helper ──────────────────────────────────────────────────
+
+export function formatResult(r: any): StructuredEntity {
+  const freshInfo = calculateFreshness(r.lastSeen || r.last_seen, r.stillListed ?? r.still_listed);
+  const rawImages = r.imageUrls || r.images || r.image_urls || r.metadata?.images || r.metadata?.imageUrls || r.metadata?.image || [];
+  const imageUrls = sanitizeAndRankImages(rawImages);
+
+  const entityType = r.entityType || r.entity_type || r.type || 'product';
+  const description = r.shortDescription || r.description || r.short_description || r.metadata?.description || '';
+  const sourceUrl = r.sourceUrl || r.source_url || r.canonicalUrl || r.metadata?.sourceUrl;
+  const freshness = r.freshnessStatus || freshInfo.freshnessStatus || 'unknown';
+
+  const rawPrice = r.price ?? r.metadata?.price;
+  const price = typeof rawPrice === 'object' ? undefined : rawPrice;
+
+  const rawOriginalPrice = r.originalPrice ?? r.original_price ?? r.metadata?.originalPrice ?? r.metadata?.original_price ?? r.metadata?.compareAtPrice ?? r.metadata?.msrp;
+  const originalPrice = typeof rawOriginalPrice === 'object' ? undefined : rawOriginalPrice;
+
+  const currency = r.currency ?? r.metadata?.currency ?? (typeof price === 'string' && price.startsWith('$') ? '$' : 'USD');
+  const rating = r.rating ?? r.metadata?.rating ?? 0;
+  const availability = r.availability ?? r.metadata?.availability ?? (r.stillListed === false ? 'out_of_stock' : 'in_stock');
+
+  const metadata = {
+    ...(r.metadata || {}),
+    ...(r.attributes ? { attributes: r.attributes } : {}),
+  };
+
   const item: StructuredEntity = {
-    id: r.id,
+    id: r.id || `entity_${Date.now()}`,
     title: r.title || 'Untitled',
-    type: r.entityType || r.entity_type || r.type || 'product',
-    description: r.shortDescription || r.description || r.short_description || '',
+    entityType,
+    entity_type: entityType,
+    type: entityType,
+    description,
+    shortDescription: description,
     imageUrls,
     images: imageUrls,
-    sourceUrl: r.sourceUrl || r.source_url || r.canonicalUrl,
-    canonicalUrl: r.sourceUrl || r.source_url || r.canonicalUrl,
+    image_urls: imageUrls,
+    sourceUrl,
+    source_url: sourceUrl,
+    canonicalUrl: sourceUrl,
     firstSeen: r.firstSeen || r.first_seen || new Date().toISOString(),
     lastSeen: r.lastSeen || r.last_seen || new Date().toISOString(),
     stillListed: r.stillListed ?? r.still_listed ?? true,
-    freshnessStatus: r.freshnessStatus || freshInfo.freshnessStatus,
+    freshness,
+    freshnessStatus: freshness,
     lastSeenHuman: freshInfo.lastSeenHuman,
     hedgeInstruction: freshInfo.hedgeInstruction,
     score: r.score,
     matchType: r.matchType,
-    metadata: r.metadata,
+    metadata,
   };
 
-  const price = r.price ?? r.metadata?.price;
-  const currency = r.currency ?? r.metadata?.currency;
-  const rating = r.rating ?? r.metadata?.rating;
-  const availability = r.availability ?? r.metadata?.availability;
   if (price !== undefined) item.price = price;
+  if (originalPrice !== undefined) {
+    item.originalPrice = originalPrice;
+    item.original_price = originalPrice;
+  }
   if (currency !== undefined) item.currency = currency;
   if (rating !== undefined) item.rating = rating;
   if (availability !== undefined) item.availability = availability;
@@ -345,13 +430,22 @@ async function toolGetEntity(
   context: UnifiedToolContext,
   businessName: string
 ): Promise<UnifiedToolResult> {
-  const entityId = String(args.entityId || args.entity_id || args.id || args.query || '').trim();
-  if (!entityId) {
+  let targetId = String(args.entityId || args.entity_id || args.id || args.query || '').trim();
+  if (context.sessionId && (!targetId || targetId === 'it' || targetId === 'this' || targetId === 'that' || targetId === 'first one' || targetId.startsWith('the '))) {
+    const session = await getSessionContext(context.sessionId, widgetId);
+    if (session?.currentEntity) {
+      targetId = session.currentEntity.title || session.currentEntity.id;
+    } else if (session?.lastResults && session.lastResults.length > 0) {
+      targetId = session.lastResults[0].title || session.lastResults[0].id;
+    }
+  }
+
+  if (!targetId) {
     return scopeError('get_entity', widgetId, 'missing_entity_id', 'entityId is required for get_entity.');
   }
 
   // First try the existing UUID/title resolver (strict scope enforced inside)
-  const entity = await getEntityDetails(widgetId, entityId);
+  const entity = await getEntityDetails(widgetId, targetId);
   if (entity) {
     const formatted = formatResult(entity);
     const sources: EntitySource[] = [{ id: formatted.id, title: formatted.title, url: formatted.sourceUrl }];
@@ -389,7 +483,7 @@ async function toolGetEntity(
   }
 
   // Fall back to hybrid search for name-based lookups
-  const retrieved = await runHybridRetrieval(widgetId, entityId, businessName, { limit: 1 });
+  const retrieved = await runHybridRetrieval(widgetId, targetId, businessName, { limit: 1 });
 
   if (context.sessionId && retrieved.results.length > 0) {
     await pinEntity(context.sessionId, widgetId, retrieved.results[0]).catch(() => {});
@@ -465,7 +559,7 @@ async function toolFilterEntities(
       return pb - pa;
     });
   } else if (sortBy === 'rating_desc' || sortBy === 'best_rated') {
-    filtered.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    filtered.sort((a, b) => (parseFloat(String(b.rating || '0')) - parseFloat(String(a.rating || '0'))));
   }
 
   if (context.sessionId && filtered.length > 0) {
@@ -603,27 +697,48 @@ async function toolGetEntityMedia(
   context: UnifiedToolContext,
   businessName: string
 ): Promise<UnifiedToolResult> {
-  const entityId = String(args.entityId || args.entity_id || args.id || args.query || '').trim();
-  if (!entityId) {
+  let targetId = String(args.entityId || args.entity_id || args.id || args.query || '').trim();
+  if (context.sessionId && (!targetId || targetId === 'it' || targetId === 'this' || targetId === 'that' || targetId === 'first one' || targetId.startsWith('the '))) {
+    const session = await getSessionContext(context.sessionId, widgetId);
+    if (session?.currentEntity) {
+      targetId = session.currentEntity.title || session.currentEntity.id;
+    } else if (session?.lastResults && session.lastResults.length > 0) {
+      targetId = session.lastResults[0].title || session.lastResults[0].id;
+    }
+  }
+
+  if (!targetId) {
     return scopeError('get_entity_media', widgetId, 'missing_entity_id', 'entityId is required for get_entity_media.');
   }
 
-  const entity = await getEntityDetails(widgetId, entityId);
+  const entity = await getEntityDetails(widgetId, targetId);
   if (!entity) {
-    const r = await runHybridRetrieval(widgetId, entityId, businessName, { limit: 1 });
+    const r = await runHybridRetrieval(widgetId, targetId, businessName, { limit: 1 });
     const top = r.results[0];
     if (!top) {
       return { ...r, tool: 'get_entity_media', count: 0 };
     }
-    const mediaResult = {
+    const formatted = formatResult(top);
+    if (context.sessionId) {
+      await pinEntity(context.sessionId, widgetId, formatted).catch(() => {});
+      broadcastToSession(context.sessionId, 'entity_cards', { results: [formatted] }).catch(() => {});
+      broadcastToSession(context.sessionId, 'voice_results', { results: [formatted] }).catch(() => {});
+    }
+    return {
       ...r,
       tool: 'get_entity_media',
-      results: [{ ...top, description: `Media for ${top.title}` }],
+      results: [formatted],
+      count: formatted.imageUrls.length,
     };
-    return mediaResult;
   }
 
   const formatted = formatResult(entity);
+  if (context.sessionId) {
+    await pinEntity(context.sessionId, widgetId, formatted).catch(() => {});
+    broadcastToSession(context.sessionId, 'entity_cards', { results: [formatted] }).catch(() => {});
+    broadcastToSession(context.sessionId, 'voice_results', { results: [formatted] }).catch(() => {});
+  }
+
   return {
     success: true,
     tool: 'get_entity_media',
@@ -668,7 +783,7 @@ async function toolNavigateToEntity(
 ): Promise<UnifiedToolResult> {
   const entityId = String(args.entityId || args.entity_id || args.id || args.target || args.url || args.page || args.query || '').trim();
   if (!entityId) {
-    return scopeError('navigate_to_entity', widgetId, 'missing_entity_id', 'entityId is required for navigate_to_entity.');
+    return scopeError('navigate_to_entity', widgetId, 'missing_entity_id', 'entityId or navigation target is required for navigate_to_entity.');
   }
 
   if (context.allowAgentNavigation === false) {
@@ -684,43 +799,65 @@ async function toolNavigateToEntity(
       grounded: false,
       hedged: false,
       error: 'Agent navigation is disabled in this widget configuration.',
+      fallbackText: 'Autonomous page navigation is currently disabled for this assistant.',
     };
   }
 
-  const entity = await getEntityDetails(widgetId, entityId);
-  if (!entity) {
-    return scopeError('navigate_to_entity', widgetId, 'entity_not_found', `Entity '${entityId}' not found.`);
-  }
+  const navResult = await resolveNavigationTarget(widgetId, entityId, {
+    sessionId: context.sessionId,
+    allowAgentNavigation: context.allowAgentNavigation,
+  });
 
-  if (!entity.sourceUrl || !entity.sourceUrl.trim()) {
-    return scopeError('navigate_to_entity', widgetId, 'no_url', 'Entity does not have a valid web page URL.');
+  if (!navResult.canNavigate || !navResult.targetUrl) {
+    const errorMsg = navResult.clarificationMessage || navResult.failureReason || `Could not resolve a verified navigation target for "${entityId}".`;
+    return {
+      success: false,
+      tool: 'navigate_to_entity',
+      widgetId,
+      results: [],
+      sources: [],
+      count: 0,
+      freshness: 'unknown',
+      confidence: 'unverified',
+      grounded: false,
+      hedged: false,
+      error: errorMsg,
+      fallbackText: errorMsg,
+    };
   }
 
   const sessionId = context.sessionId || '';
-  const finalUrl = appendResumeParam(entity.sourceUrl, sessionId);
+  const finalUrl = navResult.targetUrl;
 
   if (sessionId) {
     await setLastNavigation(sessionId, widgetId, finalUrl).catch(() => {});
     await setLastIntent(sessionId, widgetId, 'navigate_to_entity').catch(() => {});
     await broadcastToSession(sessionId, 'navigate', {
       url: finalUrl,
-      entityId: entity.id,
-      title: entity.title,
+      entityId: navResult.resolvedEntity?.id,
+      title: navResult.resolvedEntity?.title || navResult.resolvedPageTitle || entityId,
     });
   }
 
-  const formatted = formatResult(entity);
+  const results = navResult.resolvedEntity ? [navResult.resolvedEntity] : [];
+  const sources = [{
+    id: navResult.resolvedEntity?.id || 'nav-target',
+    title: navResult.resolvedEntity?.title || navResult.resolvedPageTitle || entityId,
+    url: finalUrl,
+  }];
+
   return {
     success: true,
     tool: 'navigate_to_entity',
     widgetId,
-    results: [formatted],
-    sources: [{ id: entity.id, title: entity.title, url: finalUrl }],
+    results,
+    sources,
     count: 1,
-    freshness: formatted.freshnessStatus,
-    confidence: 'high',
+    freshness: navResult.resolvedEntity?.freshnessStatus || 'fresh',
+    confidence: navResult.confidence === 'exact' ? 'high' : 'medium',
     grounded: true,
-    hedged: !!formatted.hedgeInstruction,
+    hedged: !!navResult.resolvedEntity?.hedgeInstruction,
+    hedgeInstruction: navResult.resolvedEntity?.hedgeInstruction,
   };
 }
 

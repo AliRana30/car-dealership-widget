@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       body.parameters?.sessionId ||
       '';
 
-    const allowAgentNavigation = widget?.config?.behavior?.allowAgentNavigation ?? false;
+    const allowAgentNavigation = widget?.config?.behavior?.allowAgentNavigation !== false;
     const context = { sessionId, allowAgentNavigation };
 
     // 2. Handle Vapi AI tool-calls format

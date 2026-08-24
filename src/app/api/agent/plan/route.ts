@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
     const resolvedWidgetId = widget.id || rawWidgetId;
     const sessionId = body.sessionId || body.session_id || '';
-    const allowNavigation = widget?.config?.behavior?.allowAgentNavigation ?? false;
+    const allowNavigation = widget?.config?.behavior?.allowAgentNavigation !== false;
     const shouldExecute = Boolean(body.execute);
 
     const plan = planQuery(rawQuery, { allowNavigation, sessionId });
