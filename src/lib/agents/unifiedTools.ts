@@ -193,14 +193,19 @@ export function sanitizeAndRankImages(rawImages: any): string[] {
 // ── Entity Formatting Helper ──────────────────────────────────────────────────
 
 export function formatResult(r: any): StructuredEntity {
-  const freshInfo = calculateFreshness(r.lastSeen || r.last_seen, r.stillListed ?? r.still_listed);
+  const freshInfo = calculateFreshness(
+    r.lastSeen || r.last_seen,
+    r.stillListed ?? r.still_listed,
+    r.dataType || r.data_type || r.metadata?.dataType || r.metadata?.data_type,
+    r.metadata?.source || r.metadata?.discoveryMethod
+  );
   const rawImages = r.imageUrls || r.images || r.image_urls || r.metadata?.images || r.metadata?.imageUrls || r.metadata?.image || [];
   const imageUrls = sanitizeAndRankImages(rawImages);
 
   const entityType = r.entityType || r.entity_type || r.type || 'product';
   const description = r.shortDescription || r.description || r.short_description || r.metadata?.description || '';
   const sourceUrl = r.sourceUrl || r.source_url || r.canonicalUrl || r.metadata?.sourceUrl;
-  const freshness = r.freshnessStatus || freshInfo.freshnessStatus || 'unknown';
+  const freshness = freshInfo.freshnessStatus;
 
   const rawPrice = r.price ?? r.metadata?.price;
   const price = typeof rawPrice === 'object' ? undefined : rawPrice;
@@ -215,6 +220,11 @@ export function formatResult(r: any): StructuredEntity {
   const metadata = {
     ...(r.metadata || {}),
     ...(r.attributes ? { attributes: r.attributes } : {}),
+    freshnessStatus: freshness,
+    lastSeenHuman: freshInfo.lastSeenHuman,
+    isConnectorBacked: freshInfo.isConnectorBacked,
+    dataSource: freshInfo.dataSource,
+    ...(freshInfo.hedgeInstruction ? { hedgeInstruction: freshInfo.hedgeInstruction } : {}),
   };
 
   const item: StructuredEntity = {

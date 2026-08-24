@@ -141,6 +141,10 @@ export function validateGrounding(
     promptLines.push('=== CATALOG FRESHNESS & HEDGING DIRECTIVE ===');
     promptLines.push(hedgeInstruction);
     promptLines.push('Do NOT claim current availability as a 100% guarantee.');
+  } else if (isGrounded && freshness === 'fresh') {
+    promptLines.push('');
+    promptLines.push('=== CATALOG FRESHNESS DIRECTIVE ===');
+    promptLines.push('Verified fresh live data. You may state current availability and pricing confidently.');
   }
 
   promptLines.push('');

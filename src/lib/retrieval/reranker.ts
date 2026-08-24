@@ -524,7 +524,13 @@ export function rerankCandidates(
     }
 
     // ── 6. FRESHNESS & ACTIVE LISTING STATUS ──
-    const freshness = calculateFreshness(row.last_seen || row.updated_at, row.still_listed !== false);
+    const freshness = calculateFreshness(
+      row.last_seen || row.updated_at,
+      row.still_listed !== false,
+      row.data_type || meta.dataType || meta.data_type,
+      meta.source || meta.discoveryMethod
+    );
+
     if (row.still_listed === false) {
       score -= 400;
       matchReasons.push(`Item is unlisted / removed (-400)`);
@@ -533,15 +539,20 @@ export function rerankCandidates(
       matchReasons.push(`Item is currently active & listed (+40)`);
     }
 
+    if (freshness.isConnectorBacked) {
+      score += 60;
+      matchReasons.push(`Live connector inventory authority (+60)`);
+    }
+
     if (freshness.freshnessStatus === 'fresh') {
-      score += 30;
-      matchReasons.push(`Data is fresh (<7 days) (+30)`);
+      score += 40;
+      matchReasons.push(`Data is fresh (${freshness.lastSeenHuman}) (+40)`);
     } else if (freshness.freshnessStatus === 'recent') {
       score += 10;
-      matchReasons.push(`Data is recent (7-30 days) (+10)`);
+      matchReasons.push(`Data is recent (${freshness.lastSeenHuman}) (+10)`);
     } else {
       score -= 60;
-      matchReasons.push(`Data is stale (>30 days) (-60)`);
+      matchReasons.push(`Data is stale (${freshness.lastSeenHuman}) (-60)`);
     }
 
     // ── 7. STRUCTURED METADATA COMPLETENESS ──
@@ -653,7 +664,12 @@ export function rerankCandidates(
     const priceVal = meta.price ?? meta.cost ?? meta.estimatedPrice ?? row.price;
     const ratingVal = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : undefined;
     const reviewsVal = typeof meta.reviews === 'number' ? meta.reviews : typeof meta.review_count === 'number' ? meta.review_count : undefined;
-    const freshness = calculateFreshness(row.last_seen || row.updated_at, row.still_listed !== false);
+    const freshness = calculateFreshness(
+      row.last_seen || row.updated_at,
+      row.still_listed !== false,
+      row.data_type || meta.dataType || meta.data_type,
+      meta.source || meta.discoveryMethod
+    );
 
     return {
       id: row.id,
@@ -681,12 +697,17 @@ export function rerankCandidates(
         matchReasons: s.matchReasons,
         freshnessStatus: freshness.freshnessStatus,
         lastSeenHuman: freshness.lastSeenHuman,
+        isConnectorBacked: freshness.isConnectorBacked,
+        dataSource: freshness.dataSource,
         ...(freshness.hedgeInstruction ? { hedgeInstruction: freshness.hedgeInstruction } : {}),
       },
       firstSeen: row.first_seen || row.created_at || new Date().toISOString(),
       lastSeen: row.last_seen || row.updated_at || new Date().toISOString(),
       stillListed: row.still_listed !== false,
+      freshness: freshness.freshnessStatus,
       freshnessStatus: freshness.freshnessStatus,
+      lastSeenHuman: freshness.lastSeenHuman,
+      hedgeInstruction: freshness.hedgeInstruction,
       score: s.score,
       matchType: s.matchType,
       matchReasons: s.matchReasons,

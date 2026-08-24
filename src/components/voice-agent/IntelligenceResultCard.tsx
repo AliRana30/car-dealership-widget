@@ -122,8 +122,31 @@ function formatPrice(price: string | number, currency?: string): string {
   return `${symbol}${str}`;
 }
 
-function AvailabilityBadge({ value }: { value: string }) {
-  const lower = value.toLowerCase();
+function AvailabilityBadge({
+  value,
+  freshnessStatus,
+  stillListed,
+}: {
+  value?: string;
+  freshnessStatus?: string;
+  stillListed?: boolean;
+}) {
+  if (stillListed === false || freshnessStatus === 'stale_or_unlisted') {
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: '5px',
+        padding: '2px 8px', borderRadius: '999px',
+        background: '#FFFBEB', color: '#B45309', fontSize: '10px', fontWeight: 700,
+        border: '1px solid rgba(245, 158, 11, 0.25)',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F59E0B' }} />
+        {stillListed === false ? 'Unlisted' : 'Confirm with staff'}
+      </span>
+    );
+  }
+
+  const val = value || 'In Stock';
+  const lower = val.toLowerCase();
   let bg = '#E8F5E9', color = '#2E7D32', dot = '#4CAF50';
   if (lower.includes('out') || lower.includes('unavail') || lower.includes('sold')) {
     bg = '#FFEBEE'; color = '#C62828'; dot = '#E53935';
@@ -138,7 +161,7 @@ function AvailabilityBadge({ value }: { value: string }) {
       border: `1px solid ${dot}33`,
     }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: dot }} />
-      {value}
+      {val}
     </span>
   );
 }
@@ -485,8 +508,12 @@ export default function IntelligenceResultCard({ result, primaryColor = '#2F8FE0
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748B' }}>
             {hasRating ? (
               <StarRating rating={rating!} />
-            ) : availability ? (
-              <AvailabilityBadge value={availability} />
+            ) : availability || (result as any).freshnessStatus || (result as any).freshness || meta.freshnessStatus ? (
+              <AvailabilityBadge
+                value={availability}
+                freshnessStatus={(result as any).freshnessStatus || (result as any).freshness || meta.freshnessStatus}
+                stillListed={(result as any).stillListed !== false && (result as any).still_listed !== false && meta.stillListed !== false && meta.still_listed !== false}
+              />
             ) : (
               <span />
             )}

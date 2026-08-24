@@ -35,21 +35,54 @@ export interface FreshnessInfo {
   hoursSinceLastSeen: number;
   lastSeenHuman: string;
   hedgeInstruction?: string;
+  isConnectorBacked?: boolean;
+  dataSource?: 'connector' | 'crawl' | 'manual' | 'unknown';
 }
 
 /**
- * Evaluates entity catalog freshness based on last_seen timestamp and still_listed flag.
- * - Under 6 hours old: "fresh" (normal confident statements)
- * - Between 6 and 24 hours: "recent" (light hedge)
- * - Beyond 24 hours or still_listed === false: "stale_or_unlisted" (must not guarantee availability, direct to staff)
+ * Evaluates entity catalog freshness based on last_seen timestamp, still_listed flag,
+ * and data source (live API/feed connector vs web crawler).
+ *
+ * - Live Connector Feeds:
+ *   - Under 24 hours: "fresh" (authoritative live inventory)
+ *   - 24 to 72 hours: "recent" (light hedge)
+ *   - Beyond 72 hours or unlisted: "stale_or_unlisted" (must not guarantee availability)
+ *
+ * - Web Crawler Scans:
+ *   - Under 6 hours old: "fresh" (normal confident statements)
+ *   - Between 6 and 24 hours: "recent" (light hedge)
+ *   - Beyond 24 hours or unlisted: "stale_or_unlisted" (must not guarantee availability)
  */
-export function calculateFreshness(lastSeen?: string, stillListed?: boolean): FreshnessInfo {
+export function calculateFreshness(
+  lastSeen?: string,
+  stillListed?: boolean,
+  dataType?: string,
+  source?: string
+): FreshnessInfo {
+  const isConnector =
+    dataType === 'api' ||
+    dataType === 'feed' ||
+    dataType === 'direct' ||
+    source === 'connector' ||
+    source === 'api' ||
+    source === 'feed';
+
+  const dataSource: FreshnessInfo['dataSource'] = isConnector
+    ? 'connector'
+    : dataType === 'crawl'
+    ? 'crawl'
+    : 'unknown';
+
+  // 1. Unlisted / Removed items are always stale_or_unlisted
   if (stillListed === false) {
     return {
       freshnessStatus: 'stale_or_unlisted',
       hoursSinceLastSeen: 999,
-      lastSeenHuman: 'Missing from latest site scan',
-      hedgeInstruction: 'Do NOT state availability as fact. Item was absent from latest site check; advise visitor to confirm availability with staff.',
+      lastSeenHuman: 'Missing / unlisted from catalog',
+      hedgeInstruction:
+        'HEDGING REQUIRED: Item is currently unlisted from the website/catalog. Do NOT state availability as guaranteed fact; advise customer to confirm availability with staff.',
+      isConnectorBacked: isConnector,
+      dataSource,
     };
   }
 
@@ -57,11 +90,49 @@ export function calculateFreshness(lastSeen?: string, stillListed?: boolean): Fr
   const diffMs = Math.max(0, Date.now() - timestamp);
   const hours = diffMs / (1000 * 60 * 60);
 
+  // 2. Connector-backed live inventory (Authoritative System of Record)
+  if (isConnector) {
+    if (hours <= 24) {
+      return {
+        freshnessStatus: 'fresh',
+        hoursSinceLastSeen: Math.round(hours * 10) / 10,
+        lastSeenHuman: hours < 1 ? 'Just now (Live Connector)' : `${Math.round(hours)}h ago (Live Connector)`,
+        isConnectorBacked: true,
+        dataSource: 'connector',
+      };
+    }
+
+    if (hours <= 72) {
+      return {
+        freshnessStatus: 'recent',
+        hoursSinceLastSeen: Math.round(hours * 10) / 10,
+        lastSeenHuman: `${Math.round(hours)}h ago (Live Connector)`,
+        hedgeInstruction: 'LIGHT HEDGING: Information was synced via inventory connector within the past 3 days.',
+        isConnectorBacked: true,
+        dataSource: 'connector',
+      };
+    }
+
+    const days = Math.round(hours / 24);
+    return {
+      freshnessStatus: 'stale_or_unlisted',
+      hoursSinceLastSeen: Math.round(hours * 10) / 10,
+      lastSeenHuman: `${days}d ago (Connector)`,
+      hedgeInstruction:
+        'HEDGING REQUIRED: Connector sync is stale (>3 days). Do NOT guarantee current availability or pricing; direct customer to confirm with staff.',
+      isConnectorBacked: true,
+      dataSource: 'connector',
+    };
+  }
+
+  // 3. Web crawler data
   if (hours < 6) {
     return {
       freshnessStatus: 'fresh',
       hoursSinceLastSeen: Math.round(hours * 10) / 10,
       lastSeenHuman: hours < 1 ? 'Just now' : `${Math.round(hours)}h ago`,
+      isConnectorBacked: false,
+      dataSource: 'crawl',
     };
   }
 
@@ -70,7 +141,9 @@ export function calculateFreshness(lastSeen?: string, stillListed?: boolean): Fr
       freshnessStatus: 'recent',
       hoursSinceLastSeen: Math.round(hours * 10) / 10,
       lastSeenHuman: `${Math.round(hours)}h ago`,
-      hedgeInstruction: 'Hedge lightly (e.g. "As of our last check...").',
+      hedgeInstruction: 'LIGHT HEDGING: Information was updated within the past 24 hours. Use phrasing like "As of our recent website check...".',
+      isConnectorBacked: false,
+      dataSource: 'crawl',
     };
   }
 
@@ -79,7 +152,10 @@ export function calculateFreshness(lastSeen?: string, stillListed?: boolean): Fr
     freshnessStatus: 'stale_or_unlisted',
     hoursSinceLastSeen: Math.round(hours * 10) / 10,
     lastSeenHuman: `${days}d ago`,
-    hedgeInstruction: 'Do NOT guarantee current availability. Direct visitor to confirm with staff.',
+    hedgeInstruction:
+      'HEDGING REQUIRED: Data is stale (>24h since crawl). You MUST NOT guarantee current availability or pricing. Explicitly advise visitor to confirm with staff.',
+    isConnectorBacked: false,
+    dataSource: 'crawl',
   };
 }
 
@@ -105,7 +181,12 @@ export function mapRowToEntity(row: any): Entity {
     : meta.stillListed !== undefined && meta.stillListed !== null
     ? Boolean(meta.stillListed)
     : true;
-  const freshness = calculateFreshness(lastSeen, stillListed);
+  const freshness = calculateFreshness(
+    lastSeen,
+    stillListed,
+    row.data_type || row.dataType || meta.dataType || meta.data_type,
+    meta.source || meta.discoveryMethod
+  );
 
   return {
     id: row.id || '',
@@ -483,9 +564,22 @@ export async function executeAgentTool(
     };
   }
 
-  // For single-entity tools return the entity as data
+  // For single-entity tools return the entity with freshness and hedging metadata
   if (['get_entity', 'get_entity_details'].includes(normalizeToolName(toolName))) {
-    return { success: true, data: result.results[0] || null };
+    const entity = result.results[0] || null;
+    return {
+      success: true,
+      data: {
+        ...(entity || {}),
+        entity,
+        freshness: result.freshness,
+        confidence: result.confidence,
+        grounded: result.grounded,
+        hedged: result.hedged,
+        hedgeInstruction: result.hedgeInstruction,
+        groundingMetadata: result.groundingMetadata,
+      },
+    };
   }
 
   // For search/filter/compare return the full structured payload
