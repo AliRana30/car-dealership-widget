@@ -3,6 +3,8 @@ import { embedText } from '@/lib/embeddings';
 import { Entity } from '@/lib/crawler/types';
 import { broadcastToSession } from '@/lib/realtime/session';
 import { resolveEntityByQuery, resolveTopEntity } from './entityResolver';
+import { hybridRetrieve } from '@/lib/retrieval/hybridRag';
+import { executeUnifiedTool, normalizeToolName, type UnifiedToolContext } from './unifiedTools';
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -142,11 +144,11 @@ export function mapRowToEntity(row: any): Entity {
 }
 
 /**
- * Searches the knowledge base for a specific widget using 4-tier universal entity resolution:
- * 1. Exact title match
- * 2. Partial/alias match
- * 3. Fuzzy token match (Levenshtein ≤ 2)
- * 4. Broad semantic match
+ * Searches the knowledge base using the unified Hybrid RAG pipeline.
+ * Now routes through hybridRetrieve (same pipeline as Chat) instead of
+ * the entityResolver-only path, ensuring identical ranking across all platforms.
+ *
+ * @deprecated Prefer executeUnifiedTool('search_knowledge', ...) for new code.
  */
 export async function searchEntities(
   widgetId: string,
@@ -159,56 +161,51 @@ export async function searchEntities(
   }
 
   try {
-    const resolvedEntities = await resolveEntityByQuery(widgetId.trim(), query, limit);
-    if (resolvedEntities && resolvedEntities.length > 0) {
-      return resolvedEntities.slice(0, limit).map((re, idx) => {
-        const r = re.record;
-        const images = Array.isArray(r.imageUrls) && r.imageUrls.length > 0
-          ? r.imageUrls
-          : Array.isArray(r.images) ? r.images : [];
+    const hybridOutput = await hybridRetrieve(widgetId.trim(), query, { limit });
+    const results = hybridOutput.results || [];
 
-        return {
-          id: r.id || re.entityId || `${widgetId}-item-${idx}`,
-          widgetId,
-          title: r.title || re.title || 'Untitled',
-          shortDescription: r.description || r.shortDescription || '',
-          imageUrls: images,
-          images,
-          price: r.price ?? (r.metadata?.price as string | undefined),
-          currency: r.currency ?? (r.metadata?.currency as string | undefined),
-          rating: r.rating ?? (r.metadata?.rating as number | undefined),
-          reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),
-          availability: r.availability ?? (r.metadata?.availability as string | undefined),
-          sourceUrl: r.sourceUrl,
-          entityType: r.entityType || 'product',
-          metadata: {
-            price: r.price ?? (r.metadata?.price as string | undefined),
-            currency: r.currency ?? (r.metadata?.currency as string | undefined),
-            rating: r.rating ?? (r.metadata?.rating as number | undefined),
-            reviews: r.reviews ?? (r.metadata?.reviews as number | undefined),
-            images,
-            attributes: r.attributes,
-            confidence: re.confidence,
-            similarity: r.similarity ?? r.metadata?.similarity,
-            freshnessStatus: r.freshnessStatus ?? r.metadata?.freshnessStatus ?? 'fresh',
-          },
-          similarity: r.similarity ?? r.metadata?.similarity,
-          firstSeen: r.firstSeen ?? r.metadata?.firstSeen ?? new Date().toISOString(),
-          lastSeen: r.lastSeen ?? r.metadata?.lastSeen ?? new Date().toISOString(),
-          stillListed: r.metadata?.stillListed !== false,
-          freshnessStatus: r.freshnessStatus ?? r.metadata?.freshnessStatus ?? 'fresh',
-          dataType: 'crawl',
-          categoryPath: [],
-          createdAt: r.firstSeen ?? r.metadata?.firstSeen ?? new Date().toISOString(),
-          updatedAt: r.lastSeen ?? r.metadata?.lastSeen ?? new Date().toISOString(),
-        } as any;
-      });
-    }
+    return results.map((r, idx) => {
+      const images: string[] = Array.isArray(r.imageUrls) && r.imageUrls.length > 0
+        ? r.imageUrls
+        : Array.isArray(r.images) ? r.images : [];
+      const freshInfo = calculateFreshness(r.lastSeen, r.stillListed);
+
+      return {
+        id: r.id || `${widgetId}-item-${idx}`,
+        widgetId,
+        title: r.title || 'Untitled',
+        shortDescription: r.shortDescription || r.description || '',
+        imageUrls: images,
+        images,
+        price: r.price ?? r.metadata?.price,
+        currency: r.currency ?? r.metadata?.currency,
+        rating: r.rating ?? r.metadata?.rating,
+        reviews: r.reviews ?? r.metadata?.reviews,
+        availability: r.availability ?? r.metadata?.availability,
+        sourceUrl: r.sourceUrl,
+        entityType: r.entityType || 'product',
+        metadata: {
+          ...r.metadata,
+          freshnessStatus: freshInfo.freshnessStatus,
+          lastSeenHuman: freshInfo.lastSeenHuman,
+          ...(freshInfo.hedgeInstruction ? { hedgeInstruction: freshInfo.hedgeInstruction } : {}),
+          similarity: (r as any).similarity ?? r.metadata?.similarity,
+        },
+        similarity: (r as any).similarity ?? r.metadata?.similarity,
+        firstSeen: r.firstSeen || new Date().toISOString(),
+        lastSeen: r.lastSeen || new Date().toISOString(),
+        stillListed: r.stillListed ?? true,
+        freshnessStatus: freshInfo.freshnessStatus,
+        dataType: 'crawl',
+        categoryPath: (r as any).categoryPath || [],
+        createdAt: r.firstSeen || new Date().toISOString(),
+        updatedAt: r.lastSeen || new Date().toISOString(),
+      } as any;
+    });
   } catch (err) {
-    console.error('[searchEntities] Error:', err);
+    console.error('[searchEntities] Error in hybridRetrieve:', err);
+    return [];
   }
-
-  return [];
 }
 
 /**
@@ -438,10 +435,16 @@ export function getVapiToolsConfig(options?: { allowAgentNavigation?: boolean })
 export interface ToolExecutionContext {
   sessionId?: string;
   allowAgentNavigation?: boolean;
+  businessName?: string;
 }
 
 /**
  * Central tool execution dispatcher.
+ * Delegates to executeUnifiedTool so that Chat, Retell, and Vapi
+ * all share the same retrieval pipeline, grounding rules, and freshness logic.
+ *
+ * Backward compatibility: search_entities, get_entity_details, navigate_to_entity
+ * are all preserved via normalizeToolName in unifiedTools.ts.
  */
 export async function executeAgentTool(
   widgetId: string,
@@ -449,158 +452,53 @@ export async function executeAgentTool(
   args: Record<string, any>,
   context?: ToolExecutionContext
 ): Promise<{ success: boolean; data?: any; error?: string }> {
-  try {
-    if (toolName === 'search_entities') {
-      const query = String(args.query || args.search || args.q || args.keyword || args.input || '');
-      const limit = typeof args.limit === 'number' ? Math.min(Math.max(1, args.limit), 10) : 3;
-      const entities = await searchEntities(widgetId, query, limit);
+  const ctx: UnifiedToolContext = {
+    sessionId: context?.sessionId,
+    allowAgentNavigation: context?.allowAgentNavigation,
+    businessName: context?.businessName,
+  };
 
-      const formattedResults = entities.map(e => {
-        const anyE = e as any;
-        const freshInfo = calculateFreshness(e.lastSeen, e.stillListed);
-        const item: Record<string, any> = {
-          id: e.id,
-          title: e.title,
-          type: e.entityType,
-          description: e.shortDescription,
-          imageUrls: e.imageUrls || anyE.images || [],
-          images: e.imageUrls || anyE.images || [],
-          canonicalUrl: e.sourceUrl,
-          sourceUrl: e.sourceUrl,
-          firstSeen: e.firstSeen,
-          lastSeen: e.lastSeen,
-          stillListed: e.stillListed,
-          freshnessStatus: e.freshnessStatus || freshInfo.freshnessStatus,
-          lastSeenHuman: (e.metadata as any)?.lastSeenHuman || freshInfo.lastSeenHuman,
-          hedgeInstruction: (e.metadata as any)?.hedgeInstruction || freshInfo.hedgeInstruction,
-          similarity: anyE.similarity ?? e.metadata?.similarity,
-          metadata: e.metadata,
-        };
-        const price = anyE.price ?? anyE.metadata?.price;
-        const currency = anyE.currency ?? anyE.metadata?.currency;
-        const rating = anyE.rating ?? anyE.metadata?.rating;
-        const availability = anyE.availability ?? anyE.metadata?.availability;
-        if (price !== undefined) item.price = price;
-        if (currency !== undefined) item.currency = currency;
-        if (rating !== undefined) item.rating = rating;
-        if (availability !== undefined) item.availability = availability;
-        if (item.similarity !== undefined) item.similarity = Number(Number(item.similarity).toFixed(4));
-        return item;
-      });
+  const result = await executeUnifiedTool(widgetId, toolName, args, ctx);
 
-      // Broadcast cards to widget during voice call if session context exists
-      if (context?.sessionId && formattedResults.length > 0) {
-        broadcastToSession(context.sessionId, 'voice_results', { results: formattedResults }).catch(() => {});
-        broadcastToSession(context.sessionId, 'entity_cards', { results: formattedResults }).catch(() => {});
-      }
-
-      return {
-        success: true,
-        data: {
-          count: entities.length,
-          query,
-          results: formattedResults,
-          entities: formattedResults,
-        },
-      };
-    }
-
-    if (toolName === 'get_entity_details') {
-      const entityId = String(args.entityId || args.entity_id || args.id || '');
-      const entity = await getEntityDetails(widgetId, entityId);
-      if (!entity) {
-        return { success: false, error: `Entity '${entityId}' not found for this widget.` };
-      }
-
-      const anyEntity = entity as any;
-      const formattedEntity: Record<string, any> = {
-        id: entity.id,
-        title: entity.title,
-        type: entity.entityType,
-        description: entity.shortDescription,
-        imageUrls: entity.imageUrls || anyEntity.images || [],
-        images: entity.imageUrls || anyEntity.images || [],
-        canonicalUrl: entity.sourceUrl,
-        sourceUrl: entity.sourceUrl,
-        categoryPath: entity.categoryPath,
-        firstSeen: entity.firstSeen,
-        lastSeen: entity.lastSeen,
-        stillListed: entity.stillListed,
-        freshnessStatus: entity.freshnessStatus,
-        lastSeenHuman: (entity.metadata as any)?.lastSeenHuman,
-        hedgeInstruction: (entity.metadata as any)?.hedgeInstruction,
-        metadata: entity.metadata,
-      };
-      const price = anyEntity.price ?? anyEntity.metadata?.price;
-      const currency = anyEntity.currency ?? anyEntity.metadata?.currency;
-      const rating = anyEntity.rating ?? anyEntity.metadata?.rating;
-      const availability = anyEntity.availability ?? anyEntity.metadata?.availability;
-      if (price !== undefined) formattedEntity.price = price;
-      if (currency !== undefined) formattedEntity.currency = currency;
-      if (rating !== undefined) formattedEntity.rating = rating;
-      if (availability !== undefined) formattedEntity.availability = availability;
-
-      if (context?.sessionId) {
-        broadcastToSession(context.sessionId, 'voice_results', { results: [formattedEntity] }).catch(() => {});
-        broadcastToSession(context.sessionId, 'entity_cards', { results: [formattedEntity] }).catch(() => {});
-      }
-
-      return {
-        success: true,
-        data: formattedEntity,
-      };
-    }
-
-    if (toolName === 'navigate_to_entity') {
-      const entityId = String(args.entityId || args.entity_id || args.id || args.target || args.url || args.page || args.query || '').trim();
-      if (!entityId) {
-        return { success: false, error: 'Missing required argument: entityId' };
-      }
-
-      if (context?.allowAgentNavigation === false) {
-        return {
-          success: false,
-          error: 'Agent navigation is disabled in this widget\'s configuration. Please describe the item using inline card information instead.',
-        };
-      }
-
-      const entity = await getEntityDetails(widgetId, entityId);
-      if (!entity) {
-        return { success: false, error: `Entity '${entityId}' not found for this widget.` };
-      }
-
-      if (!entity.sourceUrl || !entity.sourceUrl.trim()) {
-        return {
-          success: false,
-          error: 'Entity does not have a valid web page URL. Please describe the item to the visitor using the inline card information instead of navigating.',
-        };
-      }
-
-      const sessionId = context?.sessionId || args.sessionId || '';
-      const finalUrl = appendResumeParam(entity.sourceUrl, sessionId);
-
-      if (sessionId) {
-        await broadcastToSession(sessionId, 'navigate', {
-          url: finalUrl,
-          entityId: entity.id,
-          title: entity.title,
-        });
-      }
-
-      return {
-        success: true,
-        data: {
-          message: `Navigated to ${entity.title}.`,
-          url: finalUrl,
-          entityId: entity.id,
-          title: entity.title,
-        },
-      };
-    }
-
-    return { success: false, error: `Unknown tool name: '${toolName}'` };
-  } catch (err: any) {
-    console.error(`[agent-tools] Execution error for tool '${toolName}':`, err);
-    return { success: false, error: err.message || 'Tool execution failed' };
+  // Flatten to legacy { success, data, error } shape for backward compat
+  if (!result.success) {
+    return { success: false, error: result.error || 'Tool execution failed' };
   }
+
+  // For navigate_to_entity return the navigation URL as the data payload
+  if (normalizeToolName(toolName) === 'navigate_to_entity') {
+    const r = result.results[0];
+    return {
+      success: true,
+      data: {
+        message: r ? `Navigated to ${r.title}.` : 'Navigation dispatched.',
+        url: result.sources[0]?.url,
+        entityId: r?.id,
+        title: r?.title,
+      },
+    };
+  }
+
+  // For single-entity tools return the entity as data
+  if (['get_entity', 'get_entity_details'].includes(normalizeToolName(toolName))) {
+    return { success: true, data: result.results[0] || null };
+  }
+
+  // For search/filter/compare return the full structured payload
+  return {
+    success: true,
+    data: {
+      count: result.count,
+      results: result.results,
+      entities: result.results,
+      freshness: result.freshness,
+      confidence: result.confidence,
+      grounded: result.grounded,
+      hedged: result.hedged,
+      hedgeInstruction: result.hedgeInstruction,
+      comparison: result.comparison,
+      appliedFilters: result.appliedFilters,
+      sortedBy: result.sortedBy,
+    },
+  };
 }

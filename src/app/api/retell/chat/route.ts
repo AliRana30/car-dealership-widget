@@ -20,7 +20,7 @@ import {
   type GroundedContextValidation,
   type GroundingMetadata,
 } from '@/lib/retrieval/grounding';
-import { hybridRetrieve } from '@/lib/retrieval/hybridRag';
+import { executeUnifiedTool } from '@/lib/agents/unifiedTools';
 import {
   checkAndIncrementChatTurns,
   checkSessionChatRateLimit,
@@ -619,17 +619,49 @@ export async function POST(req: NextRequest) {
     history
   );
 
-  // ── Retrieve via Hybrid RAG Pipeline ──────────────────────────────────────
-  const hybridOutput = await hybridRetrieve(retrievalId, resolvedQuery, { limit: 6 });
+  // ── Retrieve via Unified Tool Layer (shared with Retell & Vapi voice agents) ──
+  const toolResult = await executeUnifiedTool(
+    retrievalId,
+    'search_knowledge',
+    { query: resolvedQuery, limit: 6 },
+    { sessionId, businessName }
+  );
 
-  // ── Strict Grounding Validation Layer ──────────────────────────────────────
-  const validation = validateGrounding(content, hybridOutput, businessName);
+  // ── Map unified result → local validation shape used by rendering logic ─────
+  //
+  // generateChatFallbackResponse and the Retell completion path both consume:
+  //   validation.isGrounded, validation.fallbackText, validation.systemPrompt,
+  //   validation.structuredResults, validation.groundingMetadata
+  //
+  // We reconstruct a compatible GroundedContextValidation from the tool result
+  // so zero UI rendering code needs to change.
+  const _isGreeting = /^(?:hi|hello|hey|good\s*(?:morning|afternoon|evening)|greetings|howdy)(?:[!\s.,]|$)/i.test(resolvedQuery.trim());
+  const _isNavIntent = isExplicitNavigationIntent(resolvedQuery);
+  const validation: GroundedContextValidation = {
+    isGrounded: toolResult.grounded,
+    isGreeting: _isGreeting,
+    isExplicitNavigation: _isNavIntent,
+    fallbackText: toolResult.fallbackText ||
+      `I couldn't find verified information for that inquiry in the available website records for ${businessName}. Feel free to ask about our available offerings or pricing.`,
+    systemPrompt: toolResult.systemPrompt || '',
+    contextSummary: toolResult.contextSummary || '',
+    structuredResults: toolResult.results as any[],
+    groundingMetadata: toolResult.groundingMetadata || {
+      sourceEntityIds: [],
+      retrievalMethod: 'vector',
+      freshness: toolResult.freshness,
+      confidence: toolResult.confidence,
+      grounded: toolResult.grounded,
+      hasHedge: toolResult.hedged,
+      hedgeInstruction: toolResult.hedgeInstruction,
+    },
+  };
 
-  const relevantRecords = validation.structuredResults.map(r => ({
+  const relevantRecords = toolResult.results.map(r => ({
     id: r.id,
     title: r.title,
     description: r.description,
-    shortDescription: r.shortDescription,
+    shortDescription: r.description,
     images: r.images,
     imageUrls: r.imageUrls,
     price: r.price,
@@ -637,8 +669,7 @@ export async function POST(req: NextRequest) {
     availability: r.availability,
     rating: r.rating,
     sourceUrl: r.sourceUrl,
-    entityType: r.entityType,
-    category: r.category,
+    entityType: r.type,
     freshnessStatus: r.freshnessStatus,
     firstSeen: r.firstSeen,
     lastSeen: r.lastSeen,
