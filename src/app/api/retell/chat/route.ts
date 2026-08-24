@@ -16,6 +16,12 @@ import { randomUUID } from 'crypto';
 import { getWidget, getRelevantWebsiteData, getRelevantWebsiteRecords, WebsiteDataRecord } from '@/config/widgetsDb';
 import { generateBaseSystemPrompt } from '@/lib/agents/prompts';
 import {
+  validateGrounding,
+  type GroundedContextValidation,
+  type GroundingMetadata,
+} from '@/lib/retrieval/grounding';
+import { hybridRetrieve } from '@/lib/retrieval/hybridRag';
+import {
   checkAndIncrementChatTurns,
   checkSessionChatRateLimit,
   checkDuplicateMessage,
@@ -120,6 +126,7 @@ interface ChatFallbackResult {
   text: string;
   navigationUrl?: string;
   suggestedUrl?: string;
+  grounding?: GroundingMetadata;
 }
 
 // ── Entity resolution + session context integration ─────────────────────────
@@ -195,9 +202,8 @@ async function resolveEntityForTurn(
 
 async function generateChatFallbackResponse(
   content: string,
-  relevantData: string | null,
   businessName: string,
-  matchedRecords: WebsiteDataRecord[] = [],
+  validation: GroundedContextValidation,
   lastNavUrl?: string | null
 ): Promise<ChatFallbackResult> {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_KEY;
@@ -206,10 +212,12 @@ async function generateChatFallbackResponse(
 
   const isExplicit = isExplicitNavigationIntent(content);
   const trimmed = content.trim().toLowerCase();
-  const isGreeting = /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|start|help)$/i.test(trimmed);
-  if (isGreeting) {
+
+  // 1. If not grounded, return deterministic fallback directly (Zero LLM hallucination)
+  if (!validation.isGrounded) {
     return {
-      text: `Hello! I'm your AI assistant for ${businessName}. How can I help you today? Feel free to ask about our offerings, pricing, details, or policies.`
+      text: validation.fallbackText || `I couldn't find verified information for that inquiry in the available website records for ${businessName}. Feel free to ask about our available offerings or pricing.`,
+      grounding: validation.groundingMetadata,
     };
   }
 
@@ -219,13 +227,11 @@ async function generateChatFallbackResponse(
     return {
       text: `Opening that page on your screen now!`,
       navigationUrl: lastNavUrl,
+      grounding: validation.groundingMetadata,
     };
   }
-  if (isYesConfirmation && !lastNavUrl) {
-    return {
-      text: `Sure! What would you like me to help with? You can ask about our offerings, pricing, or I can navigate you to a specific page.`,
-    };
-  }
+
+  const matchedRecords = validation.structuredResults;
 
   // 1. Explicit Navigation Intent Handling
   if (isExplicit) {
@@ -235,7 +241,8 @@ async function generateChatFallbackResponse(
       if (match?.sourceUrl) {
         return {
           text: `Navigating you to our About page now so you can learn more about ${businessName}!`,
-          navigationUrl: match.sourceUrl
+          navigationUrl: match.sourceUrl,
+          grounding: validation.groundingMetadata,
         };
       }
     }
@@ -246,7 +253,8 @@ async function generateChatFallbackResponse(
       if (match?.sourceUrl) {
         return {
           text: `Opening our Policies & Terms page on your screen now!`,
-          navigationUrl: match.sourceUrl
+          navigationUrl: match.sourceUrl,
+          grounding: validation.groundingMetadata,
         };
       }
     }
@@ -258,7 +266,8 @@ async function generateChatFallbackResponse(
       if (match?.sourceUrl) {
         return {
           text: `Navigating you to our ${isFaq ? 'FAQ' : 'Contact'} page now!`,
-          navigationUrl: match.sourceUrl
+          navigationUrl: match.sourceUrl,
+          grounding: validation.groundingMetadata,
         };
       }
     }
@@ -274,47 +283,15 @@ async function generateChatFallbackResponse(
       return {
         text: `Opening the page for **${targetItem.title}** on your screen now! Let me know if you have any questions about it.`,
         navigationUrl: targetItem.sourceUrl,
+        grounding: validation.groundingMetadata,
       };
     }
-
-    if (queryWords.length === 0) {
-      return {
-        text: `Sure! Which page would you like me to open? You can ask for our catalog, about page, contact page, or name a specific item.`,
-        navigationUrl: undefined,
-      };
-    }
-
-    return {
-      text: `I couldn't find a matching page for "${queryWords.join(' ')}" in our website. Would you like to explore our main offerings instead?`,
-      navigationUrl: undefined,
-    };
   }
 
-  // 2. Try LLMs (OpenAI, Gemini, Groq) with strict anti-hallucination prompt if keys exist.
-  // Bug 4 fix: if BOTH the retrieved text context AND the structured records are empty,
-  // skip the LLM entirely — it has no grounded data and would hallucinate.
-  // Jump straight to the structured zero-result synthesis engine below.
-  const hasGroundedData = Boolean(relevantData && relevantData.trim()) || matchedRecords.length > 0;
-  if (!hasGroundedData && !isExplicit) {
-    // Fall through to the structured synthesis engine (Cases A-D below) which correctly
-    // says "I couldn't find that" without inventing website information.
-    console.log('[retell/chat] No grounded data for this query — skipping LLM to prevent hallucination.');
-  }
+  // 2. Try LLMs with strict grounding prompt from validation.systemPrompt
+  const systemPrompt = validation.systemPrompt;
 
-  const systemPrompt = `You are a helpful AI receptionist and assistant for ${businessName}.
-Use ONLY the following website information to answer accurately and concisely.
-If the answer is NOT present in the website information below, or if the user asks about an item/course/product that is NOT listed below, clearly state: "I couldn't find that in the available website information." Do NOT invent or guess any website information.
-
-Relevant Website Information:
-${relevantData || 'No specific matching records found.'}
-
-Guidelines:
-- Provide clear, professional, and friendly answers.
-- Format item lists cleanly using bullet points, titles, and prices when available.
-- If the user asks about a specific item that does not exist in the information, say you couldn't find a matching offering.
-- Keep responses concise (under 120 words).`;
-
-  if (hasGroundedData && openAiKey) {
+  if (openAiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -328,7 +305,7 @@ Guidelines:
             { role: 'system', content: systemPrompt },
             { role: 'user', content: content.trim() }
           ],
-          temperature: 0.3,
+          temperature: 0.2,
           max_tokens: 250,
         }),
       });
@@ -337,7 +314,7 @@ Guidelines:
         const text = data.choices?.[0]?.message?.content?.trim();
         if (text) {
           const topUrl = isExplicit ? matchedRecords[0]?.sourceUrl : undefined;
-          return { text, navigationUrl: topUrl };
+          return { text, navigationUrl: topUrl, grounding: validation.groundingMetadata };
         }
       }
     } catch (err) {
@@ -345,14 +322,14 @@ Guidelines:
     }
   }
 
-  if (hasGroundedData && geminiKey) {
+  if (geminiKey) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question: ${content.trim()}` }] }],
-          generationConfig: { maxOutputTokens: 250, temperature: 0.3 },
+          generationConfig: { maxOutputTokens: 250, temperature: 0.2 },
         }),
       });
       if (res.ok) {
@@ -360,7 +337,7 @@ Guidelines:
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) {
           const topUrl = isExplicit ? matchedRecords[0]?.sourceUrl : undefined;
-          return { text, navigationUrl: topUrl };
+          return { text, navigationUrl: topUrl, grounding: validation.groundingMetadata };
         }
       }
     } catch (err) {
@@ -368,7 +345,7 @@ Guidelines:
     }
   }
 
-  if (hasGroundedData && groqKey) {
+  if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -376,7 +353,7 @@ Guidelines:
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: content.trim() }],
-          temperature: 0.3,
+          temperature: 0.2,
           max_tokens: 250,
         }),
       });
@@ -385,7 +362,7 @@ Guidelines:
         const text = data.choices?.[0]?.message?.content?.trim();
         if (text) {
           const topUrl = isExplicit ? matchedRecords[0]?.sourceUrl : undefined;
-          return { text, navigationUrl: topUrl };
+          return { text, navigationUrl: topUrl, grounding: validation.groundingMetadata };
         }
       }
     } catch (err) {
@@ -394,6 +371,9 @@ Guidelines:
   }
 
   // 3. Dynamic Structured Synthesis Engine (Zero-LLM Fallback)
+  const hedgeNotice = validation.groundingMetadata.hasHedge
+    ? `\n\n*(Note: Some listings are from an earlier check; current availability and pricing cannot be guaranteed. Please confirm directly with staff.)*`
+    : '';
 
   // Case A: Pricing & Rates Inquiries
   const isPricingQuery = /(?:pricing|price|prices|cost|costs|tuition|rate|rates|fee|fees|how much|payment|subscription)/i.test(trimmed);
@@ -404,11 +384,12 @@ Guidelines:
     if (targetRecords.length === 1) {
       const item = targetRecords[0];
       const rawPrice = String(item.price || '').trim();
-      const cleanPrice = rawPrice ? (rawPrice.startsWith('$') ? rawPrice : `$${rawPrice}`) : 'Standard Rate';
+      const cleanPrice = rawPrice ? (rawPrice.startsWith('$') ? rawPrice : `$${rawPrice}`) : 'Pricing not listed in current records';
       const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
       return {
-        text: `The pricing for ${link} is **${cleanPrice}**. Would you like me to open the details page on your screen?`,
+        text: `The pricing for ${link} is **${cleanPrice}**.${hedgeNotice} Would you like me to open the details page on your screen?`,
         suggestedUrl: item.sourceUrl,
+        grounding: validation.groundingMetadata,
       };
     }
 
@@ -420,8 +401,9 @@ Guidelines:
     }).join('\n');
 
     return {
-      text: `Here are the pricing options for ${businessName}:\n\n${priceLines}\n\nWould you like more details on a specific item?`,
-      navigationUrl: undefined
+      text: `Here are the pricing options for ${businessName}:\n\n${priceLines}${hedgeNotice}\n\nWould you like more details on a specific item?`,
+      navigationUrl: undefined,
+      grounding: validation.groundingMetadata,
     };
   }
 
@@ -430,12 +412,13 @@ Guidelines:
     const item = matchedRecords[0];
     const rawPrice = String(item.price || '').trim();
     const priceText = rawPrice ? ` (${rawPrice.startsWith('$') ? rawPrice : '$' + rawPrice})` : '';
-    const descText = item.description ? item.description.substring(0, 200).trim() : '';
+    const descText = item.description || item.shortDescription ? (item.description || item.shortDescription || '').substring(0, 200).trim() : '';
     const linkText = item.sourceUrl ? `\n\n[View Full Page](${item.sourceUrl})` : '';
     return {
-      text: `Here are the details for **${item.title}**${priceText}:\n\n${descText}${linkText}\n\nWould you like me to open the page on your screen?`,
+      text: `Here are the details for **${item.title}**${priceText}:\n\n${descText}${linkText}${hedgeNotice}\n\nWould you like me to open the page on your screen?`,
       navigationUrl: undefined,
       suggestedUrl: item.sourceUrl,
+      grounding: validation.groundingMetadata,
     };
   }
 
@@ -446,29 +429,21 @@ Guidelines:
       const rawPrice = String(item.price || '').trim();
       const price = rawPrice ? ` (${rawPrice.startsWith('$') ? rawPrice : '$' + rawPrice})` : '';
       const link = item.sourceUrl ? `[${item.title}](${item.sourceUrl})` : `**${item.title}**`;
-      const desc = item.description ? `: ${item.description.substring(0, 90).trim()}...` : '';
+      const desc = item.description || item.shortDescription ? `: ${(item.description || item.shortDescription || '').substring(0, 90).trim()}...` : '';
       return `• ${link}${price}${desc}`;
     }).join('\n');
 
     return {
-      text: `Here are the available offerings for ${businessName}:\n\n${itemsList}\n\nWhich of these would you like to explore or get more details on?`,
-      navigationUrl: undefined
-    };
-  }
-
-  // Case D: No match found — strict anti-hallucination response
-  const searchTerms = content.trim().split(/\s+/).filter(w => w.length > 2 && !['what', 'does', 'have', 'your', 'offer', 'available', 'about', 'course', 'courses', 'product', 'products', 'program', 'programs', 'do', 'you', 'with', 'that', 'this', 'there', 'any', 'the', 'tell', 'show', 'how', 'much'].includes(w.toLowerCase())).slice(0, 3).join(' ');
-
-  if (searchTerms) {
-    return {
-      text: `I couldn't find a matching offering for "${searchTerms}" in the available website information. Would you like to explore our general catalog or ask about another topic?`,
-      navigationUrl: undefined
+      text: `Here are the available offerings for ${businessName}:\n\n${itemsList}${hedgeNotice}\n\nWhich of these would you like to explore or get more details on?`,
+      navigationUrl: undefined,
+      grounding: validation.groundingMetadata,
     };
   }
 
   return {
-    text: `I'm happy to help you with ${businessName}. Feel free to ask about our offerings, services, or pricing!`,
-    navigationUrl: undefined
+    text: validation.fallbackText || `I'm happy to help you with ${businessName}. Feel free to ask about our offerings, services, or pricing!`,
+    navigationUrl: undefined,
+    grounding: validation.groundingMetadata,
   };
 }
 
@@ -493,18 +468,12 @@ export async function POST(req: NextRequest) {
     'unknown';
 
   if (!checkRateLimit(ip)) {
-    console.log(`[RETELL_OBSERVABILITY] ${JSON.stringify({
-      timestamp: new Date().toISOString(),
-      event: 'chat_rate_limit_failure',
-      ip: maskIp(ip)
-    })}`);
     return NextResponse.json(
       { error: 'rate_limited', message: 'Too many requests. Please wait before trying again.' },
       { status: 429, headers }
     );
   }
 
-  // ── Parse body ────────────────────────────────────────────────────────────
   let body: { chatId?: string | null; content?: string; widgetId?: string; sessionId?: string; lastNavUrl?: string | null; history?: any[] } = {};
   try {
     body = (await req.json()) ?? {};
@@ -518,29 +487,27 @@ export async function POST(req: NextRequest) {
   const { widgetId, sessionId: incomingSessionId, lastNavUrl } = body;
   const history: any[] = Array.isArray(body.history) ? body.history : [];
   let { chatId } = body;
-  const rawContent = body.content || (body as any).message || (body as any).text;
-  const sessionId = incomingSessionId && typeof incomingSessionId === 'string' ? incomingSessionId : randomUUID();
 
-  if (!rawContent || typeof rawContent !== 'string' || rawContent.trim() === '') {
+  const rawContent = (body.content ?? (body as any).message ?? (body as any).text ?? '').trim();
+  const contentValidation = validateMessageLength(rawContent, 1000);
+  if (!contentValidation.valid || !rawContent) {
     return NextResponse.json(
-      { error: 'invalid_request', message: 'Content field is required and must be a non-empty string.' },
+      { error: 'invalid_request', message: contentValidation.error || 'Message cannot be empty.' },
+      { status: 400, headers }
+    );
+  }
+  const content: string = contentValidation.sanitized || rawContent;
+
+  if (!widgetId || typeof widgetId !== 'string' || !widgetId.trim()) {
+    return NextResponse.json(
+      { error: 'invalid_request', message: 'Missing widgetId parameter.' },
       { status: 400, headers }
     );
   }
 
-  const content: string = rawContent.trim();
+  const targetId = widgetId.trim();
 
-  // Validate message content length cap (Task C.4)
-  const lengthValidation = validateMessageLength(content, 1000);
-  if (!lengthValidation.valid) {
-    return NextResponse.json(
-      { error: 'invalid_request', message: lengthValidation.error || 'Message cannot be empty.' },
-      { status: 400, headers }
-    );
-  }
-
-  // ── Retrieve Widget Credentials ───────────────────────────────────────────
-  const targetId = widgetId || 'default';
+  // ── Scope Enforcement: Widget Lookup & Fail-Closed ──────────────────────
   let widget = await getWidget(targetId);
   if (!widget) {
     if (targetId === 'default' || targetId === 'front-desk' || targetId === 'myfrontdesk') {
@@ -558,100 +525,75 @@ export async function POST(req: NextRequest) {
       };
     } else {
       return NextResponse.json(
-        { error: 'not_found', message: `Widget with ID '${targetId}' not found.` },
+        { error: 'not_found', message: `Widget '${targetId}' not found.` },
         { status: 404, headers }
       );
     }
   }
 
-  if (widget.provider !== 'retell' && widget.provider !== undefined) {
-    return NextResponse.json(
-      { error: 'misconfigured', message: 'Text chat is only supported on Retell provider widgets.' },
-      { status: 400, headers }
-    );
-  }
+  const businessName = widget.name || widget.config?.branding?.companyName || 'our business';
 
-  const apiKey = (widget.retellApiKey || process.env.RETELL_API_KEY || '').trim();
-  const agentId = (widget.agentId || process.env.RETELL_AGENT_ID || '').trim();
-  // Check if a specific chat agent has been configured in the config overrides, or fallback to main agentId
-  const chatAgentId = (widget.config?.behavior as any)?.chatAgentId || undefined;
-
-  // ── Enforce Per-Widget Daily Chat Limit & Circuit Breaker (Task C.3) ───
-  const maxDailyCalls = widget.config?.behavior?.maxDailyCalls ?? 100;
-  const maxDailyChats = widget.config?.behavior?.maxDailyChats ?? 500;
-  const usageCheck = await checkAndIncrementUsage(widget.widgetId || targetId, 'chat', { maxDailyCalls, maxDailyChats });
-
-  if (!usageCheck.allowed) {
-    const circuitBreakerMessage = usageCheck.reason || 'This assistant is temporarily unavailable. Please try again later or contact us directly.';
-    console.warn(`[SPEND_CIRCUIT_BREAKER] Widget ${targetId} exceeded daily chat quota (${usageCheck.currentCount}/${usageCheck.maxLimit}). Returning circuit breaker fallback.`);
-
+  // ── Duplicate message check ──────────────────────────────────────────────
+  const duplicateCheck = checkDuplicateMessage(incomingSessionId || 'default', content);
+  if (duplicateCheck.isDuplicateThrottled) {
     return NextResponse.json(
       {
         chatId: chatId || `chat_${Date.now()}`,
         messages: [
           { role: 'user', content: content.trim() },
-          { role: 'agent', content: circuitBreakerMessage },
+          { role: 'agent', content: duplicateCheck.message || 'I already received your message and am processing your request.' },
         ],
-        sessionId,
-        isCircuitBreakerTripped: true,
-        dailyUsageExceeded: true,
+        sessionId: incomingSessionId || `session_${randomUUID()}`,
       },
       { status: 200, headers }
     );
   }
 
-  // ── Session-Scoped Chat Rate Limiting (Task C.4) ──────────────────────
-  const chatRateLimitPerMinute = widget.config?.behavior?.chatRateLimitPerMinute ?? 15;
-  const sessionTurnKey = chatId || sessionId || ip;
-  const rateLimitCheck = checkSessionChatRateLimit(sessionTurnKey, chatRateLimitPerMinute);
-
-  if (!rateLimitCheck.allowed) {
-    const rateLimitMessage = rateLimitCheck.message || "You're sending messages too fast. Please wait a moment before trying again.";
-    console.warn(`[CHAT_RATE_LIMIT] Session ${sessionTurnKey} throttled (${rateLimitCheck.currentWindowCount}/${rateLimitCheck.maxPerMinute} msg/min).`);
-
+  // ── Session rate limit (max 15 messages per minute per session) ──────────
+  const sessionRate = checkSessionChatRateLimit(incomingSessionId || 'default');
+  if (!sessionRate.allowed) {
     return NextResponse.json(
       {
         chatId: chatId || `chat_${Date.now()}`,
         messages: [
           { role: 'user', content: content.trim() },
-          { role: 'agent', content: rateLimitMessage },
+          { role: 'agent', content: sessionRate.message || 'Please wait a moment before sending another message.' },
         ],
-        sessionId,
-        isRateLimited: true,
-        retryAfterSeconds: rateLimitCheck.retryAfterSeconds,
+        sessionId: incomingSessionId || `session_${randomUUID()}`,
       },
       { status: 429, headers }
     );
   }
 
-  // ── Duplicate-Message Throttling (Task C.4) ───────────────────────────
-  const duplicateCheck = checkDuplicateMessage(sessionTurnKey, content);
-  if (duplicateCheck.isDuplicateThrottled) {
-    const staticReply = duplicateCheck.message || "I've already answered that — is there something else I can help with?";
+  // ── Spend & Usage Guard ──────────────────────────────────────────────────
+  const maxDailyCalls = widget.config?.behavior?.maxDailyCalls ?? 100;
+  const maxDailyChats = widget.config?.behavior?.maxDailyChats ?? 500;
+  const usageCheck = await checkAndIncrementUsage(widget.widgetId || targetId, 'chat', { maxDailyCalls, maxDailyChats });
 
+  if (!usageCheck.allowed) {
     return NextResponse.json(
       {
-        chatId: chatId || `chat_${Date.now()}`,
-        messages: [
-          { role: 'user', content: content.trim() },
-          { role: 'agent', content: staticReply },
-        ],
-        sessionId,
-        isDuplicateThrottled: true,
-        duplicateCount: duplicateCheck.duplicateCount,
+        error: 'usage_limit_exceeded',
+        message: usageCheck.reason || 'Account usage limit reached.',
+        spendLimitReached: true,
       },
-      { status: 200, headers }
+      { status: 402, headers }
     );
   }
 
-  // ── Enforce Hard Server-Side Chat Turn Limits (Task C.1) ─────────────────
-  const maxChatTurns = widget.config?.behavior?.maxChatTurns ?? 30;
+  // ── Dynamic Credential Resolution ────────────────────────────────────────
+  const apiKey = (widget.retellApiKey || process.env.RETELL_API_KEY || '').trim();
+  const agentId = (widget.agentId || process.env.RETELL_AGENT_ID || '').trim();
+  const chatAgentId = (widget.config?.behavior as any)?.chatAgentId || undefined;
+
+  // ── Server-side Session and Chat Turn Capping ──────────────────────────
+  const sessionId = incomingSessionId || `session_${randomUUID()}`;
+  const sessionTurnKey = `${widget.id || targetId}:${sessionId}`;
+  const maxChatTurns = widget.config?.behavior?.maxChatTurns ?? 50;
   const turnCheck = checkAndIncrementChatTurns(sessionTurnKey, maxChatTurns);
 
   if (!turnCheck.allowed) {
     const cappedMessage = turnCheck.message || 'You have reached the maximum message limit for this chat session. Please contact our team directly for further assistance.';
-    console.log(`[SERVER_CHAT_CAP] Session ${sessionTurnKey} exceeded max chat turns (${maxChatTurns}). Rejecting LLM generation and returning capped response.`);
-
     return NextResponse.json(
       {
         chatId: chatId || `chat_${Date.now()}`,
@@ -660,9 +602,6 @@ export async function POST(req: NextRequest) {
           { role: 'agent', content: cappedMessage },
         ],
         sessionId,
-        capped: true,
-        turnCount: turnCheck.currentTurn,
-        maxTurns: turnCheck.maxTurns,
       },
       { status: 200, headers }
     );
@@ -680,21 +619,61 @@ export async function POST(req: NextRequest) {
     history
   );
 
-  // Retrieve grounded text context using resolved query
-  const relevantData = await getRelevantWebsiteData(retrievalId, resolvedQuery);
-  const relevantRecords = resolvedRecords.length > 0
-    ? resolvedRecords
-    : await getRelevantWebsiteRecords(retrievalId, resolvedQuery);
+  // ── Retrieve via Hybrid RAG Pipeline ──────────────────────────────────────
+  const hybridOutput = await hybridRetrieve(retrievalId, resolvedQuery, { limit: 6 });
+
+  // ── Strict Grounding Validation Layer ──────────────────────────────────────
+  const validation = validateGrounding(content, hybridOutput, businessName);
+
+  const relevantRecords = validation.structuredResults.map(r => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    shortDescription: r.shortDescription,
+    images: r.images,
+    imageUrls: r.imageUrls,
+    price: r.price,
+    currency: r.currency,
+    availability: r.availability,
+    rating: r.rating,
+    sourceUrl: r.sourceUrl,
+    entityType: r.entityType,
+    category: r.category,
+    freshnessStatus: r.freshnessStatus,
+    firstSeen: r.firstSeen,
+    lastSeen: r.lastSeen,
+    metadata: r.metadata,
+  }));
 
   const targetUrl = pinnedEntity?.record?.sourceUrl;
   const effectiveNavUrl = targetUrl || lastNavUrl;
 
+  // ── Empty-Context Hallucination Prevention (Deterministic Fallback) ────────
+  if (!validation.isGrounded) {
+    return NextResponse.json(
+      {
+        chatId: chatId || `chat_${Date.now()}`,
+        messages: [
+          { role: 'user', content: content.trim() },
+          {
+            role: 'agent',
+            content: validation.fallbackText || `I couldn't find verified information for that inquiry in the available website records for ${businessName}. Feel free to ask about our available offerings or pricing.`,
+            results: [],
+          },
+        ],
+        sessionId,
+        grounding: validation.groundingMetadata,
+      },
+      { status: 200, headers }
+    );
+  }
+
+  // ── Zero-Retell Fallback / Standalone Chat Handler ─────────────────────────
   if (!apiKey || !agentId) {
     const fallbackResult = await generateChatFallbackResponse(
       resolvedQuery !== content ? resolvedQuery : content,
-      relevantData,
-      widget.name || widget.config?.branding?.companyName || 'our business',
-      relevantRecords,
+      businessName,
+      validation,
       effectiveNavUrl
     );
 
@@ -719,6 +698,7 @@ export async function POST(req: NextRequest) {
         navigationUrl: fallbackResult.navigationUrl,
         suggestedUrl: fallbackResult.suggestedUrl,
         action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
+        grounding: validation.groundingMetadata,
       },
       { status: 200, headers }
     );
@@ -728,7 +708,6 @@ export async function POST(req: NextRequest) {
   const client = new Retell({ apiKey });
 
   try {
-    // Resolve chatAgentId dynamically if not configured explicitly
     let finalChatAgentId = chatAgentId;
     if (!finalChatAgentId) {
       try {
@@ -741,7 +720,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 1. Create or retrieve existing chat session
     if (!chatId) {
       const chatSession = await client.chat.create({
         agent_id: finalChatAgentId,
@@ -753,25 +731,18 @@ export async function POST(req: NextRequest) {
       throw new Error('Failed to create or retrieve chat session ID.');
     }
 
-    // 2. Post user message content to get completion response
+    // 2. Post message with strict grounding system prompt
     let completion;
     try {
-      // Bug 3 fix: Wrap the website context with an explicit SYSTEM INSTRUCTION header so the
-      // Retell agent treats it as a mandatory data source rather than ordinary user text.
-      // This prevents the Retell LLM from ignoring the context and answering from its own training.
-      const promptContent = relevantData
-        ? [
-            'SYSTEM INSTRUCTION: You MUST base your answer ONLY on the following verified website data.',
-            'Do NOT invent, guess, or add any information that is not explicitly present in the data below.',
-            'If the user asks about something not covered in the data, say: "I couldn\'t find that in the available website information."',
-            '',
-            '=== VERIFIED WEBSITE DATA ===',
-            relevantData,
-            '=== END WEBSITE DATA ===',
-            '',
-            `User Question: ${content.trim()}`,
-          ].join('\n')
-        : content.trim();
+      const promptContent = [
+        'SYSTEM INSTRUCTION: You MUST base your answer ONLY on the following verified website data.',
+        'Do NOT invent, guess, or add any information that is not explicitly present in the data below.',
+        'If the user asks about something not covered in the data, say: "I couldn\'t find that in the available website information."',
+        '',
+        validation.systemPrompt,
+        '',
+        `User Question: ${content.trim()}`,
+      ].join('\n');
 
       completion = await client.chat.createChatCompletion({
         chat_id: chatId,
@@ -779,7 +750,6 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       console.warn('[retell/chat] Failed on existing session, starting new session:', err instanceof Error ? err.message : err);
-      // Let's create a new chat session to self-heal
       const chatSession = await client.chat.create({
         agent_id: finalChatAgentId,
       });
@@ -788,19 +758,15 @@ export async function POST(req: NextRequest) {
         throw new Error('Failed to create a new chat session during recovery.');
       }
 
-      const promptContentRetry = relevantData
-        ? [
-            'SYSTEM INSTRUCTION: You MUST base your answer ONLY on the following verified website data.',
-            'Do NOT invent, guess, or add any information that is not explicitly present in the data below.',
-            'If the user asks about something not covered in the data, say: "I couldn\'t find that in the available website information."',
-            '',
-            '=== VERIFIED WEBSITE DATA ===',
-            relevantData,
-            '=== END WEBSITE DATA ===',
-            '',
-            `User Question: ${content.trim()}`,
-          ].join('\n')
-        : content.trim();
+      const promptContentRetry = [
+        'SYSTEM INSTRUCTION: You MUST base your answer ONLY on the following verified website data.',
+        'Do NOT invent, guess, or add any information that is not explicitly present in the data below.',
+        'If the user asks about something not covered in the data, say: "I couldn\'t find that in the available website information."',
+        '',
+        validation.systemPrompt,
+        '',
+        `User Question: ${content.trim()}`,
+      ].join('\n');
 
       completion = await client.chat.createChatCompletion({
         chat_id: chatId,
@@ -808,16 +774,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Clean up tone/emotion tags (e.g. [empathetic]) from the agent response
-    // and strip out any injected website context from history so the client bubble stays clean.
+    // Clean up response messages
     const rawMessages: any[] = completion.messages || [];
     const cleanMessages = rawMessages.map((m: any, idx: number) => {
       let textContent = m.content;
       if (typeof textContent === 'string') {
         textContent = textContent.replace(/\[[a-z_-\s]+\]/gi, '').replace(/\s+/g, ' ').trim();
-        // Strip out our injected system instruction block so the user sees only their own question
         if (textContent.includes('SYSTEM INSTRUCTION:')) {
-          const endMarker = '=== END WEBSITE DATA ===';
+          const endMarker = '=== END VERIFIED RECORDS ===';
           const endIdx = textContent.indexOf(endMarker);
           if (endIdx !== -1) {
             textContent = textContent.slice(endIdx + endMarker.length).replace(/^[\s\n]*User Question:/i, '').trim();
@@ -829,8 +793,6 @@ export async function POST(req: NextRequest) {
         }
       }
       const cleaned: any = { ...m, content: textContent };
-      // Bug 5 fix: attach structured result cards whenever the retrieval found records.
-      // This is now vertical-agnostic — it no longer requires LMS-specific keywords.
       const isLastAgentMsg =
         m.role === 'agent' &&
         idx === rawMessages.length - 1 &&
@@ -840,13 +802,6 @@ export async function POST(req: NextRequest) {
       }
       return cleaned;
     });
-
-    console.log(`[RETELL_OBSERVABILITY] ${JSON.stringify({
-      timestamp: new Date().toISOString(),
-      chatId,
-      event: 'chat_message_success',
-      ip: maskIp(ip)
-    })}`);
 
     const isExplicit = isExplicitNavigationIntent(content);
     const topNavUrl = isExplicit ? (relevantRecords[0]?.sourceUrl || undefined) : undefined;
@@ -858,6 +813,7 @@ export async function POST(req: NextRequest) {
         sessionId,
         navigationUrl: topNavUrl,
         action: topNavUrl ? { type: 'navigate', url: topNavUrl } : undefined,
+        grounding: validation.groundingMetadata,
       },
       { status: 200, headers }
     );
@@ -868,9 +824,8 @@ export async function POST(req: NextRequest) {
 
     const fallbackResult = await generateChatFallbackResponse(
       resolvedQuery !== content ? resolvedQuery : content,
-      relevantData,
-      widget.name || widget.config?.branding?.companyName || 'our business',
-      relevantRecords,
+      businessName,
+      validation,
       effectiveNavUrl
     );
 
@@ -895,6 +850,7 @@ export async function POST(req: NextRequest) {
         navigationUrl: fallbackResult.navigationUrl,
         suggestedUrl: fallbackResult.suggestedUrl,
         action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
+        grounding: validation.groundingMetadata,
       },
       { status: 200, headers }
     );

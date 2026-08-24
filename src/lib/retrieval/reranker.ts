@@ -275,12 +275,14 @@ export function rerankCandidates(
 
     // Keyword hit detection
     let keywordHits = 0;
+    let titleKeywordHits = 0;
     for (const word of structuredQuery.specificKeywords) {
       const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const wordRegex = new RegExp(`\\b${escaped}\\b`, 'i');
       if (wordRegex.test(titleLower)) {
         score += 60;
         keywordHits++;
+        titleKeywordHits++;
         isKeyword = true;
         matchReasons.push(`Keyword match '${word}' in title (+60)`);
       } else if (wordRegex.test(metaStrings)) {
@@ -289,19 +291,27 @@ export function rerankCandidates(
         isKeyword = true;
         matchReasons.push(`Keyword match '${word}' in metadata (+35)`);
       } else if (wordRegex.test(contentLower)) {
-        score += 25;
+        score += 15;
         keywordHits++;
-        isKeyword = true;
-        matchReasons.push(`Keyword match '${word}' in content (+25)`);
+        if (keywordHits >= 2 || structuredQuery.specificKeywords.length === 1) {
+          isKeyword = true;
+        }
+        matchReasons.push(`Keyword match '${word}' in content (+15)`);
       }
     }
 
     // Specific Keyword Constraint enforcement:
-    // If the query specified distinct keywords (e.g. "backend", "wrangler"),
-    // items with 0 keyword matches and no exact/partial title match should not be returned.
+    // If the query specified distinct keywords (e.g. "backend", "wrangler", "16th", "president"),
+    // items with 0 keyword matches and no exact/partial title match must be rejected.
     if (trueSpecificKeywords.length > 0 && keywordHits === 0 && !isExact && !isPartial) {
-      score -= 500;
-      matchReasons.push(`No match for specific required keywords [${trueSpecificKeywords.join(', ')}] (-500)`);
+      score -= 800;
+      isKeyword = false;
+      matchReasons.push(`No match for specific required keywords [${trueSpecificKeywords.join(', ')}] (-800)`);
+    } else if (trueSpecificKeywords.length >= 2 && keywordHits < 2 && titleKeywordHits === 0 && !isExact && !isPartial) {
+      // Multiple required keywords but only 1 spurious body hit (e.g. "president of united states")
+      score -= 800;
+      isKeyword = false;
+      matchReasons.push(`Insufficient keyword coverage (${keywordHits}/${trueSpecificKeywords.length} keywords) (-800)`);
     }
 
     // Broad catalog discovery
@@ -543,6 +553,13 @@ export function rerankCandidates(
     }
     if (rating > 0) {
       score += 20;
+    }
+
+    // ── RELEVANCE GATE: Discard candidates with zero match signals on non-catalog queries ──
+    const hasRelevanceSignal = isExact || isPartial || isKeyword || (isVector && (cand.vectorSimilarity ?? 0) >= 0.35);
+    if (!isCatalogQuery && !hasRelevanceSignal) {
+      score = -9999;
+      matchReasons.push(`No relevance match signals found for query (-9999)`);
     }
 
     scoredList.push({

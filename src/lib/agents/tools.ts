@@ -457,6 +457,7 @@ export async function executeAgentTool(
 
       const formattedResults = entities.map(e => {
         const anyE = e as any;
+        const freshInfo = calculateFreshness(e.lastSeen, e.stillListed);
         const item: Record<string, any> = {
           id: e.id,
           title: e.title,
@@ -469,9 +470,9 @@ export async function executeAgentTool(
           firstSeen: e.firstSeen,
           lastSeen: e.lastSeen,
           stillListed: e.stillListed,
-          freshnessStatus: e.freshnessStatus,
-          lastSeenHuman: (e.metadata as any)?.lastSeenHuman,
-          hedgeInstruction: (e.metadata as any)?.hedgeInstruction,
+          freshnessStatus: e.freshnessStatus || freshInfo.freshnessStatus,
+          lastSeenHuman: (e.metadata as any)?.lastSeenHuman || freshInfo.lastSeenHuman,
+          hedgeInstruction: (e.metadata as any)?.hedgeInstruction || freshInfo.hedgeInstruction,
           similarity: anyE.similarity ?? e.metadata?.similarity,
           metadata: e.metadata,
         };
