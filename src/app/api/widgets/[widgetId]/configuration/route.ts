@@ -22,7 +22,14 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'not_found', message: 'Widget or configuration not found' }, { status: 404 });
     }
 
-    return NextResponse.json(config, { status: 200 });
+    return NextResponse.json(config, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (error: any) {
     console.error('[api/widgets/[widgetId]/configuration] GET failed:', error);
     return NextResponse.json({ error: 'server_error', message: error.message }, { status: 500 });

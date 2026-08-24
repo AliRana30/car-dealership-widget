@@ -344,7 +344,7 @@ export default function WidgetCustomizerApp() {
           const configRecord = await resConfig.json().catch(() => null);
           if (configRecord) {
             const voiceConfig = fromConfigurationRecord(configRecord);
-            setDraft(deepMerge(defaultVoiceWidgetConfig, voiceConfig));
+            setDraft(voiceConfig);
           }
         }
 

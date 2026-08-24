@@ -525,11 +525,15 @@ export async function saveWidgetConfiguration(
     if (error) throw error;
 
     // Synchronize back to the main widgets table's config column to keep systems aligned
-    const updatedVoiceConfig = fromConfigurationRecord(configRecord);
-    await supabase
-      .from('widgets')
-      .update({ config: updatedVoiceConfig })
-      .eq('id', widget.id);
+    try {
+      const updatedVoiceConfig = fromConfigurationRecord(configRecord);
+      await supabase
+        .from('widgets')
+        .update({ config: updatedVoiceConfig })
+        .eq('id', widget.id);
+    } catch (syncErr) {
+      console.warn(`[widgetsDb] Warning: Failed to sync config column for ${idOrWidgetId}:`, syncErr);
+    }
 
     return {
       branding: data.branding,

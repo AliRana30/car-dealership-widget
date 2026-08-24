@@ -45,7 +45,14 @@ export async function GET(req: NextRequest, context: RouteContext) {
       websiteId: widget.websiteId || '',
       websiteName,
       status: widget.status || 'active',
-    }, { status: 200 });
+    }, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (error: any) {
     console.error('[api/widgets/[widgetId]] GET failed:', error);
     return NextResponse.json({ error: 'server_error', message: error.message }, { status: 500 });

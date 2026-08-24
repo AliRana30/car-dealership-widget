@@ -42,7 +42,14 @@ export async function GET(req: NextRequest) {
         websiteId: widget.websiteId || '',
         websiteName,
         status: widget.status || 'active',
-      }, { status: 200 });
+      }, {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      });
     }
 
     // List all widgets for dashboard/admin view
