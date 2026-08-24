@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
 
     // 1. Resolve widget ID from query, header, or payload metadata
-    let rawWidgetId =
+    const rawWidgetId =
       queryWidgetId ||
       headerWidgetId ||
       body.widgetId ||
@@ -31,10 +31,28 @@ export async function POST(req: NextRequest) {
       body.call?.metadata?.widget_id ||
       body.metadata?.widgetId ||
       body.metadata?.widget_id ||
-      '00000000-0000-0000-0000-000000000000';
+      '';
+
+    if (!rawWidgetId || rawWidgetId === '00000000-0000-0000-0000-000000000000') {
+      console.warn('[agent-tools:SCOPE_ENFORCEMENT] Tool webhook called with missing widget scope. Failing closed.');
+      return NextResponse.json({
+        success: false,
+        error: 'widget_not_found',
+        message: 'Widget scope missing or invalid.',
+      }, { status: 200 });
+    }
 
     const widget = await getWidget(rawWidgetId);
-    const resolvedWidgetId = widget?.id || rawWidgetId;
+    if (!widget) {
+      console.warn(`[agent-tools:SCOPE_ENFORCEMENT] Tool webhook widget not found for '${rawWidgetId}'. Failing closed.`);
+      return NextResponse.json({
+        success: false,
+        error: 'widget_not_found',
+        message: `Widget '${rawWidgetId}' not found.`,
+      }, { status: 200 });
+    }
+
+    const resolvedWidgetId = widget.id || rawWidgetId;
 
     // Resolve session ID for realtime navigation dispatch
     const sessionId =

@@ -79,11 +79,13 @@ function levenshtein(a: string, b: string): number {
 }
 
 /** Returns true if any query token fuzzy-matches any title token (distance ≤ maxDist) */
-function hasFuzzyMatch(queryTokens: string[], titleTokens: string[], maxDist = 2): boolean {
+function hasFuzzyMatch(queryTokens: string[], titleTokens: string[]): boolean {
   for (const qt of queryTokens) {
-    if (qt.length < 3) continue; // skip very short tokens (articles, etc.)
+    if (qt.length < 4) continue; // skip short tokens to prevent false positives (e.g. 'core' vs 'crew')
+    const maxDist = qt.length <= 5 ? 1 : 2;
     for (const tt of titleTokens) {
-      if (tt.length < 3) continue;
+      if (tt.length < 4) continue;
+      if (Math.abs(qt.length - tt.length) > 1) continue;
       if (levenshtein(qt, tt) <= maxDist) return true;
     }
   }
@@ -93,34 +95,43 @@ function hasFuzzyMatch(queryTokens: string[], titleTokens: string[], maxDist = 2
 // ── Fetch all DB rows for a widget ───────────────────────────────────────────
 
 async function fetchAllRows(widgetId: string): Promise<any[]> {
+  if (!widgetId || typeof widgetId !== 'string' || widgetId.trim() === '') {
+    console.warn('[entityResolver:SCOPE_ENFORCEMENT] fetchAllRows called with empty widgetId. Failing closed.');
+    return [];
+  }
+
   try {
-    const { getDbClient } = await import('@/config/widgetsDb');
+    const { getWidget, getDbClient, isValidUuid } = await import('@/config/widgetsDb');
     const { client } = getDbClient();
     if (!client) return [];
 
-    // Resolve the actual UUID in case widgetId is a slug
-    const { data: widgetRows } = await client
-      .from('widgets')
-      .select('id, widget_id, website_id')
-      .or(`id.eq.${widgetId},widget_id.eq.${widgetId}`);
+    const widget = await getWidget(widgetId.trim());
+    if (!widget) {
+      console.warn(`[entityResolver:SCOPE_ENFORCEMENT] fetchAllRows: Widget not found for '${widgetId}'. Failing closed.`);
+      return [];
+    }
 
-    const ids = new Set<string>([widgetId]);
-    (widgetRows || []).forEach((w: any) => {
-      if (w.id) ids.add(w.id);
-      if (w.website_id) ids.add(w.website_id);
-    });
+    const ids = new Set<string>();
+    if (widget.id && isValidUuid(widget.id)) ids.add(widget.id);
+    if (widget.websiteId && isValidUuid(widget.websiteId)) ids.add(widget.websiteId);
+    if (widget.widgetId && isValidUuid(widget.widgetId)) ids.add(widget.widgetId);
 
     const filterIds = Array.from(ids).filter(
-      (id) => /^[0-9a-f-]{36}$/i.test(id) && id !== '00000000-0000-0000-0000-000000000000',
+      (id) => id !== '00000000-0000-0000-0000-000000000000'
     );
 
-    const builder = client.from('website_data').select('*');
-    const { data: rows } =
-      filterIds.length > 0
-        ? await builder.in('widget_id', filterIds)
-        : await builder.limit(50);
+    if (filterIds.length === 0) {
+      console.warn(`[entityResolver:SCOPE_ENFORCEMENT] fetchAllRows: No valid UUIDs for widget '${widgetId}'. Failing closed.`);
+      return [];
+    }
 
-    return rows || [];
+    const { data: rows, error } = await client
+      .from('website_data')
+      .select('*')
+      .in('widget_id', filterIds);
+
+    if (error || !rows) return [];
+    return rows;
   } catch (err) {
     console.error('[entityResolver] fetchAllRows error:', err);
     return [];
@@ -425,22 +436,23 @@ export async function resolveEntityByQuery(
     if (!row.title) continue;
     const titleTokens = tokens(row.title);
     const metaCat = norm(String((row.metadata || {}).category || (row.metadata || {}).tags || ''));
+    const metaCatTokens = tokens(metaCat);
     const normTitle = norm(row.title);
 
-    if (normTitle.includes(normQuery) || normQuery.includes(normTitle)) {
+    if (normTitle.length > 0 && (normTitle === normQuery || (normTitle.length >= 4 && normQuery.includes(normTitle)))) {
       candidates.push({ record: rowToRecord(row), confidence: 'partial', title: row.title, entityId: row.id });
       continue;
     }
 
     const significant = queryTokens.filter((t) => t.length >= 3);
     if (significant.length > 0) {
-      const hitAll = significant.every((qt) => normTitle.includes(qt) || metaCat.includes(qt));
+      const hitAll = significant.every((qt) => titleTokens.includes(qt) || metaCatTokens.includes(qt));
       if (hitAll) {
         candidates.push({ record: rowToRecord(row), confidence: 'partial', title: row.title, entityId: row.id });
         continue;
       }
-      const hits = significant.filter((qt) => normTitle.includes(qt) || metaCat.includes(qt)).length;
-      if (hits >= Math.ceil(significant.length * 0.6) && hits >= 1) {
+      const hits = significant.filter((qt) => titleTokens.includes(qt) || metaCatTokens.includes(qt)).length;
+      if (hits >= Math.max(2, Math.ceil(significant.length * 0.7))) {
         candidates.push({ record: rowToRecord(row), confidence: 'partial', title: row.title, entityId: row.id });
       }
     }
@@ -474,7 +486,7 @@ export async function resolveEntityByQuery(
     for (const row of allRows) {
       if (!row.title) continue;
       const titleTokens = tokens(row.title);
-      if (hasFuzzyMatch(queryTokens, titleTokens, 2)) {
+      if (hasFuzzyMatch(queryTokens, titleTokens)) {
         candidates.push({ record: rowToRecord(row), confidence: 'fuzzy', title: row.title, entityId: row.id });
       }
     }

@@ -518,7 +518,7 @@ export async function POST(req: NextRequest) {
   const { widgetId, sessionId: incomingSessionId, lastNavUrl } = body;
   const history: any[] = Array.isArray(body.history) ? body.history : [];
   let { chatId } = body;
-  const rawContent = body.content;
+  const rawContent = body.content || (body as any).message || (body as any).text;
   const sessionId = incomingSessionId && typeof incomingSessionId === 'string' ? incomingSessionId : randomUUID();
 
   if (!rawContent || typeof rawContent !== 'string' || rawContent.trim() === '') {

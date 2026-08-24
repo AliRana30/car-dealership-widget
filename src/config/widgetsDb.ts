@@ -107,7 +107,12 @@ function fromDbRow(widgetRow: any, agentRow?: any, secretRow?: any): WidgetRecor
  * The userId parameter enforces server-side ownership isolation.
  */
 export async function getWidget(idOrWidgetId: string, userId?: string): Promise<WidgetRecord | null> {
-  const searchId = idOrWidgetId.toLowerCase();
+  if (!idOrWidgetId || typeof idOrWidgetId !== 'string' || idOrWidgetId.trim() === '') {
+    console.warn('[widgetsDb:SCOPE_ENFORCEMENT] getWidget called with empty or invalid identifier. Failing closed.');
+    return null;
+  }
+
+  const searchId = idOrWidgetId.trim().toLowerCase();
   const normalizedSearchId = searchId === 'myfrontdesk' ? 'front-desk' : searchId;
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedSearchId);
 
@@ -116,7 +121,7 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
     if (isUuid) {
       query = query.or(`id.eq.${normalizedSearchId},website_id.eq.${normalizedSearchId}`);
     } else if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk') {
-      query = query.or(`widget_id.eq.front-desk,widget_id.eq.default,widget_id.eq.lms`).order('updated_at', { ascending: false });
+      query = query.or('widget_id.eq.front-desk,widget_id.eq.default').order('updated_at', { ascending: false });
     } else {
       query = query.eq('widget_id', normalizedSearchId);
     }
@@ -125,33 +130,11 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
       query = query.eq('user_id', userId);
     }
 
-    let { data: widgetRows, error } = await query.limit(1);
+    const { data: widgetRows, error } = await query.limit(1);
 
     if (error || !widgetRows || widgetRows.length === 0) {
-      // Fallback query without strict user filter or slug match
-      const { data: fallbackRows } = await supabase.from('widgets').select('*').order('updated_at', { ascending: false }).limit(1);
-      if (fallbackRows && fallbackRows.length > 0) {
-        widgetRows = fallbackRows;
-      } else {
-        return {
-          id: '00000000-0000-0000-0000-000000000000',
-          widgetId: normalizedSearchId || 'front-desk',
-          organizationId: '00000000-0000-0000-0000-000000000000',
-          name: 'Front Desk AI Agent',
-          status: 'active',
-          provider: (process.env.VAPI_API_KEY && !process.env.RETELL_API_KEY) ? 'vapi' : 'retell',
-          agentId: process.env.RETELL_AGENT_ID || '',
-          assistantId: process.env.VAPI_ASSISTANT_ID || '',
-          credentialSecretId: '',
-          websiteId: '00000000-0000-0000-0000-000000000000',
-          allowedDomains: ['*'],
-          config: defaultVoiceWidgetConfig,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          retellApiKey: process.env.RETELL_API_KEY || '',
-          vapiApiKey: process.env.VAPI_API_KEY || '',
-        };
-      }
+      console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] Widget not found for '${idOrWidgetId}'. Failing closed.`);
+      return null;
     }
 
     const widgetRow = widgetRows[0];
@@ -648,27 +631,31 @@ export async function getRelevantWebsiteData(
   websiteOrWidgetId: string,
   query: string
 ): Promise<string> {
+  if (!websiteOrWidgetId || typeof websiteOrWidgetId !== 'string' || websiteOrWidgetId.trim() === '') {
+    console.warn('[widgetsDb:SCOPE_ENFORCEMENT] getRelevantWebsiteData called with empty websiteOrWidgetId. Failing closed.');
+    return '';
+  }
+
   try {
-    const isTargetUuid = isValidUuid(websiteOrWidgetId) && websiteOrWidgetId !== '00000000-0000-0000-0000-000000000000';
+    const targetScope = websiteOrWidgetId.trim().toLowerCase();
+    const isTargetUuid = isValidUuid(targetScope) && targetScope !== '00000000-0000-0000-0000-000000000000';
     let widgets: any[] | null = null;
     if (isTargetUuid) {
       const res = await supabase
         .from('widgets')
         .select('id, widget_id, website_id')
-        .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
+        .or(`id.eq.${targetScope},website_id.eq.${targetScope},widget_id.eq.${targetScope}`);
       widgets = res.data;
     } else {
-      const slug = (websiteOrWidgetId || 'front-desk').toLowerCase();
-      const normalizedSlug = (slug === 'default' || slug === 'myfrontdesk' || slug === '00000000-0000-0000-0000-000000000000') ? 'front-desk' : slug;
       const res = await supabase
         .from('widgets')
         .select('id, widget_id, website_id')
-        .or(`widget_id.eq.${normalizedSlug},widget_id.eq.front-desk,widget_id.eq.default,widget_id.eq.lms`);
+        .eq('widget_id', targetScope);
       widgets = res.data;
     }
 
     const widgetIds = new Set<string>();
-    if (isTargetUuid) widgetIds.add(websiteOrWidgetId);
+    if (isTargetUuid) widgetIds.add(targetScope);
     if (widgets && widgets.length > 0) {
       widgets.forEach(w => {
         if (isValidUuid(w.id)) widgetIds.add(w.id);
@@ -676,7 +663,12 @@ export async function getRelevantWebsiteData(
         if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
       });
     }
-    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
+    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id) && id !== '00000000-0000-0000-0000-000000000000');
+
+    if (filterWidgetIds.length === 0) {
+      console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] getRelevantWebsiteData: No valid widget found for scope '${websiteOrWidgetId}'. Failing closed.`);
+      return '';
+    }
 
     const trimmedQuery = query.trim().toLowerCase();
     const isGreetingOrConfirm = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help|yes|yeah|sure|yep|ok|okay|open it|go|please|do it|open that)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
@@ -686,17 +678,12 @@ export async function getRelevantWebsiteData(
 
     const constraints = parseQueryConstraints(query);
 
-    let queryBuilder = supabase.from('website_data').select('*');
-    if (filterWidgetIds.length > 0) {
-      queryBuilder = queryBuilder.in('widget_id', filterWidgetIds);
-    }
-    let { data: records } = await queryBuilder;
-    if ((!records || records.length === 0) && filterWidgetIds.length > 0) {
-      const fallback = await supabase.from('website_data').select('*').limit(35);
-      records = fallback.data;
-    }
+    const { data: records, error } = await supabase
+      .from('website_data')
+      .select('*')
+      .in('widget_id', filterWidgetIds);
 
-    if (!records || records.length === 0) {
+    if (error || !records || records.length === 0) {
       return '';
     }
 
@@ -869,6 +856,11 @@ export async function getRelevantWebsiteRecords(
   query: string,
   limit = 3
 ): Promise<WebsiteDataRecord[]> {
+  if (!websiteOrWidgetId || typeof websiteOrWidgetId !== 'string' || websiteOrWidgetId.trim() === '') {
+    console.warn('[widgetsDb:SCOPE_ENFORCEMENT] getRelevantWebsiteRecords called with empty websiteOrWidgetId. Failing closed.');
+    return [];
+  }
+
   try {
     const trimmedQuery = query.trim().toLowerCase();
     const isGreetingOrConfirm = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help|yes|yeah|sure|yep|ok|okay|open it|go|please|do it|open that)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
@@ -882,26 +874,25 @@ export async function getRelevantWebsiteRecords(
       return [];
     }
 
-    const isTargetUuid = isValidUuid(websiteOrWidgetId) && websiteOrWidgetId !== '00000000-0000-0000-0000-000000000000';
+    const targetScope = websiteOrWidgetId.trim().toLowerCase();
+    const isTargetUuid = isValidUuid(targetScope) && targetScope !== '00000000-0000-0000-0000-000000000000';
     let widgets: any[] | null = null;
     if (isTargetUuid) {
       const res = await supabase
         .from('widgets')
         .select('id, widget_id, website_id')
-        .or(`id.eq.${websiteOrWidgetId},website_id.eq.${websiteOrWidgetId},widget_id.eq.${websiteOrWidgetId}`);
+        .or(`id.eq.${targetScope},website_id.eq.${targetScope},widget_id.eq.${targetScope}`);
       widgets = res.data;
     } else {
-      const slug = (websiteOrWidgetId || 'front-desk').toLowerCase();
-      const normalizedSlug = (slug === 'default' || slug === 'myfrontdesk' || slug === '00000000-0000-0000-0000-000000000000') ? 'front-desk' : slug;
       const res = await supabase
         .from('widgets')
         .select('id, widget_id, website_id')
-        .or(`widget_id.eq.${normalizedSlug},widget_id.eq.front-desk,widget_id.eq.default,widget_id.eq.lms`);
+        .eq('widget_id', targetScope);
       widgets = res.data;
     }
 
     const widgetIds = new Set<string>();
-    if (isTargetUuid) widgetIds.add(websiteOrWidgetId);
+    if (isTargetUuid) widgetIds.add(targetScope);
     if (widgets && widgets.length > 0) {
       widgets.forEach(w => {
         if (isValidUuid(w.id)) widgetIds.add(w.id);
@@ -909,17 +900,17 @@ export async function getRelevantWebsiteRecords(
         if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
       });
     }
-    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
+    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id) && id !== '00000000-0000-0000-0000-000000000000');
 
-    let queryBuilder = supabase.from('website_data').select('*');
-    if (filterWidgetIds.length > 0) {
-      queryBuilder = queryBuilder.in('widget_id', filterWidgetIds);
+    if (filterWidgetIds.length === 0) {
+      console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] getRelevantWebsiteRecords: No valid widget found for scope '${websiteOrWidgetId}'. Failing closed.`);
+      return [];
     }
-    let { data: records, error } = await queryBuilder;
-    if ((!records || records.length === 0) && filterWidgetIds.length > 0) {
-      const fallback = await supabase.from('website_data').select('*').limit(35);
-      records = fallback.data;
-    }
+
+    const { data: records, error } = await supabase
+      .from('website_data')
+      .select('*')
+      .in('widget_id', filterWidgetIds);
 
     if (error || !records || records.length === 0) return [];
 
@@ -973,27 +964,25 @@ export async function getRelevantWebsiteRecords(
 
       if (constraints.specificKeywords.length > 0) {
         for (const word of constraints.specificKeywords) {
-          if (titleLower.includes(word) || metaCategory.includes(word)) {
+          const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const wordBoundaryRegex = new RegExp(`\\b${escapedWord}\\b`, 'i');
+          if (wordBoundaryRegex.test(titleLower) || wordBoundaryRegex.test(metaCategory)) {
             score += 80;
             titleHits++;
-          } else if (contentLower.includes(word)) {
+          } else if (wordBoundaryRegex.test(contentLower)) {
             score += 15;
             contentHits++;
           }
         }
       }
 
-      // Relaxed keyword filter: when specific keywords were given but no title/category hit,
-      // keep catalog entities with at least a content hit (broad/synonym queries). Only
-      // hard-eliminate items that matched nothing at all.
       if (constraints.specificKeywords.length > 0 && !exactTitleMatch && titleHits === 0) {
         if (contentHits === 0) {
-          // Catalog item with zero keyword signal — give it a small base score for broad queries
-          // ("what cars do you have?") rather than a hard -100 that empties all results.
-          score = Math.max(score, 2);
+          // Zero keyword signal for specific search: penalize so it won't be returned
+          score -= 100;
         } else {
           // Content hit present — keep with modest score
-          score = Math.max(score, 10);
+          score += 10;
         }
       }
 
@@ -1163,9 +1152,11 @@ export async function getWebsiteContextSummary(websiteId: string): Promise<strin
       }
     }
 
-    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id));
+    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id) && id !== '00000000-0000-0000-0000-000000000000');
     if (filterWidgetIds.length === 0) {
-      filterWidgetIds.push('00000000-0000-0000-0000-000000000000');
+      console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] getWebsiteContextSummary: No valid widget found for scope '${websiteId}'. Failing closed.`);
+      contextSummaryCache.set(cacheKey, { summary: '', expiresAt: now + 300_000 });
+      return '';
     }
 
     // Select lightweight text fields + source_url

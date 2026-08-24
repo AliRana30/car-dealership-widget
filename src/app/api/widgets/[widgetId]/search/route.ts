@@ -48,8 +48,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'not_found', message: 'Widget not found' }, { status: 404, headers });
     }
 
-    const websiteId = widget.websiteId || '00000000-0000-0000-0000-000000000000';
-    const records = await getRelevantWebsiteRecords(websiteId, query, 3);
+    const records = await getRelevantWebsiteRecords(widget.id, query, 3);
 
     return NextResponse.json(records, { status: 200, headers });
   } catch (err: any) {

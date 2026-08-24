@@ -58,9 +58,11 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     // Resolve widget ID if slug was passed
     const widget = await getWidget(widgetId);
-    const resolvedWidgetId = widget?.id || widgetId;
+    if (!widget) {
+      return NextResponse.json({ error: 'not_found', message: `Widget '${widgetId}' not found` }, { status: 404, headers });
+    }
 
-    const entities = await searchEntities(resolvedWidgetId, query, limit);
+    const entities = await searchEntities(widget.id, query, limit);
 
     return NextResponse.json({
       entities,
@@ -88,9 +90,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const widget = await getWidget(widgetId);
-    const resolvedWidgetId = widget?.id || widgetId;
+    if (!widget) {
+      return NextResponse.json({ error: 'not_found', message: `Widget '${widgetId}' not found` }, { status: 404, headers });
+    }
 
-    const entities = await searchEntities(resolvedWidgetId, query, limit);
+    const entities = await searchEntities(widget.id, query, limit);
 
     return NextResponse.json({
       entities,

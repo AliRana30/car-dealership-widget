@@ -153,10 +153,13 @@ export async function searchEntities(
   query: string,
   limit: number = 3
 ): Promise<Entity[]> {
-  if (!query || !query.trim() || !widgetId) return [];
+  if (!query || !query.trim() || !widgetId || !widgetId.trim()) {
+    console.warn('[tools:SCOPE_ENFORCEMENT] searchEntities called with missing widgetId or query. Failing closed.');
+    return [];
+  }
 
   try {
-    const resolvedEntities = await resolveEntityByQuery(widgetId, query, limit);
+    const resolvedEntities = await resolveEntityByQuery(widgetId.trim(), query, limit);
     if (resolvedEntities && resolvedEntities.length > 0) {
       return resolvedEntities.slice(0, limit).map((re, idx) => {
         const r = re.record;
@@ -212,20 +215,57 @@ export async function getEntityDetails(
   widgetId: string,
   entityId: string
 ): Promise<Entity | null> {
-  if (!entityId || !widgetId) return null;
+  if (!entityId || typeof entityId !== 'string' || !entityId.trim() || !widgetId || typeof widgetId !== 'string' || !widgetId.trim()) {
+    console.warn('[tools:SCOPE_ENFORCEMENT] getEntityDetails called with missing widgetId or entityId. Failing closed.');
+    return null;
+  }
+
+  const { getWidget, isValidUuid } = await import('@/config/widgetsDb');
+  const widget = await getWidget(widgetId.trim());
+  if (!widget) {
+    console.warn(`[tools:SCOPE_ENFORCEMENT] getEntityDetails: Widget not found for '${widgetId}'. Failing closed.`);
+    return null;
+  }
+
+  const allowedIds = new Set<string>();
+  if (widget.id && isValidUuid(widget.id)) allowedIds.add(widget.id);
+  if (widget.websiteId && isValidUuid(widget.websiteId)) allowedIds.add(widget.websiteId);
+  if (widget.widgetId && isValidUuid(widget.widgetId)) allowedIds.add(widget.widgetId);
+
+  const filterIds = Array.from(allowedIds).filter(
+    (id) => id !== '00000000-0000-0000-0000-000000000000'
+  );
+
+  if (filterIds.length === 0) {
+    console.warn(`[tools:SCOPE_ENFORCEMENT] getEntityDetails: No valid UUIDs for widget '${widgetId}'. Failing closed.`);
+    return null;
+  }
 
   const supabase = getSupabase();
   const cleanKey = entityId.trim();
 
-  // 1. Try exact UUID match
+  // 1. Try exact UUID match strictly scoped to widget
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanKey)) {
     const { data: row } = await supabase
       .from('website_data')
       .select('*')
       .eq('id', cleanKey)
+      .in('widget_id', filterIds)
       .maybeSingle();
 
     if (row) return mapRowToEntity(row);
+
+    // If row exists in website_data but belongs to another widget, fail closed!
+    const { data: foreignCheck } = await supabase
+      .from('website_data')
+      .select('id, widget_id')
+      .eq('id', cleanKey)
+      .maybeSingle();
+
+    if (foreignCheck) {
+      console.warn(`[tools:SCOPE_ENFORCEMENT] Cross-tenant access blocked: entity '${cleanKey}' belongs to '${foreignCheck.widget_id}', not '${widgetId}'.`);
+      return null;
+    }
   }
 
   // 2. Try 4-tier universal entity resolver (exact/partial/fuzzy/semantic)
@@ -454,6 +494,7 @@ export async function executeAgentTool(
           count: entities.length,
           query,
           results: formattedResults,
+          entities: formattedResults,
         },
       };
     }

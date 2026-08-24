@@ -48,9 +48,14 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { widgetId, entityId } = await params;
 
     const widget = await getWidget(widgetId);
-    const resolvedWidgetId = widget?.id || widgetId;
+    if (!widget) {
+      return NextResponse.json(
+        { error: 'not_found', message: `Widget '${widgetId}' not found` },
+        { status: 404, headers }
+      );
+    }
 
-    const entity = await getEntityDetails(resolvedWidgetId, entityId);
+    const entity = await getEntityDetails(widget.id, entityId);
 
     if (!entity) {
       return NextResponse.json(
