@@ -21,6 +21,7 @@ import {
   type GroundingMetadata,
 } from '@/lib/retrieval/grounding';
 import { executeUnifiedTool } from '@/lib/agents/unifiedTools';
+import { planAndExecute } from '@/lib/agents/queryPlanner';
 import {
   checkAndIncrementChatTurns,
   checkSessionChatRateLimit,
@@ -619,13 +620,14 @@ export async function POST(req: NextRequest) {
     history
   );
 
-  // ── Retrieve via Unified Tool Layer (shared with Retell & Vapi voice agents) ──
-  const toolResult = await executeUnifiedTool(
+  // ── Retrieve via Bounded Agentic Query Planner ───────────────────────────
+  const allowNav = widget.config?.behavior?.allowAgentNavigation ?? false;
+  const planResult = await planAndExecute(
+    resolvedQuery,
     retrievalId,
-    'search_knowledge',
-    { query: resolvedQuery, limit: 6 },
-    { sessionId, businessName }
+    { sessionId, businessName, allowNavigation: allowNav }
   );
+  const toolResult = planResult.primary;
 
   // ── Map unified result → local validation shape used by rendering logic ─────
   //

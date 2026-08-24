@@ -260,11 +260,13 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
   // 11. Comparison Intent
   let isComparison = false;
   let comparisonQueries: string[] = [];
-  const vsMatch = cleanQuery.match(/(.+?)\s+(?:vs\.?|versus|compared to)\s+(.+)/i);
+  const vsMatch = cleanQuery.match(/(?:compare\s+|difference between\s+)?(.+?)\s+(?:vs\.?|versus|compared to)\s+(.+)/i);
   const compareMatch = cleanQuery.match(/(?:compare|difference between)\s+(.+?)\s+(?:and|with|to)\s+(.+)/i);
   if (vsMatch && vsMatch[1] && vsMatch[2]) {
     isComparison = true;
-    comparisonQueries = [vsMatch[1].trim(), vsMatch[2].trim()];
+    const q1 = vsMatch[1].replace(/^(?:compare|difference between)\s+/i, '').trim();
+    const q2 = vsMatch[2].replace(/\s+(?:and|also)\s+.*$/i, '').trim();
+    comparisonQueries = [q1, q2];
   } else if (compareMatch && compareMatch[1] && compareMatch[2]) {
     isComparison = true;
     comparisonQueries = [compareMatch[1].trim(), compareMatch[2].trim()];
