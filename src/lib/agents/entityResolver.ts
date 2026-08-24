@@ -384,181 +384,54 @@ export async function resolveEntityByQuery(
 ): Promise<ResolvedEntity[]> {
   if (!query?.trim() || !widgetId) return [];
 
-  const normQuery = norm(query);
-  const queryTokens = tokens(query);
-  const constraints = extractQueryConstraints(query);
-
-  // ── Comparison Intent Handler ───────────────────────────────────────────────
-  if (constraints.isComparison && Array.isArray(constraints.comparisonQueries) && constraints.comparisonQueries.length >= 2) {
-    const comparisonResults: ResolvedEntity[] = [];
-    for (const qPart of constraints.comparisonQueries) {
-      const matched = await resolveEntityByQuery(widgetId, qPart, 1);
-      if (matched.length > 0) {
-        comparisonResults.push(matched[0]);
-      }
-    }
-    if (comparisonResults.length > 0) return dedupe(comparisonResults);
-  }
-
-  // ── Tier 4 fallback: semantic via widgetsDb ─────────────────────────────────
-  const [allRows, semanticRecords] = await Promise.all([
-    fetchAllRows(widgetId),
-    (async () => {
-      try {
-        const { getRelevantWebsiteRecords } = await import('@/config/widgetsDb');
-        return await getRelevantWebsiteRecords(widgetId, query, limit);
-      } catch {
-        return [];
-      }
-    })(),
-  ]);
-
-  if (allRows.length === 0 && semanticRecords.length === 0) return [];
-
-  let candidates: ResolvedEntity[] = [];
-
-  // ── Tier 1: Exact title match ────────────────────────────────────────────────
-  for (const row of allRows) {
-    if (!row.title) continue;
-    if (norm(row.title) === normQuery) {
-      candidates.push({ record: rowToRecord(row), confidence: 'exact', title: row.title, entityId: row.id });
-    }
-  }
-
-  // Single entity focus guard: if exact match found, return ONLY that single item!
-  if (candidates.length > 0) {
-    const { filtered } = applyConstraints(candidates, constraints);
-    return filtered.slice(0, 1); // Single exact match
-  }
-
-  // ── Tier 2: Partial / alias match ───────────────────────────────────────────
-  for (const row of allRows) {
-    if (!row.title) continue;
-    const titleTokens = tokens(row.title);
-    const metaCat = norm(String((row.metadata || {}).category || (row.metadata || {}).tags || ''));
-    const metaCatTokens = tokens(metaCat);
-    const normTitle = norm(row.title);
-
-    if (normTitle.length > 0 && (normTitle === normQuery || (normTitle.length >= 4 && normQuery.includes(normTitle)))) {
-      candidates.push({ record: rowToRecord(row), confidence: 'partial', title: row.title, entityId: row.id });
-      continue;
-    }
-
-    const significant = queryTokens.filter((t) => t.length >= 3);
-    if (significant.length > 0) {
-      const hitAll = significant.every((qt) => titleTokens.includes(qt) || metaCatTokens.includes(qt));
-      if (hitAll) {
-        candidates.push({ record: rowToRecord(row), confidence: 'partial', title: row.title, entityId: row.id });
-        continue;
-      }
-      const hits = significant.filter((qt) => titleTokens.includes(qt) || metaCatTokens.includes(qt)).length;
-      if (hits >= Math.max(2, Math.ceil(significant.length * 0.7))) {
-        candidates.push({ record: rowToRecord(row), confidence: 'partial', title: row.title, entityId: row.id });
-      }
-    }
-  }
-
-  if (candidates.length > 0) {
-    const deduped = dedupe(candidates);
-    const { filtered, noMatchReason } = applyConstraints(deduped, constraints);
-    if (filtered.length > 0) return filtered.slice(0, limit);
-
-    // Explicit constraint eliminated candidates: label alternatives clearly
-    if (noMatchReason) {
-      return deduped.slice(0, Math.min(3, limit)).map(item => ({
-        ...item,
-        confidence: 'semantic',
-        record: {
-          ...item.record,
-          metadata: {
-            ...(item.record.metadata || {}),
-            constraintViolated: true,
-            noMatchReason,
-            isAlternative: true,
-          },
-        },
-      }));
-    }
-  }
-
-  // ── Tier 3: True pgvector Semantic Similarity ─────────────────────────────
   try {
-    const { searchWebsiteDataVector } = await import('@/config/widgetsDb');
-    const vectorRecords = await searchWebsiteDataVector(widgetId, query, limit, 0.25);
-    if (vectorRecords.length > 0) {
-      const vectorEntities: ResolvedEntity[] = vectorRecords.map((r) => ({
-        record: r,
-        confidence: 'semantic' as MatchConfidence,
-        title: r.title || 'Untitled',
-        entityId: r.id || '',
-      }));
-      const { filtered, noMatchReason } = applyConstraints(vectorEntities, constraints);
-      if (filtered.length > 0) return filtered.slice(0, limit);
+    const { hybridRetrieve } = await import('@/lib/retrieval/hybridRag');
+    const output = await hybridRetrieve(widgetId, query, { limit });
 
-      if (noMatchReason) {
-        return vectorEntities.slice(0, Math.min(3, limit)).map(item => ({
-          ...item,
-          confidence: 'semantic',
-          record: {
-            ...item.record,
-            metadata: {
-              ...(item.record.metadata || {}),
-              constraintViolated: true,
-              noMatchReason,
-              isAlternative: true,
-            },
-          },
-        }));
-      }
-    }
-  } catch (err) {
-    console.warn('[entityResolver] pgvector search exception, falling back:', err);
-  }
+    if (output.results.length === 0) return [];
 
-  // ── Tier 4: Fallback Fuzzy / Keyword Retrieval ───────────────────────────────
-  if (queryTokens.length > 0) {
-    for (const row of allRows) {
-      if (!row.title) continue;
-      const titleTokens = tokens(row.title);
-      if (hasFuzzyMatch(queryTokens, titleTokens)) {
-        candidates.push({ record: rowToRecord(row), confidence: 'fuzzy', title: row.title, entityId: row.id });
-      }
-    }
-    if (candidates.length > 0) {
-      const deduped = dedupe(candidates);
-      const { filtered } = applyConstraints(deduped, constraints);
-      if (filtered.length > 0) return filtered.slice(0, limit);
-    }
-  }
+    return output.results.map(r => {
+      let conf: MatchConfidence = 'semantic';
+      if (r.matchType === 'exact') conf = 'exact';
+      else if (r.matchType === 'partial') conf = 'partial';
+      else if (r.matchType === 'vector') conf = 'semantic';
+      else if (r.matchType === 'keyword') conf = 'fuzzy';
+      else if (r.matchType === 'broad_catalog') conf = 'fuzzy';
 
-  const semanticEntities: ResolvedEntity[] = semanticRecords.map((r) => ({
-    record: r,
-    confidence: 'semantic' as MatchConfidence,
-    title: r.title || 'Untitled',
-    entityId: r.id || '',
-  }));
-
-  const { filtered, noMatchReason } = applyConstraints(semanticEntities, constraints);
-  if (filtered.length > 0) return filtered.slice(0, limit);
-
-  // If constraints failed, return labeled alternatives
-  if (noMatchReason && semanticEntities.length > 0) {
-    return semanticEntities.slice(0, Math.min(3, limit)).map(item => ({
-      ...item,
-      confidence: 'semantic',
-      record: {
-        ...item.record,
-        metadata: {
-          ...(item.record.metadata || {}),
-          constraintViolated: true,
-          noMatchReason,
-          isAlternative: true,
+      return {
+        record: {
+          id: r.id,
+          title: r.title,
+          description: r.description,
+          shortDescription: r.shortDescription,
+          content: r.content,
+          images: r.images,
+          imageUrls: r.imageUrls,
+          price: r.price,
+          currency: r.currency,
+          availability: r.availability,
+          rating: r.rating,
+          reviews: r.reviews,
+          attributes: r.attributes,
+          sourceUrl: r.sourceUrl,
+          entityType: r.entityType,
+          category: r.category,
+          level: r.level,
+          metadata: r.metadata,
+          similarity: (r.metadata as any)?.similarity,
+          firstSeen: r.firstSeen,
+          lastSeen: r.lastSeen,
+          freshnessStatus: r.freshnessStatus,
         },
-      },
-    }));
+        confidence: conf,
+        title: r.title,
+        entityId: r.id,
+      };
+    });
+  } catch (err) {
+    console.error(`[entityResolver] Error in resolveEntityByQuery:`, err);
+    return [];
   }
-
-  return [];
 }
 
 /**

@@ -640,187 +640,9 @@ export async function getRelevantWebsiteData(
   }
 
   try {
-    const targetScope = websiteOrWidgetId.trim().toLowerCase();
-    const isTargetUuid = isValidUuid(targetScope) && targetScope !== '00000000-0000-0000-0000-000000000000';
-    let widgets: any[] | null = null;
-    if (isTargetUuid) {
-      const res = await supabase
-        .from('widgets')
-        .select('id, widget_id, website_id')
-        .or(`id.eq.${targetScope},website_id.eq.${targetScope},widget_id.eq.${targetScope}`);
-      widgets = res.data;
-    } else {
-      const res = await supabase
-        .from('widgets')
-        .select('id, widget_id, website_id')
-        .eq('widget_id', targetScope);
-      widgets = res.data;
-    }
-
-    const widgetIds = new Set<string>();
-    if (isTargetUuid) widgetIds.add(targetScope);
-    if (widgets && widgets.length > 0) {
-      widgets.forEach(w => {
-        if (isValidUuid(w.id)) widgetIds.add(w.id);
-        if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
-        if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
-      });
-    }
-    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id) && id !== '00000000-0000-0000-0000-000000000000');
-
-    if (filterWidgetIds.length === 0) {
-      console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] getRelevantWebsiteData: No valid widget found for scope '${websiteOrWidgetId}'. Failing closed.`);
-      return '';
-    }
-
-    const trimmedQuery = query.trim().toLowerCase();
-    const isGreetingOrConfirm = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help|yes|yeah|sure|yep|ok|okay|open it|go|please|do it|open that)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
-    if (isGreetingOrConfirm) {
-      return '';
-    }
-
-    const constraints = parseQueryConstraints(query);
-
-    const { data: records, error } = await supabase
-      .from('website_data')
-      .select('*')
-      .in('widget_id', filterWidgetIds);
-
-    if (error || !records || records.length === 0) {
-      return '';
-    }
-
-    const scored = records.map(record => {
-      let score = 0;
-      const titleLower = (record.title || '').toLowerCase();
-      const contentLower = (record.content || '').toLowerCase();
-      const meta = (record.metadata || {}) as Record<string, any>;
-      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice || record.price);
-      const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
-      const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length);
-      // Expanded catalog entity check — vertical-agnostic (covers dealerships, real-estate, etc.)
-      const isCatalogEntity = [
-        'service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan',
-        'car', 'truck', 'suv', 'listing', 'make', 'model', 'inventory', 'item',
-      ].includes((record.entity_type || '').toLowerCase()) || hasPricingOrMedia;
-      const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal|security/.test(titleLower);
-      const isAboutEntity = /about|mission|story|empowering|founder|developer|team/.test(titleLower);
-      const isFaqEntity = ['faq'].includes(record.entity_type) || /faq|frequently asked|questions/.test(titleLower);
-
-      // Specific intent routing
-      if (constraints.isAboutQuery && isAboutEntity) score += 120;
-      if (constraints.isPolicyQuery && isPolicyEntity) score += 120;
-      if (constraints.isFaqQuery && isFaqEntity) score += 120;
-
-      // Penalize mismatched intents
-      if (constraints.isAboutQuery && (isCatalogEntity || isPolicyEntity)) score -= 80;
-      if (constraints.isPolicyQuery && isCatalogEntity) score -= 80;
-
-      // Budget filtering
-      if (constraints.maxPrice !== undefined) {
-        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 80;
-        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 300;
-      }
-      if (constraints.minPrice !== undefined) {
-        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 80;
-        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 300;
-      }
-
-      // Rating boost
-      if (constraints.sortByRating && rating >= 4) {
-        score += rating * 10;
-      }
-
-      // Exact title match (highest priority)
-      let exactTitleMatch = false;
-      if (titleLower && (trimmedQuery.includes(titleLower) || titleLower.includes(trimmedQuery))) {
-        score += 200;
-        exactTitleMatch = true;
-      }
-
-      // Specific keyword matching — title/category hits score highest, content hits score lower
-      let titleHits = 0;
-      let contentHits = 0;
-      const metaCategory = String(meta.category || meta.tags || meta.level || '').toLowerCase();
-
-      if (constraints.specificKeywords.length > 0) {
-        for (const word of constraints.specificKeywords) {
-          if (titleLower.includes(word) || metaCategory.includes(word)) {
-            score += 80;
-            titleHits++;
-          } else if (contentLower.includes(word)) {
-            score += 15;
-            contentHits++;
-          }
-        }
-      }
-
-      // Relaxed filter: when specific keywords are provided but no title/category hit is found,
-      // only hard-eliminate clearly irrelevant pages (policy/about/faq). Catalog entities that
-      // matched content keywords still pass with a reduced score so broad/synonym queries
-      // (e.g. "show me your cars" when titles say "2024 Jeep Wrangler") still surface results.
-      if (constraints.specificKeywords.length > 0 && !exactTitleMatch && titleHits === 0) {
-        if (isPolicyEntity || isAboutEntity || isFaqEntity) {
-          // Clearly irrelevant — hard eliminate
-          return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits };
-        }
-        if (contentHits === 0 && !isCatalogEntity) {
-          // Not a catalog item and no keyword hit anywhere — eliminate
-          return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
-        }
-        // Catalog entity with at least a content hit → keep with modest base score
-        if (contentHits > 0) {
-          score = Math.max(score, 5);
-        } else if (isCatalogEntity) {
-          // Catalog entity, no keyword match at all — give it a low base score so broad catalog
-          // queries ("what do you have?") still return *something* rather than empty
-          score = Math.max(score, 1);
-        }
-      }
-
-      if (constraints.isCatalogQuery && hasPricingOrMedia) score += 30;
-
-      return { record, score, itemPrice, rating, exactTitleMatch, titleHits, contentHits };
-    });
-
-    // When specific keywords were given but NOTHING matched title/category, fall back to any
-    // content-level matches before giving up. Only return empty when there's truly no signal.
-    if (constraints.specificKeywords.length > 0) {
-      const anyTitleMatch = scored.some(s => s.titleHits > 0 || s.exactTitleMatch);
-      const anyContentMatch = scored.some(s => (s as any).contentHits > 0);
-      if (!anyTitleMatch && !anyContentMatch && !constraints.isAboutQuery && !constraints.isPolicyQuery && !constraints.isFaqQuery) {
-        // Absolute zero signal — return empty so LLM can honestly say "not found"
-        return '';
-      }
-    }
-
-    const validMatches = scored.filter(s => s.score > 0);
-    if (validMatches.length === 0) return '';
-
-    // If there is an exact title match, prioritize exact match
-    const exactMatches = validMatches.filter(s => s.exactTitleMatch);
-    const candidateList = exactMatches.length > 0 ? exactMatches : validMatches;
-
-    // Apply sorting
-    if (constraints.sortByPrice === 'asc') {
-      candidateList.sort((a, b) => (a.itemPrice ?? 999999) - (b.itemPrice ?? 999999));
-    } else if (constraints.sortByPrice === 'desc') {
-      candidateList.sort((a, b) => (b.itemPrice ?? 0) - (a.itemPrice ?? 0));
-    } else if (constraints.sortByRating) {
-      candidateList.sort((a, b) => b.rating - a.rating);
-    } else {
-      candidateList.sort((a, b) => b.score - a.score);
-    }
-
-    const topMatches = candidateList.slice(0, 4);
-    return topMatches.map(s => {
-      const r = s.record;
-      const meta = (r.metadata || {}) as Record<string, any>;
-      const price = meta.price || r.price ? ` [Price: ${meta.price || r.price}]` : '';
-      const url = r.source_url ? ` [SourceURL: ${r.source_url}]` : '';
-      const desc = r.short_description ? `Description: ${r.short_description}\n` : '';
-      return `Title: ${r.title}${price}${url}\n${desc}Content: ${r.content}`;
-    }).join('\n\n');
+    const { hybridRetrieve } = await import('@/lib/retrieval/hybridRag');
+    const result = await hybridRetrieve(websiteOrWidgetId, query, { limit: 4 });
+    return result.contextSummary;
   } catch (err) {
     console.error(`[widgetsDb] Error in getRelevantWebsiteData:`, err);
     return '';
@@ -999,8 +821,7 @@ export async function searchWebsiteDataVector(
 
 /**
  * Returns scored, structured website data records for frontend card rendering.
- * First executes real pgvector cosine similarity search. If vector search is unavailable
- * or returns no matches, seamlessly falls back to keyword retrieval.
+ * Delegates to the unified Hybrid RAG engine (exact, partial, vector, keyword, constraints).
  */
 export async function getRelevantWebsiteRecords(
   websiteOrWidgetId: string,
@@ -1013,261 +834,32 @@ export async function getRelevantWebsiteRecords(
   }
 
   try {
-    const trimmedQuery = query.trim().toLowerCase();
-    const isGreetingOrConfirm = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help|yes|yeah|sure|yep|ok|okay|open it|go|please|do it|open that)$/i.test(trimmedQuery) || trimmedQuery.length < 3;
-    if (isGreetingOrConfirm) {
-      return [];
-    }
-
-    const constraints = parseQueryConstraints(query);
-    // If user asked purely about About, Policy, FAQ, or Contact info, return 0 catalog cards!
-    if (constraints.isAboutQuery || constraints.isPolicyQuery || constraints.isFaqQuery || constraints.isContactQuery) {
-      return [];
-    }
-
-    // 1. Try real pgvector search first
-    const vectorMatches = await searchWebsiteDataVector(websiteOrWidgetId, query, limit, 0.25);
-    if (vectorMatches.length > 0) {
-      return vectorMatches.slice(0, limit);
-    }
-
-    const targetScope = websiteOrWidgetId.trim().toLowerCase();
-    const isTargetUuid = isValidUuid(targetScope) && targetScope !== '00000000-0000-0000-0000-000000000000';
-    let widgets: any[] | null = null;
-    if (isTargetUuid) {
-      const res = await supabase
-        .from('widgets')
-        .select('id, widget_id, website_id')
-        .or(`id.eq.${targetScope},website_id.eq.${targetScope},widget_id.eq.${targetScope}`);
-      widgets = res.data;
-    } else {
-      const res = await supabase
-        .from('widgets')
-        .select('id, widget_id, website_id')
-        .eq('widget_id', targetScope);
-      widgets = res.data;
-    }
-
-    const widgetIds = new Set<string>();
-    if (isTargetUuid) widgetIds.add(targetScope);
-    if (widgets && widgets.length > 0) {
-      widgets.forEach(w => {
-        if (isValidUuid(w.id)) widgetIds.add(w.id);
-        if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
-        if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
-      });
-    }
-    const filterWidgetIds = Array.from(widgetIds).filter(id => isValidUuid(id) && id !== '00000000-0000-0000-0000-000000000000');
-
-    if (filterWidgetIds.length === 0) {
-      console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] getRelevantWebsiteRecords: No valid widget found for scope '${websiteOrWidgetId}'. Failing closed.`);
-      return [];
-    }
-
-    const { data: records, error } = await supabase
-      .from('website_data')
-      .select('*')
-      .in('widget_id', filterWidgetIds);
-
-    if (error || !records || records.length === 0) return [];
-
-    const scored = records.map(record => {
-      let score = 0;
-      const titleLower = (record.title || '').toLowerCase();
-      const contentLower = (record.content || '').toLowerCase();
-      const meta = (record.metadata || {}) as Record<string, any>;
-      const itemPrice = parsePriceValue(meta.price || meta.cost || meta.estimatedPrice || record.price);
-      const rating = typeof meta.ratings === 'number' ? meta.ratings : typeof meta.rating === 'number' ? meta.rating : 0;
-      const hasPricingOrMedia = Boolean(itemPrice) || Boolean(record.image_urls?.length) || Boolean(meta.images?.length);
-      // Expanded catalog entity check — vertical-agnostic (dealerships, real-estate, etc.)
-      const isCatalogEntity = [
-        'service', 'product', 'course', 'pricing', 'vehicle', 'property', 'plan',
-        'car', 'truck', 'suv', 'listing', 'make', 'model', 'inventory', 'item',
-      ].includes((record.entity_type || '').toLowerCase()) || hasPricingOrMedia;
-      const isPolicyEntity = ['text'].includes(record.entity_type) || /policy|terms|privacy|cookie|compliance|legal/.test(titleLower);
-
-      if (!isCatalogEntity || isPolicyEntity) return { record, score: -100, itemPrice, rating, exactTitleMatch: false, titleHits: 0, contentHits: 0 };
-
-      // Budget filtering
-      if (constraints.maxPrice !== undefined) {
-        if (itemPrice !== null && itemPrice <= constraints.maxPrice) score += 80;
-        else if (itemPrice !== null && itemPrice > constraints.maxPrice) score -= 300;
-      }
-      if (constraints.minPrice !== undefined) {
-        if (itemPrice !== null && itemPrice >= constraints.minPrice) score += 80;
-        else if (itemPrice !== null && itemPrice < constraints.minPrice) score -= 300;
-      }
-
-      // Rating boost
-      if (constraints.sortByRating && rating >= 4) {
-        score += rating * 10;
-      }
-
-      // Exact title / entity match
-      let exactTitleMatch = false;
-      const normTitleStr = (titleLower || '').replace(/[^a-z0-9]/g, '');
-      const normQueryStr = (trimmedQuery || '').replace(/[^a-z0-9]/g, '');
-      if (normTitleStr.length > 0 && normTitleStr === normQueryStr) {
-        score += 300;
-        exactTitleMatch = true;
-      } else if (titleLower && (trimmedQuery.includes(titleLower) || titleLower.includes(trimmedQuery))) {
-        score += 120;
-      }
-
-      // Specific keyword match in title, category, tags
-      let titleHits = 0;
-      let contentHits = 0;
-      const metaStrings = Object.values(meta)
-        .filter(v => typeof v === 'string' || typeof v === 'number')
-        .join(' ')
-        .toLowerCase();
-
-      if (constraints.specificKeywords.length > 0) {
-        for (const word of constraints.specificKeywords) {
-          const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const wordBoundaryRegex = new RegExp(`\\b${escapedWord}\\b`, 'i');
-          if (wordBoundaryRegex.test(titleLower) || wordBoundaryRegex.test(metaStrings)) {
-            score += 80;
-            titleHits++;
-          } else if (wordBoundaryRegex.test(contentLower)) {
-            score += 25;
-            contentHits++;
-          }
-        }
-      }
-
-      if (constraints.specificKeywords.length > 0 && !exactTitleMatch && titleHits === 0) {
-        if (contentHits === 0) {
-          // Zero keyword signal for specific search: penalize so it won't be returned
-          score -= 100;
-        } else {
-          // Content hit present — keep with modest score
-          score += 10;
-        }
-      }
-
-      const isDirectoryPage = record.source_url && /\/(courses|products|services|catalog|inventory|shop|all)\/?$/i.test(record.source_url) && !itemPrice;
-      if (isDirectoryPage) {
-        score -= 60;
-      }
-
-      if (itemPrice !== null && itemPrice > 0) {
-        score += 50;
-      }
-
-      if (hasPricingOrMedia) score += 30;
-
-      return { record, score, itemPrice, rating, exactTitleMatch, titleHits, contentHits };
-    });
-
-    // If specific topic keywords were asked and NOTHING in the catalog matched title, category,
-    // OR content, return [] so the agent correctly says "not found" rather than hallucinating.
-    // We keep results when content-level hits exist (broad/synonym queries like "show me cars").
-    // Filter out broad generic catalog words so "all offerings" is treated as broad catalog search
-    const BROAD_CATALOG_WORDS = new Set([
-      'offering', 'offerings', 'program', 'programs', 'course', 'courses', 'product', 'products',
-      'service', 'services', 'inventory', 'catalog', 'all', 'item', 'items', 'list', 'show',
-      'vehicle', 'vehicles', 'car', 'cars', 'truck', 'trucks', 'suv', 'suvs', 'auto', 'automobile', 'automotive'
-    ]);
-    const trueSpecificKeywords = constraints.specificKeywords.filter(w => !BROAD_CATALOG_WORDS.has(w));
-
-    if (trueSpecificKeywords.length > 0) {
-      const anyTitleMatch = scored.some(s => s.exactTitleMatch || s.titleHits > 0);
-      const anyContentMatch = scored.some(s => (s as any).contentHits > 0);
-      if (!anyTitleMatch && !anyContentMatch) {
-        return [];
-      }
-    }
-
-    const validMatches = scored.filter(s => s.score > 0);
-    if (validMatches.length === 0) return [];
-
-    // If an exact title match was found for a single specific item, return ONLY that specific item
-    const exactMatches = validMatches.filter(s => s.exactTitleMatch);
-    const candidateList = exactMatches.length > 0 ? exactMatches : validMatches;
-
-    // Apply sorting
-    if (constraints.sortByPrice === 'asc') {
-      candidateList.sort((a, b) => (a.itemPrice ?? 999999) - (b.itemPrice ?? 999999));
-    } else if (constraints.sortByPrice === 'desc') {
-      candidateList.sort((a, b) => (b.itemPrice ?? 0) - (a.itemPrice ?? 0));
-    } else if (constraints.sortByRating) {
-      candidateList.sort((a, b) => b.rating - a.rating);
-    } else {
-      candidateList.sort((a, b) => b.score - a.score);
-    }
-
-    // Deduplicate by title
-    const seenTitles = new Set<string>();
-    const uniqueCandidates = candidateList.filter(s => {
-      const t = (s.record.title || '').trim().toLowerCase();
-      if (!t || seenTitles.has(t)) return false;
-      seenTitles.add(t);
-      return true;
-    });
-
-    const maxItems = exactMatches.length > 0 ? 1 : limit;
-    const selected = uniqueCandidates.slice(0, maxItems);
-
-    return selected.map(s => {
-      const r = s.record;
-      const meta = (r.metadata || {}) as Record<string, any>;
-      const result: WebsiteDataRecord = {
-        id: r.id,
-        entityType: r.entity_type,
-        title: r.title || 'Untitled',
-      };
-      
-      if (r.short_description) {
-        result.description = r.short_description;
-        result.shortDescription = r.short_description;
-      } else if (r.content) {
-        const cleanContent = r.content.substring(0, 300).trimEnd();
-        result.description = cleanContent + (r.content.length > 300 ? '…' : '');
-        result.shortDescription = result.description;
-      }
-      
-      // Extract real images only from crawled/connector metadata
-      const collectedImages: string[] = [];
-      if (Array.isArray(r.image_urls)) {
-        r.image_urls.forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) collectedImages.push(img); });
-      }
-      if (Array.isArray(meta.images)) {
-        meta.images.forEach((img: any) => { if (typeof img === 'string' && img.startsWith('http')) collectedImages.push(img); });
-      }
-      if (typeof meta.image === 'string' && meta.image.startsWith('http')) {
-        collectedImages.push(meta.image);
-      }
-      if (typeof meta.photoUrl === 'string' && meta.photoUrl.startsWith('http')) {
-        collectedImages.push(meta.photoUrl);
-      }
-      if (typeof meta.thumbnail === 'string' && meta.thumbnail.startsWith('http')) {
-        collectedImages.push(meta.thumbnail);
-      }
-
-      const realImages = Array.from(new Set(collectedImages));
-      result.images = realImages;
-      result.imageUrls = realImages;
-
-      if (meta.price !== undefined && typeof meta.price !== 'object') result.price = String(meta.price).replace(/^\$+/, '$');
-      else if (r.price !== undefined) result.price = String(r.price).replace(/^\$+/, '$');
-
-      if (meta.currency) result.currency = String(meta.currency);
-      else if (r.currency) result.currency = String(r.currency);
-
-      if (meta.availability && typeof meta.availability !== 'object') result.availability = String(meta.availability);
-      if (meta.rating !== undefined && typeof meta.rating !== 'object') result.rating = meta.rating;
-      if (meta.ratings !== undefined && typeof meta.ratings !== 'object') result.rating = meta.ratings;
-      if (meta.reviews !== undefined) {
-        result.reviews = Array.isArray(meta.reviews) ? meta.reviews.length : typeof meta.reviews === 'number' ? meta.reviews : parseInt(String(meta.reviews), 10) || undefined;
-      }
-      if (meta.category || meta.tags) result.category = String(meta.category || meta.tags).trim();
-      if (meta.level) result.level = String(meta.level).trim();
-      if (meta.attributes && typeof meta.attributes === 'object') result.attributes = meta.attributes;
-      result.metadata = meta;
-      if (r.source_url) result.sourceUrl = r.source_url;
-      return result;
-    });
+    const { hybridRetrieve } = await import('@/lib/retrieval/hybridRag');
+    const output = await hybridRetrieve(websiteOrWidgetId, query, { limit });
+    return output.results.map(r => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      shortDescription: r.shortDescription,
+      content: r.content,
+      images: r.images,
+      imageUrls: r.imageUrls,
+      price: r.price,
+      currency: r.currency,
+      availability: r.availability,
+      rating: r.rating,
+      reviews: r.reviews,
+      attributes: r.attributes,
+      sourceUrl: r.sourceUrl,
+      entityType: r.entityType,
+      category: r.category,
+      level: r.level,
+      similarity: (r.metadata as any)?.similarity,
+      firstSeen: r.firstSeen,
+      lastSeen: r.lastSeen,
+      freshnessStatus: r.freshnessStatus,
+      metadata: r.metadata,
+    }));
   } catch (err) {
     console.error(`[widgetsDb] Error in getRelevantWebsiteRecords:`, err);
     return [];
