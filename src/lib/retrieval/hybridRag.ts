@@ -2,19 +2,20 @@
  * Unified Hybrid RAG Service
  *
  * Combines:
- * 1. Exact entity/title matching (dominant priority +1000)
- * 2. Keyword & specification matching (title, specs, metadata, content)
- * 3. PostgreSQL pgvector cosine semantic similarity (via match_website_data RPC)
- * 4. Entity type & category filtering
- * 5. Metadata attribute filtering (specs, transmission, engine, fuel type, etc.)
+ * 1. Deterministic Query-Understanding Layer (entityType, price bounds, sale state, rating, availability, attributes, sort)
+ * 2. Exact entity/title matching (dominant priority +1000)
+ * 3. Keyword & specification matching (title, specs, metadata, content)
+ * 4. PostgreSQL pgvector cosine semantic similarity (via match_website_data RPC)
+ * 5. Structured metadata attribute filtering (specs, transmission, engine, fuel type, level, etc.)
  * 6. Freshness verification (fresh, recent, stale_or_unlisted)
- * 7. Structured constraint parsing (price min/max, sorting, negative constraints)
+ * 7. Negative constraint filtering with domain synonym expansion
  *
  * Used by Chat, Retell Voice, Vapi Voice, Agent Tools, and Public APIs.
  */
 
 import { getDbClient, getWidget, isValidUuid, searchWebsiteDataVector } from '@/config/widgetsDb';
 import { calculateFreshness } from '@/lib/agents/tools';
+import { understandQuery, StructuredQueryIntent } from './queryUnderstanding';
 
 // ── Types & Interfaces ─────────────────────────────────────────────────────────
 
@@ -59,162 +60,80 @@ export interface HybridSearchResult {
 export interface HybridRetrievalOutput {
   query: string;
   normalizedQuery: string;
-  intent: 'specific_entity' | 'catalog' | 'comparison' | 'about' | 'policy' | 'faq' | 'contact' | 'greeting' | 'general';
+  intent: 'specific_entity' | 'catalog' | 'comparison' | 'navigation' | 'about' | 'policy' | 'faq' | 'contact' | 'greeting' | 'general';
   results: HybridSearchResult[];
   count: number;
   contextSummary: string; // Formatted markdown/plain text for LLM prompts
   pinnedEntity?: HybridSearchResult; // Dominant exact/top entity match if any
+  structuredQuery?: StructuredQueryIntent;
 }
 
-interface ParsedHybridConstraints {
-  maxPrice?: number;
-  minPrice?: number;
-  sortByPrice?: 'asc' | 'desc';
-  sortByRating?: boolean;
-  isAboutQuery: boolean;
-  isPolicyQuery: boolean;
-  isFaqQuery: boolean;
-  isContactQuery: boolean;
-  isCatalogQuery: boolean;
-  isComparisonQuery: boolean;
-  comparisonQueries?: string[];
-  negativeKeywords: string[]; // e.g. ['electric', 'hybrid', 'prerequisite']
-  specificKeywords: string[];
+// ── Helper Utilities ──────────────────────────────────────────────────────────
+
+export function normalizeString(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-// ── Helper Functions ──────────────────────────────────────────────────────────
-
-function normalizeString(str: string): string {
-  return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+export function tokenize(str: string): string[] {
+  return normalizeString(str)
+    .split(' ')
+    .filter(t => t.length > 1);
 }
 
-function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/[^a-z0-9_-]+/).filter(t => t.length > 0);
-}
+export function levenshteinDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
 
-function parsePriceNumber(val: any): number | null {
-  if (typeof val === 'number') return isNaN(val) ? null : val;
-  if (!val) return null;
-  const str = String(val).replace(/,/g, '');
-  const m = str.match(/(\d+(?:\.\d+)?)/);
-  return m ? parseFloat(m[1]) : null;
-}
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
 
-function levenshtein(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1];
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
       } else {
-        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
       }
     }
   }
-  return dp[m][n];
+  return matrix[b.length][a.length];
 }
 
-const STOP_WORDS = new Set([
-  'show', 'me', 'the', 'a', 'an', 'what', 'is', 'your', 'tell', 'about',
-  'can', 'you', 'give', 'details', 'for', 'of', 'in', 'at', 'with', 'do',
-  'have', 'offer', 'available', 'there', 'any', 'how', 'much', 'are', 'i',
-  'want', 'to', 'know', 'see', 'find', 'looking', 'get', 'more', 'info',
-  'all', 'every', 'list', 'view', 'explore', 'browse',
-  'course', 'courses', 'product', 'products', 'service', 'services', 'offering',
-  'offerings', 'program', 'programs', 'item', 'items', 'class', 'classes',
-  'vehicle', 'vehicles', 'car', 'cars', 'truck', 'trucks', 'suv', 'suvs',
-  'auto', 'automobile', 'automotive', 'inventory', 'catalog',
-  'family', 'offroad', 'suitable', 'conditions', 'winter', 'driving', 'need', 'something',
-  'not', 'no', 'non', 'without', 'excluding', 'except', 'never',
-  'under', 'below', 'less', 'than', 'cheaper', 'max', 'maximum', 'above',
-  'over', 'more', 'greater', 'min', 'minimum', 'between', 'and', 'or',
-  'budget', 'affordable', 'least', 'most', 'expensive', 'cheapest', 'best',
-  'top', 'rated', 'popular', 'price', 'pricing', 'cost', 'costs', 'fee', 'fees',
-  'tuition', 'dollar', 'dollars', 'bucks'
-]);
+export function parsePriceNumber(val: any): number | null {
+  if (typeof val === 'number') return isNaN(val) ? null : val;
+  if (!val || typeof val !== 'string') return null;
+  const clean = val.replace(/[^0-9.]/g, '');
+  const num = parseFloat(clean);
+  return isNaN(num) ? null : num;
+}
 
-export function parseHybridConstraints(query: string): ParsedHybridConstraints {
-  const lower = query.trim().toLowerCase();
-
-  let maxPrice: number | undefined;
-  let minPrice: number | undefined;
-  let sortByPrice: 'asc' | 'desc' | undefined;
-
-  const cleanNum = (s: string) => s.replace(/,/g, '');
-  const underMatch = lower.match(/(?:under|below|less than|cheaper than|max(?:imum)?|<=?)\s*\$?([0-9,]+(?:\.\d+)?)/i);
-  if (underMatch) maxPrice = parseFloat(cleanNum(underMatch[1]));
-
-  const overMatch = lower.match(/(?:above|over|more than|greater than|min(?:imum)?|>=?)\s*\$?([0-9,]+(?:\.\d+)?)/i);
-  if (overMatch) minPrice = parseFloat(cleanNum(overMatch[1]));
-
-  const betweenMatch = lower.match(/between\s*\$?([0-9,]+(?:\.\d+)?)\s*(?:and|-|to)\s*\$?([0-9,]+(?:\.\d+)?)/i);
-  if (betweenMatch) {
-    minPrice = parseFloat(cleanNum(betweenMatch[1]));
-    maxPrice = parseFloat(cleanNum(betweenMatch[2]));
-  }
-
-  if (/(?:cheapest|lowest price|least expensive|budget friendly|affordable)/i.test(lower)) {
-    sortByPrice = 'asc';
-  } else if (/(?:most expensive|premium|highest price|luxury)/i.test(lower)) {
-    sortByPrice = 'desc';
-  }
-
-  const sortByRating = /(?:best rated|top rated|highest rated|top reviews|5 star|best |top |most popular)/i.test(lower);
-
-  const isAboutQuery = /(?:about (?:us|the company|your team|you)|who (?:are you|made you|built you)|company mission|our story|company story|team members|founder)/i.test(lower);
-  const isPolicyQuery = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(lower);
-  const isFaqQuery = /(?:faq|frequently asked|questions|help center)/i.test(lower);
-  const isContactQuery = /(?:contact (?:us|team)|reach out|email address|phone number|office location|support team)/i.test(lower);
-  const isCatalogQuery = !isAboutQuery && !isPolicyQuery && !isFaqQuery && !isContactQuery && /(?:course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing|stock|menu|vehicle|vehicles|properties|plans|cars?|trucks?|suvs?|automotive|automobiles?)/i.test(lower);
-
-  // Comparison intent detection (e.g., "compare X and Y", "X vs Y")
-  let isComparisonQuery = false;
-  let comparisonQueries: string[] = [];
-  const vsMatch = query.match(/(.+?)\s+(?:vs\.?|versus|compared to|or)\s+(.+)/i);
-  const compareMatch = query.match(/(?:compare|difference between)\s+(.+?)\s+(?:and|with|to)\s+(.+)/i);
-  if (vsMatch && vsMatch[1] && vsMatch[2]) {
-    isComparisonQuery = true;
-    comparisonQueries = [vsMatch[1].trim(), vsMatch[2].trim()];
-  } else if (compareMatch && compareMatch[1] && compareMatch[2]) {
-    isComparisonQuery = true;
-    comparisonQueries = [compareMatch[1].trim(), compareMatch[2].trim()];
-  }
-
-  // Negative constraint detection (e.g., "not electric", "excluding hybrid", "no prerequisite")
-  const negativeKeywords: string[] = [];
-  const negRegex = /\b(?:not|non|no|excluding|without|except)\s+([a-z0-9_-]+)/gi;
-  let nMatch: RegExpExecArray | null;
-  while ((nMatch = negRegex.exec(lower)) !== null) {
-    if (nMatch[1] && nMatch[1].length > 2 && !STOP_WORDS.has(nMatch[1])) {
-      negativeKeywords.push(nMatch[1].toLowerCase());
-    }
-  }
-
-  // Differentiating specific keywords
-  const negSet = new Set(negativeKeywords);
-  const words = lower
-    .split(/[^a-z0-9_-]+/)
-    .filter(w => w.length > 2 && !/^\d+$/.test(w) && !STOP_WORDS.has(w) && !negSet.has(w));
-
+// Backward-compatible export wrapping understandQuery
+export function parseHybridConstraints(query: string) {
+  const structured = understandQuery(query);
   return {
-    maxPrice,
-    minPrice,
-    sortByPrice,
-    sortByRating,
-    isAboutQuery,
-    isPolicyQuery,
-    isFaqQuery,
-    isContactQuery,
-    isCatalogQuery,
-    isComparisonQuery,
-    comparisonQueries,
-    negativeKeywords,
-    specificKeywords: words,
+    maxPrice: structured.maxPrice,
+    minPrice: structured.minPrice,
+    sortByPrice: structured.sortBy === 'price_asc' ? 'asc' : (structured.sortBy === 'price_desc' ? 'desc' : undefined),
+    sortByRating: structured.sortBy === 'rating_desc' || structured.minRating !== undefined,
+    isAboutQuery: structured.intent === 'about',
+    isPolicyQuery: structured.intent === 'policy',
+    isFaqQuery: structured.intent === 'faq',
+    isContactQuery: structured.intent === 'contact',
+    isCatalogQuery: structured.intent === 'catalog' || Boolean(structured.entityType),
+    isComparisonQuery: structured.intent === 'comparison',
+    comparisonQueries: structured.comparisonQueries || [],
+    negativeKeywords: structured.negativeKeywords,
+    specificKeywords: structured.specificKeywords,
   };
 }
 
@@ -224,10 +143,11 @@ export function parseHybridConstraints(query: string): ParsedHybridConstraints {
  * Unified Hybrid RAG Retrieval Service.
  *
  * Executes multi-channel retrieval across:
- * 1. Exact & Partial Title Match (Guaranteed dominance +1000 for exact entities)
- * 2. Real PostgreSQL pgvector Cosine Similarity Search
- * 3. Structured Keyword & Metadata Attribute Matching
- * 4. Constraint Enforcement (budget, ratings, negative constraints, freshness)
+ * 1. Structured Query-Understanding
+ * 2. Exact & Partial Title Match (Dominant +1000 for exact entities)
+ * 3. Real PostgreSQL pgvector Cosine Similarity Search
+ * 4. Structured Keyword & Metadata Attribute Matching
+ * 5. Constraint Enforcement (budget, ratings, sale, stock, negative constraints, freshness)
  *
  * Returns structured results with internal score and match reasons.
  */
@@ -263,27 +183,11 @@ export async function hybridRetrieve(
     };
   }
 
-  const normQuery = normalizeString(cleanQuery);
+  // 1. Structured Query Understanding Layer
+  const structuredQuery = understandQuery(cleanQuery);
+  const normQuery = structuredQuery.normalizedQuery;
   const queryTokens = tokenize(cleanQuery);
-  const constraints = parseHybridConstraints(cleanQuery);
-
-  // 1. Detect Intent
-  let intent: HybridRetrievalOutput['intent'] = 'general';
-  if (/^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(cleanQuery)) {
-    intent = 'greeting';
-  } else if (constraints.isComparisonQuery) {
-    intent = 'comparison';
-  } else if (constraints.isAboutQuery) {
-    intent = 'about';
-  } else if (constraints.isPolicyQuery) {
-    intent = 'policy';
-  } else if (constraints.isFaqQuery) {
-    intent = 'faq';
-  } else if (constraints.isContactQuery) {
-    intent = 'contact';
-  } else if (constraints.isCatalogQuery) {
-    intent = 'catalog';
-  }
+  const intent = structuredQuery.intent;
 
   if (intent === 'greeting') {
     return {
@@ -293,6 +197,7 @@ export async function hybridRetrieve(
       results: [],
       count: 0,
       contextSummary: '',
+      structuredQuery,
     };
   }
 
@@ -307,6 +212,7 @@ export async function hybridRetrieve(
       results: [],
       count: 0,
       contextSummary: '',
+      structuredQuery,
     };
   }
 
@@ -320,7 +226,7 @@ export async function hybridRetrieve(
   );
 
   if (filterIds.length === 0) {
-    console.warn(`[hybridRag:SCOPE_ENFORCEMENT] hybridRetrieve: No valid UUIDs for widget '${widgetOrWebsiteId}'. Failing closed.`);
+    console.warn(`[hybridRag:SCOPE_ENFORCEMENT] No valid UUIDs for widget '${widgetOrWebsiteId}'. Failing closed.`);
     return {
       query: cleanQuery,
       normalizedQuery: normQuery,
@@ -328,11 +234,20 @@ export async function hybridRetrieve(
       results: [],
       count: 0,
       contextSummary: '',
+      structuredQuery,
     };
   }
 
-  const { client } = getDbClient();
-  if (!client) {
+  const { client: supabase } = getDbClient();
+
+  // 3. Fetch All Tenant Records for Deterministic Hybrid Matching
+  let dbQuery = supabase
+    .from('website_data')
+    .select('*')
+    .in('widget_id', filterIds);
+
+  const { data: allRows, error: dbError } = await dbQuery;
+  if (dbError || !allRows || allRows.length === 0) {
     return {
       query: cleanQuery,
       normalizedQuery: normQuery,
@@ -340,31 +255,12 @@ export async function hybridRetrieve(
       results: [],
       count: 0,
       contextSummary: '',
+      structuredQuery,
     };
   }
 
-  // 3. Multi-Channel Retrieval Execution
-  // Channel A & C: Load scoped rows for exact, partial, and keyword matching
-  // Channel B: Call pgvector searchWebsiteDataVector in parallel
-  const [rowsRes, vectorResults] = await Promise.all([
-    client.from('website_data').select('*').in('widget_id', filterIds),
-    searchWebsiteDataVector(widget.id, cleanQuery, Math.max(limit, 6), threshold).catch(() => []),
-  ]);
-
-  const allRows: any[] = rowsRes.data || [];
-  if (allRows.length === 0 && vectorResults.length === 0) {
-    return {
-      query: cleanQuery,
-      normalizedQuery: normQuery,
-      intent,
-      results: [],
-      count: 0,
-      contextSummary: '',
-    };
-  }
-
-  // Map to hold merged candidates: key = row ID
-  const candidateMap = new Map<string, {
+  // Track scoring and match channels
+  interface CandidateMatch {
     row: any;
     score: number;
     matchType: HybridSearchResult['matchType'];
@@ -373,130 +269,134 @@ export async function hybridRetrieve(
     isPartial: boolean;
     isVector: boolean;
     isKeyword: boolean;
-  }>();
-
-  // Populate candidates from allRows
-  for (const row of allRows) {
-    candidateMap.set(row.id, {
-      row,
-      score: 0,
-      matchType: 'keyword',
-      matchReasons: [],
-      isExact: false,
-      isPartial: false,
-      isVector: false,
-      isKeyword: false,
-    });
   }
 
-  // Ensure vector results are present in candidateMap
-  for (const vec of vectorResults) {
-    if (vec.id && !candidateMap.has(vec.id)) {
-      candidateMap.set(vec.id, {
-        row: {
-          id: vec.id,
-          widget_id: widget.id,
-          title: vec.title,
-          content: vec.content,
-          short_description: vec.shortDescription,
-          source_url: vec.sourceUrl,
-          image_urls: vec.imageUrls,
-          entity_type: vec.entityType,
-          metadata: vec.metadata,
-        },
+  const candidateMap = new Map<string, CandidateMatch>();
+
+  function getOrCreateCandidate(row: any): CandidateMatch {
+    if (!candidateMap.has(row.id)) {
+      candidateMap.set(row.id, {
+        row,
         score: 0,
-        matchType: 'vector',
+        matchType: 'keyword',
         matchReasons: [],
         isExact: false,
         isPartial: false,
-        isVector: true,
+        isVector: false,
         isKeyword: false,
       });
     }
+    return candidateMap.get(row.id)!;
   }
 
+  // ── CHANNEL A: Exact & Partial Entity/Title Matching ─────────────────────────
   let exactMatchDetected = false;
 
-  // 4. Scoring: Multi-Signal Score Fusion
+  for (const row of allRows) {
+    const rowTitle = (row.title || '').trim();
+    if (!rowTitle) continue;
 
-  // ── Channel A: Exact & Partial Title Match ──
-  for (const [id, cand] of candidateMap.entries()) {
-    const title = cand.row.title || '';
-    if (!title) continue;
+    const normTitle = normalizeString(rowTitle);
+    const titleTokens = tokenize(rowTitle);
+    const cand = getOrCreateCandidate(row);
 
-    const normTitle = normalizeString(title);
-    const titleTokens = tokenize(title);
-
-    // Exact Title Match: Highest Dominant Priority (+1000)
-    if (normTitle.length > 0 && normTitle === normQuery) {
+    // Exact full normalized string match
+    if (normTitle === normQuery) {
       cand.score += 1000;
-      cand.matchType = 'exact';
       cand.isExact = true;
-      cand.matchReasons.push(`Exact title match '${title}' (+1000)`);
+      cand.matchType = 'exact';
+      cand.matchReasons.push(`Exact full normalized title match (+1000)`);
       exactMatchDetected = true;
       continue;
     }
 
-    // High-Confidence Partial / Alias Match
-    if (normTitle.length >= 4 && (normQuery.includes(normTitle) || normTitle.includes(normQuery))) {
+    // Substring contains exact query phrase
+    if (normTitle.includes(normQuery) && normQuery.length >= 4) {
       cand.score += 600;
-      cand.matchType = 'partial';
       cand.isPartial = true;
-      cand.matchReasons.push(`High-confidence title partial match '${title}' (+600)`);
-      continue;
+      cand.matchType = 'partial';
+      cand.matchReasons.push(`Title contains exact query phrase (+600)`);
+    } else if (normQuery.includes(normTitle) && normTitle.length >= 4) {
+      cand.score += 550;
+      cand.isPartial = true;
+      cand.matchType = 'partial';
+      cand.matchReasons.push(`Query contains exact entity title (+550)`);
     }
 
-    // Token Set Overlap
-    const significantQueryTokens = queryTokens.filter(t => t.length >= 3 && !STOP_WORDS.has(t));
-    if (significantQueryTokens.length > 0) {
-      const hitCount = significantQueryTokens.filter(qt => titleTokens.includes(qt)).length;
-      if (hitCount === significantQueryTokens.length) {
-        cand.score += 400;
-        cand.matchType = 'partial';
+    // Token overlap & token-level fuzzy match
+    if (queryTokens.length > 0 && titleTokens.length > 0) {
+      let matchedTokens = 0;
+      let fuzzyMatchedTokens = 0;
+
+      for (const qToken of queryTokens) {
+        if (titleTokens.some(t => t === qToken || t.includes(qToken) || qToken.includes(t))) {
+          matchedTokens++;
+        } else if (qToken.length >= 4) {
+          const maxDist = qToken.length >= 6 ? 2 : 1;
+          const hasFuzzyToken = titleTokens.some(t => Math.abs(t.length - qToken.length) <= maxDist && levenshteinDistance(t, qToken) <= maxDist);
+          if (hasFuzzyToken) {
+            matchedTokens++;
+            fuzzyMatchedTokens++;
+          }
+        }
+      }
+
+      const overlapRatio = matchedTokens / queryTokens.length;
+      if (overlapRatio >= 0.75) {
+        cand.score += Math.round(overlapRatio * 400);
         cand.isPartial = true;
-        cand.matchReasons.push(`All query tokens present in title (+400)`);
-      } else if (hitCount >= Math.max(2, Math.ceil(significantQueryTokens.length * 0.7))) {
-        cand.score += 200;
-        cand.matchType = 'partial';
+        cand.matchReasons.push(`High token overlap (${Math.round(overlapRatio * 100)}%) (+${Math.round(overlapRatio * 400)})`);
+      } else if (overlapRatio >= 0.5) {
+        cand.score += Math.round(overlapRatio * 250);
         cand.isPartial = true;
-        cand.matchReasons.push(`Strong token overlap (${hitCount}/${significantQueryTokens.length}) in title (+200)`);
+        cand.matchReasons.push(`Moderate token overlap (${Math.round(overlapRatio * 100)}%) (+${Math.round(overlapRatio * 250)})`);
+      }
+
+      if (fuzzyMatchedTokens > 0) {
+        cand.score += fuzzyMatchedTokens * 150;
+        cand.isPartial = true;
+        cand.matchReasons.push(`Token fuzzy typo tolerance (${fuzzyMatchedTokens} tokens) (+${fuzzyMatchedTokens * 150})`);
       }
     }
 
-    // Fuzzy Levenshtein match on title tokens (typo tolerance)
-    if (queryTokens.length > 0) {
-      for (const qt of queryTokens) {
-        if (qt.length < 4) continue;
-        const maxDist = qt.length <= 5 ? 1 : 2;
-        for (const tt of titleTokens) {
-          if (tt.length < 4) continue;
-          if (Math.abs(qt.length - tt.length) > 1) continue;
-          if (levenshtein(qt, tt) <= maxDist) {
-            cand.score += 150;
-            cand.matchReasons.push(`Fuzzy typo match '${qt}' ≈ '${tt}' (+150)`);
-            break;
+    // Full title Levenshtein distance <= 2
+    if (normTitle.length >= 5 && normQuery.length >= 5) {
+      const dist = levenshteinDistance(normTitle, normQuery);
+      if (dist <= 2) {
+        cand.score += 150;
+        cand.isPartial = true;
+        cand.matchReasons.push(`Fuzzy title match (Levenshtein distance ${dist}) (+150)`);
+      }
+    }
+  }
+
+  // ── CHANNEL B: Vector Semantic Similarity (pgvector) ────────────────────────
+  try {
+    const vectorMatches = await searchWebsiteDataVector(widget.id, cleanQuery, threshold, 10);
+
+    if (vectorMatches && vectorMatches.length > 0) {
+      for (const vm of vectorMatches) {
+        const matchingRow = allRows.find((r: any) => r.id === vm.id);
+        if (matchingRow) {
+          const cand = getOrCreateCandidate(matchingRow);
+          const similarity = vm.similarity ?? 0;
+          if (similarity >= 0.40 || cand.isExact || cand.isPartial || cand.isKeyword) {
+            const vectorBoost = Math.round(similarity * 400);
+            cand.score += vectorBoost;
+            cand.isVector = true;
+            if (!cand.isExact && !cand.isPartial) {
+              cand.matchType = 'vector';
+            }
+            cand.matchReasons.push(`pgvector cosine similarity ${similarity.toFixed(3)} (+${vectorBoost})`);
           }
         }
       }
     }
+  } catch (err: any) {
+    console.warn(`[hybridRag] Vector search fallback triggered:`, err?.message || err);
   }
 
-  // ── Channel B: PostgreSQL pgvector Cosine Similarity ──
-  for (const vec of vectorResults) {
-    if (vec.id && candidateMap.has(vec.id)) {
-      const cand = candidateMap.get(vec.id)!;
-      const sim = vec.similarity ?? 0.5;
-      const vectorScore = Math.round(sim * 400); // 0.8 sim = +320
-      cand.score += vectorScore;
-      cand.isVector = true;
-      if (!cand.isExact && !cand.isPartial) {
-        cand.matchType = 'vector';
-      }
-      cand.matchReasons.push(`pgvector cosine similarity ${sim.toFixed(4)} (+${vectorScore})`);
-    }
-  }
-
-  // ── Channel C: Multi-Field Keyword & Attribute Matching ──
+  // ── CHANNEL C: Keyword, Specification, Metadata & Constraint Filtering ──────
   for (const [id, cand] of candidateMap.entries()) {
     const meta = (cand.row.metadata || {}) as Record<string, any>;
     const titleLower = (cand.row.title || '').toLowerCase();
@@ -506,6 +406,7 @@ export async function hybridRetrieve(
       .join(' ')
       .toLowerCase();
 
+    // Noise and crawl error page elimination
     const isErrorPage = /request rejected|access denied|403 forbidden|404 not found/i.test(titleLower) ||
       (cand.row.still_listed === false && !meta.price && cand.row.entity_type === 'text');
     if (isErrorPage) {
@@ -516,9 +417,10 @@ export async function hybridRetrieve(
     const itemPrice = parsePriceNumber(meta.price ?? meta.cost ?? meta.estimatedPrice ?? cand.row.price);
     const rating = typeof meta.ratings === 'number' ? meta.ratings : (typeof meta.rating === 'number' ? meta.rating : 0);
 
+    // Multi-field keyword match
     let keywordHits = 0;
-    if (constraints.specificKeywords.length > 0) {
-      for (const word of constraints.specificKeywords) {
+    if (structuredQuery.specificKeywords.length > 0) {
+      for (const word of structuredQuery.specificKeywords) {
         const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const wordRegex = new RegExp(`\\b${escaped}\\b`, 'i');
 
@@ -541,12 +443,14 @@ export async function hybridRetrieve(
       'all', 'any', 'every', 'list', 'show', 'view', 'get', 'see', 'find', 'explore', 'available', 'browse',
       'vehicle', 'vehicles', 'car', 'cars', 'truck', 'trucks', 'suv', 'suvs', 'auto', 'automobile', 'automotive',
       'offering', 'offerings', 'program', 'programs', 'course', 'courses', 'product', 'products',
-      'service', 'services', 'inventory', 'catalog', 'item', 'items'
+      'service', 'services', 'inventory', 'catalog', 'item', 'items', 'stock', 'availability',
+      'discount', 'discounts', 'discounted', 'sale', 'sales', 'regular', 'priced', 'deal', 'deals', 'promo'
     ]);
-    const trueSpecificKeywords = constraints.specificKeywords.filter(w => !BROAD_WORDS.has(w));
+    const trueSpecificKeywords = structuredQuery.specificKeywords.filter(w => !BROAD_WORDS.has(w));
 
-    // Broad catalog queries (e.g. "show me cars", "all offerings", "show me all vehicles")
-    if (constraints.isCatalogQuery && trueSpecificKeywords.length === 0) {
+    // Broad catalog discovery
+    const isCatalogQuery = structuredQuery.intent === 'catalog' || Boolean(structuredQuery.entityType);
+    if (isCatalogQuery && trueSpecificKeywords.length === 0) {
       const hasPriceOrMedia = Boolean(itemPrice) || Boolean(cand.row.image_urls?.length) || Boolean(meta.images?.length);
       if (hasPriceOrMedia || ['course', 'product', 'vehicle', 'service'].includes(cand.row.entity_type)) {
         cand.score += 80;
@@ -555,43 +459,140 @@ export async function hybridRetrieve(
       }
     }
 
-    // Multi-signal synergy boost (if an item matched BOTH vector AND keyword/partial)
+    // Multi-signal synergy boost
     const activeChannels = [cand.isExact, cand.isPartial, cand.isVector, cand.isKeyword].filter(Boolean).length;
     if (activeChannels >= 2) {
       cand.score += 50 * (activeChannels - 1);
       cand.matchReasons.push(`Multi-channel synergy boost (${activeChannels} channels) (+${50 * (activeChannels - 1)})`);
     }
 
-    // ── Constraints & Filtering ──
+    // ── STRUCTURED CONSTRAINT & PRE-RANKING FILTERS ──
 
-    // Budget constraints
-    if (constraints.maxPrice !== undefined) {
-      if (itemPrice !== null && itemPrice <= constraints.maxPrice) {
+    // Specific Keyword Constraint enforcement:
+    // If the query specified distinct keywords (e.g. "backend", "wrangler"),
+    // items with 0 keyword matches and no exact/partial title match should not be returned.
+    if (trueSpecificKeywords.length > 0 && keywordHits === 0 && !cand.isExact && !cand.isPartial) {
+      cand.score -= 500;
+      cand.matchReasons.push(`No match for specific required keywords [${trueSpecificKeywords.join(', ')}] (-500)`);
+    }
+
+    // 1. Entity Type Constraint
+    if (structuredQuery.entityType) {
+      const rowType = (cand.row.entity_type || 'product').toLowerCase();
+      const isVehicleRow = rowType === 'vehicle' || Boolean(meta.vin || meta.make || meta.model || meta.year || meta.mileage || /\b(?:jeep|dodge|ram|chrysler|truck|suv|sedan|dealer|dealership|coupe|hatchback|convertible)\b/i.test(titleLower + ' ' + metaStrings));
+      const isCourseRow = (rowType === 'course' || Boolean(meta.curriculum || meta.syllabus || meta.instructor || meta.lessons || /\b(?:course|courses|tutorial|tutorials|mastery|curriculum|bootcamp|lesson|lessons)\b/i.test(titleLower + ' ' + contentLower))) && !isVehicleRow;
+
+      let isMatchingType = false;
+      let isConflictingType = false;
+
+      if (structuredQuery.entityType === 'vehicle') {
+        if (isVehicleRow) isMatchingType = true;
+        else isConflictingType = true;
+      } else if (structuredQuery.entityType === 'course') {
+        if (isCourseRow) isMatchingType = true;
+        else isConflictingType = true;
+      } else if (structuredQuery.entityType === 'product') {
+        isMatchingType = true;
+      } else if (structuredQuery.entityType === 'service') {
+        isMatchingType = rowType === 'service' || !isVehicleRow;
+      }
+
+      if (isMatchingType) {
         cand.score += 80;
-        cand.matchReasons.push(`Price $${itemPrice} <= maxPrice $${constraints.maxPrice} (+80)`);
-      } else if (itemPrice !== null && itemPrice > constraints.maxPrice) {
-        cand.score -= 400;
-        cand.matchReasons.push(`Price $${itemPrice} exceeds maxPrice $${constraints.maxPrice} (-400)`);
+        cand.matchReasons.push(`Entity type match: ${structuredQuery.entityType} (+80)`);
+      } else if (isConflictingType) {
+        cand.score -= 500;
+        cand.matchReasons.push(`Entity type mismatch: expected ${structuredQuery.entityType}, got conflicting domain row (-500)`);
       }
     }
 
-    if (constraints.minPrice !== undefined) {
-      if (itemPrice !== null && itemPrice >= constraints.minPrice) {
+    // 2. Budget Constraints (minPrice / maxPrice)
+    if (structuredQuery.maxPrice !== undefined) {
+      if (itemPrice !== null && itemPrice <= structuredQuery.maxPrice) {
         cand.score += 80;
-        cand.matchReasons.push(`Price $${itemPrice} >= minPrice $${constraints.minPrice} (+80)`);
-      } else if (itemPrice !== null && itemPrice < constraints.minPrice) {
+        cand.matchReasons.push(`Price $${itemPrice} <= maxPrice $${structuredQuery.maxPrice} (+80)`);
+      } else if (itemPrice !== null && itemPrice > structuredQuery.maxPrice) {
         cand.score -= 400;
-        cand.matchReasons.push(`Price $${itemPrice} below minPrice $${constraints.minPrice} (-400)`);
+        cand.matchReasons.push(`Price $${itemPrice} exceeds maxPrice $${structuredQuery.maxPrice} (-400)`);
       }
     }
 
-    // Rating boost
-    if (constraints.sortByRating && rating >= 4) {
+    if (structuredQuery.minPrice !== undefined) {
+      if (itemPrice !== null && itemPrice >= structuredQuery.minPrice) {
+        cand.score += 80;
+        cand.matchReasons.push(`Price $${itemPrice} >= minPrice $${structuredQuery.minPrice} (+80)`);
+      } else if (itemPrice !== null && itemPrice < structuredQuery.minPrice) {
+        cand.score -= 400;
+        cand.matchReasons.push(`Price $${itemPrice} below minPrice $${structuredQuery.minPrice} (-400)`);
+      }
+    }
+
+    // 3. Sale / Discount State Filter
+    if (structuredQuery.onSale !== undefined) {
+      const isItemOnSale = Boolean(
+        meta.sale || meta.onSale || meta.discount || meta.isDiscounted ||
+        (meta.originalPrice && meta.price && parsePriceNumber(meta.originalPrice) && parsePriceNumber(meta.price) && parsePriceNumber(meta.originalPrice)! > parsePriceNumber(meta.price)!)
+      );
+
+      if (structuredQuery.onSale === true) {
+        if (isItemOnSale) {
+          cand.score += 100;
+          cand.matchReasons.push(`Item on sale / discounted (+100)`);
+        } else {
+          cand.score -= 400;
+          cand.matchReasons.push(`Item not on sale / no discount (-400)`);
+        }
+      } else if (structuredQuery.onSale === false) {
+        if (!isItemOnSale) {
+          cand.score += 60;
+          cand.matchReasons.push(`Regular priced item / no discount (+60)`);
+        } else {
+          cand.score -= 400;
+          cand.matchReasons.push(`Item is on sale / excluded by no-discount filter (-400)`);
+        }
+      }
+    }
+
+    // 4. Rating Minimum & Boost
+    if (structuredQuery.minRating !== undefined) {
+      if (rating >= structuredQuery.minRating) {
+        cand.score += 80;
+        cand.matchReasons.push(`Rating ${rating} >= minRating ${structuredQuery.minRating} (+80)`);
+      } else if (rating > 0 && rating < structuredQuery.minRating) {
+        cand.score -= 400;
+        cand.matchReasons.push(`Rating ${rating} < minRating ${structuredQuery.minRating} (-400)`);
+      }
+    } else if (structuredQuery.sortBy === 'rating_desc' && rating >= 4) {
       cand.score += Math.round(rating * 15);
       cand.matchReasons.push(`High rating ${rating} boost (+${Math.round(rating * 15)})`);
     }
 
-    // Negative constraints (e.g. "not electric", "excluding hybrid")
+    // 5. Availability / In-Stock
+    if (structuredQuery.inStock !== undefined) {
+      const isAvailable = cand.row.still_listed !== false && meta.availability !== 'out of stock' && meta.availability !== 'sold out';
+      if (structuredQuery.inStock === true) {
+        if (isAvailable) {
+          cand.score += 60;
+          cand.matchReasons.push(`Item available / in stock (+60)`);
+        } else {
+          cand.score -= 500;
+          cand.matchReasons.push(`Item unavailable / out of stock (-500)`);
+        }
+      }
+    }
+
+    // 6. Attributes Matching (transmission, fuelType, drivetrain, level, format)
+    if (Object.keys(structuredQuery.attributes).length > 0) {
+      for (const [k, v] of Object.entries(structuredQuery.attributes)) {
+        const valLower = String(v).toLowerCase();
+        if (metaStrings.includes(valLower) || titleLower.includes(valLower) || contentLower.includes(valLower)) {
+          cand.score += 60;
+          cand.matchReasons.push(`Attribute match ${k}=${v} (+60)`);
+        }
+      }
+    }
+
+    // 7. Negative Constraints (e.g. "not electric", "excluding hybrid")
     const NEGATIVE_SYNONYMS: Record<string, string[]> = {
       electric: ['electric', 'ev', 'phev', 'hybrid', '4xe', 'bev', 'plug-in'],
       hybrid: ['hybrid', 'phev', '4xe', 'plug-in'],
@@ -601,8 +602,8 @@ export async function hybridRetrieve(
       prerequisite: ['prerequisite', 'prerequisites', 'advanced'],
     };
 
-    if (constraints.negativeKeywords.length > 0) {
-      for (const negWord of constraints.negativeKeywords) {
+    if (structuredQuery.negativeKeywords.length > 0) {
+      for (const negWord of structuredQuery.negativeKeywords) {
         const wordsToCheck = NEGATIVE_SYNONYMS[negWord] || [negWord];
         for (const w of wordsToCheck) {
           const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -616,14 +617,13 @@ export async function hybridRetrieve(
       }
     }
 
-    // Generic directory page / policy downranking:
-    // If the query targets a specific entity or catalog item, prevent generic pages (/courses, /all, /privacy) from hijacking
+    // 8. Generic Directory / Policy Downranking
     const isDirectoryOrPolicy =
       (cand.row.source_url && /\/(courses|products|services|catalog|inventory|shop|all|privacy|terms|cookie|policy)\/?$/i.test(cand.row.source_url)) ||
       /terms|privacy|policy|cookie|disclaimer/.test(titleLower);
 
     if (isDirectoryOrPolicy) {
-      if (exactMatchDetected || constraints.specificKeywords.length > 0) {
+      if (exactMatchDetected || structuredQuery.specificKeywords.length > 0) {
         cand.score -= 300;
         cand.matchReasons.push(`Generic directory/policy downranked on specific entity search (-300)`);
       }
@@ -641,33 +641,40 @@ export async function hybridRetrieve(
       results: [],
       count: 0,
       contextSummary: '',
+      structuredQuery,
     };
   }
 
-  // Sorting
-  if (constraints.sortByPrice === 'asc') {
+  // 6. Apply Sorter
+  if (structuredQuery.sortBy === 'price_asc') {
     validCandidates.sort((a, b) => {
       const pA = parsePriceNumber((a.row.metadata || {}).price ?? a.row.price) ?? 999999;
       const pB = parsePriceNumber((b.row.metadata || {}).price ?? b.row.price) ?? 999999;
       return pA - pB;
     });
-  } else if (constraints.sortByPrice === 'desc') {
+  } else if (structuredQuery.sortBy === 'price_desc') {
     validCandidates.sort((a, b) => {
       const pA = parsePriceNumber((a.row.metadata || {}).price ?? a.row.price) ?? 0;
       const pB = parsePriceNumber((b.row.metadata || {}).price ?? b.row.price) ?? 0;
       return pB - pA;
     });
-  } else if (constraints.sortByRating) {
+  } else if (structuredQuery.sortBy === 'rating_desc') {
     validCandidates.sort((a, b) => {
-      const rA = (a.row.metadata || {}).rating ?? 0;
-      const rB = (b.row.metadata || {}).rating ?? 0;
+      const rA = (a.row.metadata || {}).rating ?? (a.row.metadata || {}).ratings ?? 0;
+      const rB = (b.row.metadata || {}).rating ?? (b.row.metadata || {}).ratings ?? 0;
       return rB - rA;
+    });
+  } else if (structuredQuery.sortBy === 'newest') {
+    validCandidates.sort((a, b) => {
+      const tA = new Date(a.row.created_at || a.row.first_seen || 0).getTime();
+      const tB = new Date(b.row.created_at || b.row.first_seen || 0).getTime();
+      return tB - tA;
     });
   } else {
     validCandidates.sort((a, b) => b.score - a.score);
   }
 
-  // Deduplicate by normalized title
+  // 7. Deduplicate by Normalized Title
   const seenTitles = new Set<string>();
   const dedupedCandidates = validCandidates.filter(c => {
     const t = normalizeString(c.row.title || '');
@@ -678,10 +685,10 @@ export async function hybridRetrieve(
 
   // If exact match was found, pin it
   const topCandidate = dedupedCandidates[0];
-  const maxToReturn = topCandidate?.isExact ? 1 : limit;
+  const maxToReturn = topCandidate?.isExact ? 1 : (structuredQuery.quantity ? Math.min(limit, structuredQuery.quantity) : limit);
   const finalSelected = dedupedCandidates.slice(0, maxToReturn);
 
-  // 6. Map to Full Structured Results
+  // 8. Map to Structured Results
   const formattedResults: HybridSearchResult[] = finalSelected.map(c => {
     const row = c.row;
     const meta = (row.metadata || {}) as Record<string, any>;
@@ -738,14 +745,22 @@ export async function hybridRetrieve(
     };
   });
 
-  // Assemble clean Grounded Text Context Summary for LLMs
-  const contextSummary = formattedResults.map(r => {
-    const parts = [`**${r.title}**`];
-    if (r.price) parts.push(`Price: ${r.price}`);
-    if (r.description) parts.push(r.description);
-    if (r.sourceUrl) parts.push(`URL: ${r.sourceUrl}`);
-    return parts.join('\n');
-  }).join('\n\n');
+  // Build grounded context summary for LLM injection
+  const summaryLines: string[] = [];
+  summaryLines.push(`Found ${formattedResults.length} verified item(s) for "${cleanQuery}":`);
+
+  formattedResults.forEach((r, idx) => {
+    const priceStr = r.price ? ` | Price: ${typeof r.price === 'number' ? `$${r.price}` : r.price}` : '';
+    const ratingStr = r.rating ? ` | Rating: ${r.rating}★` : '';
+    const freshnessStr = `[${r.freshnessStatus}]`;
+    summaryLines.push(`${idx + 1}. ${freshnessStr} **${r.title}** (${r.entityType}${priceStr}${ratingStr})`);
+    if (r.shortDescription) {
+      summaryLines.push(`   ${r.shortDescription}`);
+    }
+    if (r.sourceUrl) {
+      summaryLines.push(`   Link: ${r.sourceUrl}`);
+    }
+  });
 
   return {
     query: cleanQuery,
@@ -753,7 +768,8 @@ export async function hybridRetrieve(
     intent,
     results: formattedResults,
     count: formattedResults.length,
-    contextSummary,
+    contextSummary: summaryLines.join('\n'),
     pinnedEntity: topCandidate?.isExact ? formattedResults[0] : undefined,
+    structuredQuery,
   };
 }
