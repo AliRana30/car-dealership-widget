@@ -481,7 +481,41 @@ export async function resolveEntityByQuery(
     }
   }
 
-  // ── Tier 3: Fuzzy token match (Levenshtein ≤ 2) ─────────────────────────────
+  // ── Tier 3: True pgvector Semantic Similarity ─────────────────────────────
+  try {
+    const { searchWebsiteDataVector } = await import('@/config/widgetsDb');
+    const vectorRecords = await searchWebsiteDataVector(widgetId, query, limit, 0.25);
+    if (vectorRecords.length > 0) {
+      const vectorEntities: ResolvedEntity[] = vectorRecords.map((r) => ({
+        record: r,
+        confidence: 'semantic' as MatchConfidence,
+        title: r.title || 'Untitled',
+        entityId: r.id || '',
+      }));
+      const { filtered, noMatchReason } = applyConstraints(vectorEntities, constraints);
+      if (filtered.length > 0) return filtered.slice(0, limit);
+
+      if (noMatchReason) {
+        return vectorEntities.slice(0, Math.min(3, limit)).map(item => ({
+          ...item,
+          confidence: 'semantic',
+          record: {
+            ...item.record,
+            metadata: {
+              ...(item.record.metadata || {}),
+              constraintViolated: true,
+              noMatchReason,
+              isAlternative: true,
+            },
+          },
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('[entityResolver] pgvector search exception, falling back:', err);
+  }
+
+  // ── Tier 4: Fallback Fuzzy / Keyword Retrieval ───────────────────────────────
   if (queryTokens.length > 0) {
     for (const row of allRows) {
       if (!row.title) continue;
@@ -497,7 +531,6 @@ export async function resolveEntityByQuery(
     }
   }
 
-  // ── Tier 4: Broad semantic (already fetched) ─────────────────────────────────
   const semanticEntities: ResolvedEntity[] = semanticRecords.map((r) => ({
     record: r,
     confidence: 'semantic' as MatchConfidence,

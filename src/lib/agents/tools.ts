@@ -189,15 +189,18 @@ export async function searchEntities(
             images,
             attributes: r.attributes,
             confidence: re.confidence,
+            similarity: r.similarity ?? r.metadata?.similarity,
+            freshnessStatus: r.freshnessStatus ?? r.metadata?.freshnessStatus ?? 'fresh',
           },
-          firstSeen: new Date().toISOString(),
-          lastSeen: new Date().toISOString(),
-          stillListed: true,
-          freshnessStatus: 'fresh',
+          similarity: r.similarity ?? r.metadata?.similarity,
+          firstSeen: r.firstSeen ?? r.metadata?.firstSeen ?? new Date().toISOString(),
+          lastSeen: r.lastSeen ?? r.metadata?.lastSeen ?? new Date().toISOString(),
+          stillListed: r.metadata?.stillListed !== false,
+          freshnessStatus: r.freshnessStatus ?? r.metadata?.freshnessStatus ?? 'fresh',
           dataType: 'crawl',
           categoryPath: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: r.firstSeen ?? r.metadata?.firstSeen ?? new Date().toISOString(),
+          updatedAt: r.lastSeen ?? r.metadata?.lastSeen ?? new Date().toISOString(),
         } as any;
       });
     }
@@ -469,6 +472,7 @@ export async function executeAgentTool(
           freshnessStatus: e.freshnessStatus,
           lastSeenHuman: (e.metadata as any)?.lastSeenHuman,
           hedgeInstruction: (e.metadata as any)?.hedgeInstruction,
+          similarity: anyE.similarity ?? e.metadata?.similarity,
           metadata: e.metadata,
         };
         const price = anyE.price ?? anyE.metadata?.price;
@@ -479,6 +483,7 @@ export async function executeAgentTool(
         if (currency !== undefined) item.currency = currency;
         if (rating !== undefined) item.rating = rating;
         if (availability !== undefined) item.availability = availability;
+        if (item.similarity !== undefined) item.similarity = Number(Number(item.similarity).toFixed(4));
         return item;
       });
 

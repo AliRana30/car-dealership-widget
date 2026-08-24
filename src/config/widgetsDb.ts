@@ -592,7 +592,7 @@ function parseQueryConstraints(query: string): ParsedQueryConstraints {
   const isPolicyQuery = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(lower);
   const isFaqQuery = /(?:faq|frequently asked|questions|help center)/i.test(lower);
   const isContactQuery = /(?:contact (?:us|team)|reach out|email address|phone number|office location|support team)/i.test(lower);
-  const isCatalogQuery = !isAboutQuery && !isPolicyQuery && !isFaqQuery && !isContactQuery && /(?:course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing|stock|menu|vehicle|vehicles|properties|plans)/i.test(lower);
+  const isCatalogQuery = !isAboutQuery && !isPolicyQuery && !isFaqQuery && !isContactQuery && /(?:course|courses|product|products|service|services|offering|offerings|class|classes|learn|bootcamp|catalog|pricing|price|cost|tier|buy|book|enroll|show|items?|what do you|inventory|listing|stock|menu|vehicle|vehicles|properties|plans|cars?|trucks?|suvs?|automotive|automobiles?)/i.test(lower);
 
   const stopWords = new Set([
     'show', 'me', 'the', 'a', 'an', 'what', 'is', 'your', 'tell', 'about',
@@ -601,6 +601,9 @@ function parseQueryConstraints(query: string): ParsedQueryConstraints {
     'want', 'to', 'know', 'see', 'find', 'looking', 'get', 'more', 'info',
     'course', 'courses', 'product', 'products', 'service', 'services', 'offering',
     'offerings', 'program', 'programs', 'item', 'items', 'class', 'classes',
+    'vehicle', 'vehicles', 'car', 'cars', 'truck', 'trucks', 'suv', 'suvs',
+    'auto', 'automobile', 'automotive', 'inventory', 'catalog',
+    'family', 'offroad', 'suitable', 'conditions', 'winter', 'driving', 'need', 'something',
     'under', 'below', 'less', 'than', 'cheaper', 'max', 'maximum', 'above',
     'over', 'more', 'greater', 'min', 'minimum', 'between', 'and', 'or',
     'budget', 'affordable', 'least', 'most', 'expensive', 'cheapest', 'best',
@@ -831,6 +834,7 @@ export interface WebsiteDataRecord {
   title?: string;
   description?: string;
   shortDescription?: string;
+  content?: string;
   images?: string[];
   imageUrls?: string[];
   price?: string | number;
@@ -843,13 +847,160 @@ export interface WebsiteDataRecord {
   entityType?: string;
   category?: string;
   level?: string;
+  similarity?: number;
+  firstSeen?: string;
+  lastSeen?: string;
+  freshnessStatus?: string;
   metadata?: any;
 }
 
 /**
+ * Executes a PostgreSQL / pgvector cosine similarity search scoped strictly to the requested widget.
+ * 
+ * 1. Generates query embedding via embedQuery (never dummy vectors).
+ * 2. If embedding generation fails (or no API key), returns [] cleanly so callers can fall back.
+ * 3. Executes the Supabase RPC match_website_data with in-database widget_id filtering.
+ * 4. Maps results to WebsiteDataRecord with similarity scores, metadata, image_urls, and freshness.
+ *
+ * @param websiteOrWidgetId - Widget UUID, slug, or website UUID
+ * @param query - Raw search query string
+ * @param limit - Maximum top-K results to return (default 5)
+ * @param threshold - Minimum cosine similarity threshold (default 0.25)
+ * @returns Array of WebsiteDataRecord sorted by descending similarity
+ */
+export async function searchWebsiteDataVector(
+  websiteOrWidgetId: string,
+  query: string,
+  limit = 5,
+  threshold = 0.25
+): Promise<WebsiteDataRecord[]> {
+  if (!websiteOrWidgetId || typeof websiteOrWidgetId !== 'string' || !websiteOrWidgetId.trim()) {
+    console.warn('[widgetsDb:SCOPE_ENFORCEMENT] searchWebsiteDataVector called with empty widgetId. Failing closed.');
+    return [];
+  }
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return [];
+  }
+
+  const cleanScope = websiteOrWidgetId.trim().toLowerCase();
+  const cleanQuery = query.trim();
+
+  // 1. Resolve widget UUIDs for strict in-database filtering
+  const isTargetUuid = isValidUuid(cleanScope) && cleanScope !== '00000000-0000-0000-0000-000000000000';
+  let widgets: any[] | null = null;
+  if (isTargetUuid) {
+    const res = await supabase
+      .from('widgets')
+      .select('id, widget_id, website_id')
+      .or(`id.eq.${cleanScope},website_id.eq.${cleanScope},widget_id.eq.${cleanScope}`);
+    widgets = res.data;
+  } else {
+    const res = await supabase
+      .from('widgets')
+      .select('id, widget_id, website_id')
+      .eq('widget_id', cleanScope);
+    widgets = res.data;
+  }
+
+  const widgetIds = new Set<string>();
+  if (isTargetUuid) widgetIds.add(cleanScope);
+  if (widgets && widgets.length > 0) {
+    widgets.forEach(w => {
+      if (isValidUuid(w.id)) widgetIds.add(w.id);
+      if (isValidUuid(w.website_id)) widgetIds.add(w.website_id);
+      if (isValidUuid(w.widget_id)) widgetIds.add(w.widget_id);
+    });
+  }
+
+  const filterWidgetIds = Array.from(widgetIds).filter(
+    id => isValidUuid(id) && id !== '00000000-0000-0000-0000-000000000000'
+  );
+
+  if (filterWidgetIds.length === 0) {
+    console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] searchWebsiteDataVector: No valid widget found for scope '${websiteOrWidgetId}'. Failing closed.`);
+    return [];
+  }
+
+  // 2. Generate real query embedding (fails gracefully if no provider keys or API fails)
+  const { embedQuery } = await import('@/lib/embeddings');
+  const queryEmbedding = await embedQuery(cleanQuery);
+  if (!queryEmbedding) {
+    return [];
+  }
+
+  try {
+    const { data: matches, error } = await supabase.rpc('match_website_data', {
+      query_embedding: queryEmbedding,
+      match_threshold: threshold,
+      match_count: limit,
+      filter_widget_ids: filterWidgetIds,
+    });
+
+    if (error) {
+      console.error('[widgetsDb:searchWebsiteDataVector] RPC error:', error);
+      return [];
+    }
+
+    if (!matches || !Array.isArray(matches) || matches.length === 0) {
+      return [];
+    }
+
+    return matches.map((row: any) => {
+      const meta = (row.metadata || {}) as Record<string, any>;
+      const collectedImages: string[] = [];
+      if (Array.isArray(row.image_urls)) {
+        collectedImages.push(...row.image_urls.filter((u: any) => typeof u === 'string' && u.startsWith('http')));
+      }
+      if (Array.isArray(meta.images)) {
+        collectedImages.push(...meta.images.filter((u: any) => typeof u === 'string' && u.startsWith('http')));
+      }
+
+      const priceVal = meta.price ?? meta.cost ?? meta.estimatedPrice ?? row.price;
+      const ratingVal = typeof meta.ratings === 'number' ? meta.ratings : (typeof meta.rating === 'number' ? meta.rating : undefined);
+      const reviewsVal = typeof meta.reviews === 'number' ? meta.reviews : (typeof meta.review_count === 'number' ? meta.review_count : undefined);
+
+      return {
+        id: row.id,
+        title: row.title || 'Untitled',
+        description: row.short_description || row.content || '',
+        shortDescription: row.short_description || '',
+        content: row.content || '',
+        images: collectedImages,
+        imageUrls: collectedImages,
+        price: priceVal,
+        currency: meta.currency,
+        availability: meta.availability,
+        rating: ratingVal,
+        reviews: reviewsVal,
+        attributes: meta.attributes || meta.specs,
+        sourceUrl: row.source_url,
+        entityType: row.entity_type || 'product',
+        category: meta.category,
+        level: meta.level,
+        metadata: {
+          ...meta,
+          similarity: row.similarity,
+          firstSeen: row.first_seen || row.created_at,
+          lastSeen: row.last_seen || row.updated_at,
+          stillListed: row.still_listed !== false,
+          freshnessStatus: (meta as any).freshnessStatus || 'fresh',
+        },
+        similarity: row.similarity,
+        firstSeen: row.first_seen || row.created_at,
+        lastSeen: row.last_seen || row.updated_at,
+        freshnessStatus: (meta as any).freshnessStatus || 'fresh',
+      } as WebsiteDataRecord;
+    });
+  } catch (err) {
+    console.error('[widgetsDb:searchWebsiteDataVector] Exception:', err);
+    return [];
+  }
+}
+
+/**
  * Returns scored, structured website data records for frontend card rendering.
- * Respects query constraints (e.g. only matching 1 specific item if asked specifically,
- * filtering by price max/min, rating, and suppressing cards on informational queries).
+ * First executes real pgvector cosine similarity search. If vector search is unavailable
+ * or returns no matches, seamlessly falls back to keyword retrieval.
  */
 export async function getRelevantWebsiteRecords(
   websiteOrWidgetId: string,
@@ -872,6 +1023,12 @@ export async function getRelevantWebsiteRecords(
     // If user asked purely about About, Policy, FAQ, or Contact info, return 0 catalog cards!
     if (constraints.isAboutQuery || constraints.isPolicyQuery || constraints.isFaqQuery || constraints.isContactQuery) {
       return [];
+    }
+
+    // 1. Try real pgvector search first
+    const vectorMatches = await searchWebsiteDataVector(websiteOrWidgetId, query, limit, 0.25);
+    if (vectorMatches.length > 0) {
+      return vectorMatches.slice(0, limit);
     }
 
     const targetScope = websiteOrWidgetId.trim().toLowerCase();
@@ -960,17 +1117,20 @@ export async function getRelevantWebsiteRecords(
       // Specific keyword match in title, category, tags
       let titleHits = 0;
       let contentHits = 0;
-      const metaCategory = String(meta.category || meta.tags || meta.level || '').toLowerCase();
+      const metaStrings = Object.values(meta)
+        .filter(v => typeof v === 'string' || typeof v === 'number')
+        .join(' ')
+        .toLowerCase();
 
       if (constraints.specificKeywords.length > 0) {
         for (const word of constraints.specificKeywords) {
           const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const wordBoundaryRegex = new RegExp(`\\b${escapedWord}\\b`, 'i');
-          if (wordBoundaryRegex.test(titleLower) || wordBoundaryRegex.test(metaCategory)) {
+          if (wordBoundaryRegex.test(titleLower) || wordBoundaryRegex.test(metaStrings)) {
             score += 80;
             titleHits++;
           } else if (wordBoundaryRegex.test(contentLower)) {
-            score += 15;
+            score += 25;
             contentHits++;
           }
         }
@@ -1004,7 +1164,11 @@ export async function getRelevantWebsiteRecords(
     // OR content, return [] so the agent correctly says "not found" rather than hallucinating.
     // We keep results when content-level hits exist (broad/synonym queries like "show me cars").
     // Filter out broad generic catalog words so "all offerings" is treated as broad catalog search
-    const BROAD_CATALOG_WORDS = new Set(['offering', 'offerings', 'program', 'programs', 'course', 'courses', 'product', 'products', 'service', 'services', 'inventory', 'catalog', 'all', 'item', 'items', 'list', 'show']);
+    const BROAD_CATALOG_WORDS = new Set([
+      'offering', 'offerings', 'program', 'programs', 'course', 'courses', 'product', 'products',
+      'service', 'services', 'inventory', 'catalog', 'all', 'item', 'items', 'list', 'show',
+      'vehicle', 'vehicles', 'car', 'cars', 'truck', 'trucks', 'suv', 'suvs', 'auto', 'automobile', 'automotive'
+    ]);
     const trueSpecificKeywords = constraints.specificKeywords.filter(w => !BROAD_CATALOG_WORDS.has(w));
 
     if (trueSpecificKeywords.length > 0) {
