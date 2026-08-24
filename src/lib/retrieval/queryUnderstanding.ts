@@ -118,7 +118,7 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
   const isPolicy = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(lower);
   const isFaq = /(?:faq|frequently asked|questions|help center)/i.test(lower);
   const isContact = /(?:contact (?:us|team)|reach out|email address|phone number|office location|support team)/i.test(lower);
-  const isGreeting = /^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|start|help)$/i.test(lower);
+  const isGreeting = /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|howdy|sup|welcome|start|help)(?:\s+(?:there|everyone|team|bot|assistant|friend|all))?[!.]*$/i.test(lower.trim());
   const isNavigation = /\b(?:take me to|navigate to|open the page|go to|open)\b/i.test(lower);
 
   const isInformational = isAbout || isPolicy || isFaq || isContact;

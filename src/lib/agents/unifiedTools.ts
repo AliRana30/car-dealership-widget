@@ -25,7 +25,7 @@
  *   get_details / details → get_entity
  */
 
-import { hybridRetrieve, HybridRetrievalOptions } from '@/lib/retrieval/hybridRag';
+import { hybridRetrieve, HybridRetrievalOptions, StageTimings } from '@/lib/retrieval/hybridRag';
 import { validateGrounding, GroundingMetadata } from '@/lib/retrieval/grounding';
 import { getWidget } from '@/config/widgetsDb';
 import { broadcastToSession } from '@/lib/realtime/session';
@@ -103,6 +103,7 @@ export interface UnifiedToolResult {
   // Filter result extras
   appliedFilters?: Record<string, any>;
   sortedBy?: string;
+  timings?: StageTimings;
 }
 
 export interface EntityComparison {
@@ -401,6 +402,7 @@ async function runHybridRetrieval(
     systemPrompt: validation.systemPrompt,
     contextSummary: validation.contextSummary,
     groundingMetadata: gm,
+    timings: hybridOutput.timings,
     _rawValidation: validation,
   } as any;
 }
@@ -440,6 +442,7 @@ async function toolGetEntity(
   context: UnifiedToolContext,
   businessName: string
 ): Promise<UnifiedToolResult> {
+  const tEntityT0 = performance.now();
   let targetId = String(args.entityId || args.entity_id || args.id || args.query || '').trim();
   if (context.sessionId && (!targetId || targetId === 'it' || targetId === 'this' || targetId === 'that' || targetId === 'first one' || targetId.startsWith('the '))) {
     const session = await getSessionContext(context.sessionId, widgetId);
@@ -476,6 +479,7 @@ async function toolGetEntity(
       broadcastToSession(context.sessionId, 'entity_cards', { results: [formatted] }).catch(() => {});
     }
 
+    const durationMs = Math.round((performance.now() - tEntityT0) * 100) / 100;
     return {
       success: true,
       tool: 'get_entity',
@@ -489,6 +493,16 @@ async function toolGetEntity(
       hedged: !!formatted.hedgeInstruction,
       hedgeInstruction: formatted.hedgeInstruction,
       groundingMetadata: gm,
+      timings: {
+        queryUnderstandingMs: 0,
+        widgetLookupMs: 0,
+        dbFetchMs: durationMs,
+        parallelRetrievalMs: durationMs,
+        rerankingMs: 0,
+        contextSummaryMs: 0,
+        totalRetrievalMs: durationMs,
+        cacheHit: 'none',
+      },
     };
   }
 

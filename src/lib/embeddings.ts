@@ -5,6 +5,8 @@
  * Automatically falls back to OpenAI or deterministic dummy vectors in development if keys are missing.
  */
 
+import { queryEmbeddingCache, embeddingSingleFlight } from '@/lib/retrieval/cache';
+
 const MAX_EMBEDDING_BATCH_SIZE = 100;
 
 async function embedTextChunk(cleanTexts: string[]): Promise<number[][]> {
@@ -146,9 +148,10 @@ export async function embedText(text: string): Promise<number[]> {
  * Generates an embedding vector specifically for search queries.
  * 
  * STRICT RETRIEVAL GUARANTEE:
- * 1. NEVER generates dummy/fallback vectors for queries.
- * 2. If API keys are missing or generation fails, returns null.
- * 3. Allows the caller to fail closed or cleanly fall back to keyword search.
+ * 1. Fast in-memory LRU cache for deterministic 1536-dim embeddings (<0.1ms).
+ * 2. In-flight request deduplication via SingleFlight.
+ * 3. NEVER generates dummy/fallback vectors for queries.
+ * 4. If API keys are missing or generation fails, returns null.
  *
  * @param query The search query string to embed.
  * @returns A 1536-dimensional embedding vector, or null if generation fails.
@@ -159,68 +162,82 @@ export async function embedQuery(query: string): Promise<number[] | null> {
   }
 
   const cleanQuery = query.trim().replace(/\n+/g, ' ');
-  const groqKey = process.env.GROQ_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  const cacheKey = cleanQuery.toLowerCase();
 
-  if (!groqKey && !openaiKey) {
-    // No keys configured — fail gracefully by returning null (NEVER dummy vectors)
-    return null;
+  // 1. Check in-memory LRU cache
+  const cached = queryEmbeddingCache.get(cacheKey);
+  if (cached && Array.isArray(cached) && cached.length === 1536) {
+    return cached;
   }
 
-  const providersToTry: { name: 'groq' | 'openai'; key: string; baseUrl: string; model: string }[] = [];
+  // 2. Deduplicate concurrent requests
+  return embeddingSingleFlight.do(cacheKey, async () => {
+    // Re-check cache in case another flight resolved it
+    const existing = queryEmbeddingCache.get(cacheKey);
+    if (existing) return existing;
 
-  if (groqKey) {
-    providersToTry.push({
-      name: 'groq',
-      key: groqKey,
-      baseUrl: 'https://api.groq.com/openai/v1',
-      model: process.env.GROQ_EMBEDDING_MODEL || 'nomic-embed-text-v1.5',
-    });
-  }
+    const groqKey = process.env.GROQ_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
 
-  if (openaiKey) {
-    providersToTry.push({
-      name: 'openai',
-      key: openaiKey,
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'text-embedding-3-small',
-    });
-  }
-
-  for (const provider of providersToTry) {
-    try {
-      const response = await fetch(`${provider.baseUrl}/embeddings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${provider.key}`,
-        },
-        body: JSON.stringify({
-          input: [cleanQuery],
-          model: provider.model,
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.warn(`[embeddings:embedQuery] ${provider.name} error (${response.status}): ${errText}`);
-        continue;
-      }
-
-      const result = await response.json();
-      if (result.data && Array.isArray(result.data) && result.data[0]?.embedding) {
-        const embedding = result.data[0].embedding;
-        if (Array.isArray(embedding) && embedding.length === 1536) {
-          return embedding;
-        }
-      }
-    } catch (err: any) {
-      console.warn(`[embeddings:embedQuery] Failed with ${provider.name}:`, err?.message || err);
+    if (!groqKey && !openaiKey) {
+      return null;
     }
-  }
 
-  // All providers failed or returned invalid response
-  return null;
+    const providersToTry: { name: 'groq' | 'openai'; key: string; baseUrl: string; model: string }[] = [];
+
+    if (groqKey) {
+      providersToTry.push({
+        name: 'groq',
+        key: groqKey,
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: process.env.GROQ_EMBEDDING_MODEL || 'nomic-embed-text-v1.5',
+      });
+    }
+
+    if (openaiKey) {
+      providersToTry.push({
+        name: 'openai',
+        key: openaiKey,
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'text-embedding-3-small',
+      });
+    }
+
+    for (const provider of providersToTry) {
+      try {
+        const response = await fetch(`${provider.baseUrl}/embeddings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${provider.key}`,
+          },
+          body: JSON.stringify({
+            input: [cleanQuery],
+            model: provider.model,
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          console.warn(`[embeddings:embedQuery] ${provider.name} error (${response.status}): ${errText}`);
+          continue;
+        }
+
+        const result = await response.json();
+        if (result.data && Array.isArray(result.data) && result.data[0]?.embedding) {
+          const embedding = result.data[0].embedding;
+          if (Array.isArray(embedding) && embedding.length === 1536) {
+            queryEmbeddingCache.set(cacheKey, embedding);
+            return embedding;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[embeddings:embedQuery] Failed with ${provider.name}:`, err?.message || err);
+      }
+    }
+
+    return null;
+  });
 }
 
 

@@ -578,6 +578,7 @@ export async function executeAgentTool(
         hedged: result.hedged,
         hedgeInstruction: result.hedgeInstruction,
         groundingMetadata: result.groundingMetadata,
+        timings: result.timings,
       },
     };
   }
@@ -597,6 +598,7 @@ export async function executeAgentTool(
       comparison: result.comparison,
       appliedFilters: result.appliedFilters,
       sortedBy: result.sortedBy,
+      timings: result.timings,
     },
   };
 }

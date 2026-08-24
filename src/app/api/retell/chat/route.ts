@@ -461,6 +461,7 @@ export async function OPTIONS(req: NextRequest) {
 // ─── Main handler ───────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const reqT0 = performance.now();
   const origin = req.headers.get('origin');
   const headers = corsHeaders(origin);
 
@@ -883,6 +884,18 @@ export async function POST(req: NextRequest) {
       ? toolResult.sources[0].url
       : undefined;
 
+    const totalChatDurationMs = Math.round((performance.now() - reqT0) * 100) / 100;
+    const retrievalTimings = toolResult.timings || planResult.stepResults.find(s => s.result?.timings)?.result?.timings || {
+      queryUnderstandingMs: 0,
+      widgetLookupMs: 0,
+      dbFetchMs: 0,
+      parallelRetrievalMs: 0,
+      rerankingMs: 0,
+      contextSummaryMs: 0,
+      totalRetrievalMs: planResult.totalDurationMs,
+      cacheHit: 'none',
+    };
+
     return NextResponse.json(
       {
         chatId,
@@ -891,6 +904,11 @@ export async function POST(req: NextRequest) {
         navigationUrl: topNavUrl,
         action: topNavUrl ? { type: 'navigate', url: topNavUrl } : undefined,
         grounding: validation.groundingMetadata,
+        timings: {
+          totalMs: totalChatDurationMs,
+          plannerDurationMs: planResult.totalDurationMs,
+          retrieval: retrievalTimings,
+        },
       },
       { status: 200, headers }
     );
@@ -919,6 +937,18 @@ export async function POST(req: NextRequest) {
       },
     ];
 
+    const totalChatDurationMs = Math.round((performance.now() - reqT0) * 100) / 100;
+    const retrievalTimings = toolResult.timings || planResult.stepResults.find(s => s.result?.timings)?.result?.timings || {
+      queryUnderstandingMs: 0,
+      widgetLookupMs: 0,
+      dbFetchMs: 0,
+      parallelRetrievalMs: 0,
+      rerankingMs: 0,
+      contextSummaryMs: 0,
+      totalRetrievalMs: planResult.totalDurationMs,
+      cacheHit: 'none',
+    };
+
     return NextResponse.json(
       {
         chatId: chatId || `chat_${Date.now()}`,
@@ -928,6 +958,11 @@ export async function POST(req: NextRequest) {
         suggestedUrl: fallbackResult.suggestedUrl,
         action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
         grounding: validation.groundingMetadata,
+        timings: {
+          totalMs: totalChatDurationMs,
+          plannerDurationMs: planResult.totalDurationMs,
+          retrieval: retrievalTimings,
+        },
       },
       { status: 200, headers }
     );

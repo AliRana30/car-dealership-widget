@@ -391,6 +391,29 @@ export async function executePlan(
     }
   }
 
+  // Fast path: direct single-step execution (avoids wave scheduler overhead)
+  if (plan.fastPath && plan.steps.length === 1) {
+    const step = plan.steps[0];
+    const stepT0 = Date.now();
+    const result = await executeUnifiedTool(widgetId, step.tool, step.args, context);
+    const durationMs = Date.now() - stepT0;
+    const stepResult: PlanStepResult = {
+      stepIndex: 0,
+      tool: step.tool,
+      label: step.label,
+      result,
+      durationMs,
+    };
+    return {
+      plan,
+      stepResults: [stepResult],
+      primary: result,
+      grounded: result.grounded,
+      totalDurationMs: Date.now() - t0,
+      shortCircuited: false,
+    };
+  }
+
   // Wave-based execution
   const stepResults: PlanStepResult[] = [];
   const completedResults = new Map<number, UnifiedToolResult>();

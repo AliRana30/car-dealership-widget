@@ -8,6 +8,7 @@ import {
 } from './voiceWidget/default';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { embedTexts, embedText } from '@/lib/embeddings';
+import { widgetLookupCache, widgetSingleFlight } from '@/lib/retrieval/cache';
 
 export interface WidgetRecord {
   id: string; // UUID primary key in DB
@@ -114,57 +115,78 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
 
   const searchId = idOrWidgetId.trim().toLowerCase();
   const normalizedSearchId = searchId === 'myfrontdesk' ? 'front-desk' : searchId;
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedSearchId);
+  const cacheKey = `${normalizedSearchId}:${userId || 'public'}`;
 
-  try {
-    let query = supabase.from('widgets').select('*');
-    if (isUuid) {
-      query = query.or(`id.eq.${normalizedSearchId},website_id.eq.${normalizedSearchId}`);
-    } else if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk') {
-      query = query.or('widget_id.eq.front-desk,widget_id.eq.default').order('updated_at', { ascending: false });
-    } else {
-      query = query.eq('widget_id', normalizedSearchId);
-    }
-    // Enforce user isolation when userId is provided
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
+  // 1. Check in-memory LRU cache (<0.1ms)
+  const cached = widgetLookupCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
 
-    const { data: widgetRows, error } = await query.limit(1);
+  // 2. Deduplicate concurrent flights
+  return widgetSingleFlight.do(cacheKey, async () => {
+    const existing = widgetLookupCache.get(cacheKey);
+    if (existing) return existing;
 
-    if (error || !widgetRows || widgetRows.length === 0) {
-      console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] Widget not found for '${idOrWidgetId}'. Failing closed.`);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedSearchId);
+
+    try {
+      let query = supabase.from('widgets').select('*');
+      if (isUuid) {
+        query = query.or(`id.eq.${normalizedSearchId},website_id.eq.${normalizedSearchId}`);
+      } else if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk') {
+        query = query.or('widget_id.eq.front-desk,widget_id.eq.default').order('updated_at', { ascending: false });
+      } else {
+        query = query.eq('widget_id', normalizedSearchId);
+      }
+      // Enforce user isolation when userId is provided
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data: widgetRows, error } = await query.limit(1);
+
+      if (error || !widgetRows || widgetRows.length === 0) {
+        console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] Widget not found for '${idOrWidgetId}'. Failing closed.`);
+        return null;
+      }
+
+      const widgetRow = widgetRows[0];
+
+      let agentRow: any = null;
+      let secretRow: any = null;
+
+      if (widgetRow.agent_id) {
+        const { data: agentData } = await supabase
+          .from('agents')
+          .select('*')
+          .eq('id', widgetRow.agent_id)
+          .single();
+        agentRow = agentData;
+
+        if (agentRow && agentRow.credential_secret_id) {
+          const { data: secretData } = await supabase
+            .from('widget_secrets')
+            .select('*')
+            .eq('id', agentRow.credential_secret_id)
+            .single();
+          secretRow = secretData;
+        }
+      }
+
+      const record = fromDbRow(widgetRow, agentRow, secretRow);
+      if (record) {
+        widgetLookupCache.set(cacheKey, record, 60 * 1000);
+        // Also cache by ID and slug
+        if (record.id) widgetLookupCache.set(`${record.id.toLowerCase()}:${userId || 'public'}`, record, 60 * 1000);
+        if (record.widgetId) widgetLookupCache.set(`${record.widgetId.toLowerCase()}:${userId || 'public'}`, record, 60 * 1000);
+      }
+      return record;
+    } catch (err) {
+      console.error(`[widgetsDb] Error in getWidget for ${normalizedSearchId}:`, err);
       return null;
     }
-
-    const widgetRow = widgetRows[0];
-
-    let agentRow: any = null;
-    let secretRow: any = null;
-
-    if (widgetRow.agent_id) {
-      const { data: agentData } = await supabase
-        .from('agents')
-        .select('*')
-        .eq('id', widgetRow.agent_id)
-        .single();
-      agentRow = agentData;
-
-      if (agentRow && agentRow.credential_secret_id) {
-        const { data: secretData } = await supabase
-          .from('widget_secrets')
-          .select('*')
-          .eq('id', agentRow.credential_secret_id)
-          .single();
-        secretRow = secretData;
-      }
-    }
-
-    return fromDbRow(widgetRow, agentRow, secretRow);
-  } catch (err) {
-    console.error(`[widgetsDb] Error in getWidget for ${normalizedSearchId}:`, err);
-    return null;
-  }
+  });
 }
 
 const isUuid = (val?: string): boolean => {
@@ -324,7 +346,9 @@ export async function saveWidget(
     }
   }
 
-  return fromDbRow(savedWidgetRow, savedAgentRow, savedSecretRow);
+  const saved = fromDbRow(savedWidgetRow, savedAgentRow, savedSecretRow);
+  widgetLookupCache.clear();
+  return saved;
 }
 
 /**
@@ -373,6 +397,7 @@ export async function deleteWidget(idOrWidgetId: string, userId?: string): Promi
       }
     }
 
+    widgetLookupCache.clear();
     return true;
   } catch (err) {
     console.error(`[widgetsDb] Error in deleteWidget for ${idOrWidgetId}:`, err);
