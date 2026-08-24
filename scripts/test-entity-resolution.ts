@@ -156,14 +156,14 @@ async function runTests() {
     entityId: sampleWithImages?.id || 'sample-1',
   };
 
-  pinEntity(sessionId, widgetId, topEntity);
-  setLastResults(sessionId, widgetId, [topEntity.record]);
+  await pinEntity(sessionId, widgetId, topEntity);
+  await setLastResults(sessionId, widgetId, [topEntity.record]);
 
   // ---------------------------------------------------------------------------
   // TEST 4: "tell me about it" Anaphora Resolution
   // ---------------------------------------------------------------------------
   try {
-    const ctx = getSessionContext(sessionId, widgetId);
+    const ctx = await getSessionContext(sessionId, widgetId);
     const resolved = resolveAnaphora('tell me about it', ctx.pinnedEntity, ctx.lastResults, []);
     const pass = resolved.wasAnaphoric && resolved.resolvedEntity?.title === topEntity.title;
     results.push({
@@ -185,7 +185,7 @@ async function runTests() {
   // TEST 5: "show me its picture" Media Grounding
   // ---------------------------------------------------------------------------
   try {
-    const ctx = getSessionContext(sessionId, widgetId);
+    const ctx = await getSessionContext(sessionId, widgetId);
     const resolved = resolveAnaphora('show me its picture', ctx.pinnedEntity, ctx.lastResults, []);
     const hasImages = (resolved.resolvedEntity?.record?.images?.length ?? 0) > 0 || (resolved.resolvedEntity?.record?.imageUrls?.length ?? 0) > 0;
     const pass = resolved.wasAnaphoric && hasImages;
@@ -208,7 +208,7 @@ async function runTests() {
   // TEST 6: Follow-up Price Question ("how much is it?")
   // ---------------------------------------------------------------------------
   try {
-    const ctx = getSessionContext(sessionId, widgetId);
+    const ctx = await getSessionContext(sessionId, widgetId);
     const resolved = resolveAnaphora('how much is it?', ctx.pinnedEntity, ctx.lastResults, []);
     const price = resolved.resolvedEntity?.record?.price;
     const pass = resolved.wasAnaphoric && Boolean(price);
@@ -230,7 +230,7 @@ async function runTests() {
   // TEST 7: Follow-up Specification Question
   // ---------------------------------------------------------------------------
   try {
-    const ctx = getSessionContext(sessionId, widgetId);
+    const ctx = await getSessionContext(sessionId, widgetId);
     const resolved = resolveAnaphora('what are its specs?', ctx.pinnedEntity, ctx.lastResults, []);
     const hasDetails = Boolean(resolved.resolvedEntity?.record?.description || resolved.resolvedEntity?.record?.attributes);
     const pass = resolved.wasAnaphoric && hasDetails;

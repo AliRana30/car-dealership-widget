@@ -39,6 +39,9 @@ import {
   updateSessionContext,
   pinEntity,
   setLastResults,
+  setActiveFilters,
+  setLastNavigation,
+  setLastIntent,
 } from '@/lib/agents/sessionContext';
 
 function maskIp(ip: string): string {
@@ -150,24 +153,24 @@ async function resolveEntityForTurn(
   pinnedEntity: ResolvedEntity | null;
   records: WebsiteDataRecord[];
 }> {
-  // Load server-side session context
-  const ctx = getSessionContext(sessionId, widgetId);
+  // Load server-side durable session context
+  const ctx = await getSessionContext(sessionId, widgetId);
 
-  // 1. Try anaphora resolution first (pronouns, ordinals)
+  // 1. Try anaphora resolution first (pronouns, ordinals, follow-up attributes)
   const anaphoric = resolveAnaphora(
     content,
-    ctx.pinnedEntity,
-    ctx.lastResults,
+    ctx.currentEntity || ctx.pinnedEntity,
+    ctx.lastEntities || ctx.lastResults,
     history,
   );
 
   if (anaphoric.wasAnaphoric && anaphoric.resolvedEntity) {
-    // Carry over the pinned entity; make the query specific to trigger retrieval
-    const resolvedQuery = `${anaphoric.resolvedEntity.title} ${content}`;
+    const resolvedQuery = anaphoric.rewrittenQuery || `${anaphoric.resolvedEntity.title} ${content}`;
+    await pinEntity(sessionId, widgetId, anaphoric.resolvedEntity);
     return {
       resolvedQuery,
       pinnedEntity: anaphoric.resolvedEntity,
-      records: anaphoric.resolvedEntity.record ? [anaphoric.resolvedEntity.record] : ctx.lastResults,
+      records: anaphoric.resolvedEntity.record ? [anaphoric.resolvedEntity.record] : (ctx.lastResults || []),
     };
   }
 
@@ -186,9 +189,9 @@ async function resolveEntityForTurn(
     const top = resolved[0];
     // Pin the top entity when confidence is exact/partial/fuzzy
     if (top.confidence !== 'semantic' || resolved.length === 1) {
-      pinEntity(sessionId, widgetId, top);
+      await pinEntity(sessionId, widgetId, top);
     }
-    setLastResults(sessionId, widgetId, resolved.map((r) => r.record));
+    await setLastResults(sessionId, widgetId, resolved.map((r) => r.record));
 
     return {
       resolvedQuery: top.title,
@@ -628,6 +631,18 @@ export async function POST(req: NextRequest) {
     { sessionId, businessName, allowNavigation: allowNav }
   );
   const toolResult = planResult.primary;
+
+  // Persist session context from planner execution
+  if (toolResult.results.length > 0) {
+    await setLastResults(sessionId, retrievalId, toolResult.results);
+    if (toolResult.tool === 'get_entity' || toolResult.results.length === 1) {
+      await pinEntity(sessionId, retrievalId, toolResult.results[0]);
+    }
+  }
+  if (toolResult.appliedFilters) {
+    await setActiveFilters(sessionId, retrievalId, toolResult.appliedFilters);
+  }
+  await setLastIntent(sessionId, retrievalId, planResult.plan.planType);
 
   // ── Map unified result → local validation shape used by rendering logic ─────
   //

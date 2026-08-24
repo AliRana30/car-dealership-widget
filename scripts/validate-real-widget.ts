@@ -386,8 +386,8 @@ async function runFullValidation() {
       title: itemWithImages.title,
       entityId: itemWithImages.id,
     };
-    pinEntity(sessionId, primaryWidgetId, pinned);
-    const ctx = getSessionContext(sessionId, primaryWidgetId);
+    await pinEntity(sessionId, primaryWidgetId, pinned);
+    const ctx = await getSessionContext(sessionId, primaryWidgetId);
     const pass = ctx.pinnedEntity?.title === itemWithImages.title;
 
     testResults.push({
@@ -462,14 +462,14 @@ async function runFullValidation() {
     const item1 = primaryRows[0];
     const item2 = primaryRows[Math.min(1, primaryRows.length - 1)];
 
-    pinEntity(sessionId, primaryWidgetId, { record: item1, confidence: 'exact', title: item1.title, entityId: item1.id });
+    await pinEntity(sessionId, primaryWidgetId, { record: item1, confidence: 'exact', title: item1.title, entityId: item1.id });
     // User switches context by querying item2 explicitly
     const newResolved = await resolveEntityByQuery(primaryWidgetId, item2.title, 1);
     if (newResolved.length > 0) {
-      pinEntity(sessionId, primaryWidgetId, { record: newResolved[0].record, confidence: 'exact', title: newResolved[0].title, entityId: newResolved[0].entityId });
+      await pinEntity(sessionId, primaryWidgetId, { record: newResolved[0].record, confidence: 'exact', title: newResolved[0].title, entityId: newResolved[0].entityId });
     }
 
-    const updatedCtx = getSessionContext(sessionId, primaryWidgetId);
+    const updatedCtx = await getSessionContext(sessionId, primaryWidgetId);
     const pass = updatedCtx.pinnedEntity?.title === item2.title;
 
     testResults.push({

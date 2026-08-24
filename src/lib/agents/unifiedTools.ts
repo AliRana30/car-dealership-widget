@@ -30,6 +30,13 @@ import { validateGrounding, GroundingMetadata } from '@/lib/retrieval/grounding'
 import { getWidget } from '@/config/widgetsDb';
 import { broadcastToSession } from '@/lib/realtime/session';
 import { calculateFreshness, appendResumeParam, getEntityDetails } from './tools';
+import {
+  setLastResults,
+  pinEntity,
+  setActiveFilters,
+  setLastNavigation,
+  setLastIntent,
+} from './sessionContext';
 
 // ── Structured Result Types ───────────────────────────────────────────────────
 
@@ -319,8 +326,10 @@ async function toolSearchKnowledge(
 
   const retrieved = await runHybridRetrieval(widgetId, query, businessName, { limit });
 
-  // Broadcast to session for voice agents
+  // Broadcast & persist to session context
   if (context.sessionId && retrieved.results.length > 0) {
+    await setLastResults(context.sessionId, widgetId, retrieved.results).catch(() => {});
+    await setLastIntent(context.sessionId, widgetId, 'search_knowledge').catch(() => {});
     broadcastToSession(context.sessionId, 'voice_results', { results: retrieved.results }).catch(() => {});
     broadcastToSession(context.sessionId, 'entity_cards', { results: retrieved.results }).catch(() => {});
   }
@@ -357,6 +366,8 @@ async function toolGetEntity(
     };
 
     if (context.sessionId) {
+      await pinEntity(context.sessionId, widgetId, formatted).catch(() => {});
+      await setLastIntent(context.sessionId, widgetId, 'get_entity').catch(() => {});
       broadcastToSession(context.sessionId, 'voice_results', { results: [formatted] }).catch(() => {});
       broadcastToSession(context.sessionId, 'entity_cards', { results: [formatted] }).catch(() => {});
     }
@@ -381,6 +392,9 @@ async function toolGetEntity(
   const retrieved = await runHybridRetrieval(widgetId, entityId, businessName, { limit: 1 });
 
   if (context.sessionId && retrieved.results.length > 0) {
+    await pinEntity(context.sessionId, widgetId, retrieved.results[0]).catch(() => {});
+    await setLastResults(context.sessionId, widgetId, retrieved.results).catch(() => {});
+    await setLastIntent(context.sessionId, widgetId, 'get_entity').catch(() => {});
     broadcastToSession(context.sessionId, 'voice_results', { results: retrieved.results }).catch(() => {});
     broadcastToSession(context.sessionId, 'entity_cards', { results: retrieved.results }).catch(() => {});
   }
@@ -455,6 +469,9 @@ async function toolFilterEntities(
   }
 
   if (context.sessionId && filtered.length > 0) {
+    await setLastResults(context.sessionId, widgetId, filtered).catch(() => {});
+    await setActiveFilters(context.sessionId, widgetId, { maxPrice, minPrice, entityType, keyword, negative }).catch(() => {});
+    await setLastIntent(context.sessionId, widgetId, 'filter_entities').catch(() => {});
     broadcastToSession(context.sessionId, 'voice_results', { results: filtered }).catch(() => {});
     broadcastToSession(context.sessionId, 'entity_cards', { results: filtered }).catch(() => {});
   }
@@ -683,6 +700,8 @@ async function toolNavigateToEntity(
   const finalUrl = appendResumeParam(entity.sourceUrl, sessionId);
 
   if (sessionId) {
+    await setLastNavigation(sessionId, widgetId, finalUrl).catch(() => {});
+    await setLastIntent(sessionId, widgetId, 'navigate_to_entity').catch(() => {});
     await broadcastToSession(sessionId, 'navigate', {
       url: finalUrl,
       entityId: entity.id,

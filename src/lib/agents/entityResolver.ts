@@ -461,93 +461,135 @@ function dedupe(list: ResolvedEntity[]): ResolvedEntity[] {
 
 /** Pronoun / anaphoric patterns that refer to the most recently discussed entity */
 const ANAPHORIC_RE =
-  /\b(it|its|it's|that|that's|this|this one|the item|the one|the vehicle|the car|the product|the course|the service|the offering|the listing|the property)\b/i;
+  /\b(it|its|it's|that|that's|this|this one|that one|the one|the vehicle|the car|the product|the course|the service|the offering|the listing|the property|there)\b/i;
+
+/** Short follow-up attribute questions that imply the current pinned entity */
+const FOLLOWUP_ATTR_RE =
+  /\b(how much|how much is it|what does it cost|price\??|cost\??|discount|on sale|sale price|deal|offer|promo|pictures?|photos?|images?|gallery|open it|open that|take me there|navigate to it|prerequisites?|requirements?|duration|who teaches)\b/i;
 
 /** Ordinal words → 0-based index */
 const ORDINAL_MAP: Record<string, number> = {
-  first: 0, '1st': 0,
+  first: 0, '1st': 0, top: 0,
   second: 1, '2nd': 1,
   third: 2, '3rd': 2,
   fourth: 3, '4th': 3,
   fifth: 4, '5th': 4,
-  last: -1, // resolved dynamically
+  last: -1,
 };
 
 export interface AnaphoricResolution {
   /** The entity to focus on for this turn */
   resolvedEntity: ResolvedEntity | null;
-  /** Whether a pronoun/ordinal was detected (false = regular query, skip resolution) */
+  /** Whether a pronoun/ordinal was detected */
   wasAnaphoric: boolean;
   /** The natural-language label extracted (e.g. "the Jeep Wrangler") */
   label?: string;
+  /** Suggested query rewrite incorporating resolved entity title */
+  rewrittenQuery?: string;
 }
 
 /**
- * Try to resolve anaphoric references (it, this, that, first one, etc.) against:
+ * Try to resolve anaphoric references (it, this, that, first one, how much, etc.) against:
  *  1. The pinned entity in server session context
  *  2. The last results array in session context
  *  3. The history messages passed from the client
  */
 export function resolveAnaphora(
   query: string,
-  pinnedEntity: ResolvedEntity | null,
-  lastResults: WebsiteDataRecord[],
-  history: Array<{ role: string; content: string; results?: WebsiteDataRecord[] }>,
+  pinnedEntity: ResolvedEntity | any | null,
+  lastResults: any[],
+  history: Array<{ role: string; content: string; results?: any[] }> = [],
 ): AnaphoricResolution {
   const lower = query.trim().toLowerCase();
 
-  // ── Check ordinal references ─────────────────────────────────────────────
+  // Normalize pinned entity to ResolvedEntity format if passed as raw or DurableEntityRecord
+  let normPinned: ResolvedEntity | null = null;
+  if (pinnedEntity) {
+    const rawRec = pinnedEntity.record || pinnedEntity;
+    normPinned = {
+      record: rawRec,
+      confidence: pinnedEntity.confidence || 'exact',
+      title: pinnedEntity.title || rawRec.title || 'Untitled',
+      entityId: pinnedEntity.entityId || rawRec.id || '',
+    };
+  }
+
+  // ── 1. Check ordinal references (first one, 2nd, last, etc.) ───────────────
   const ordinalMatch = lower.match(
-    /\b(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th|last)\b/i,
+    /\b(first|1st|top|second|2nd|third|3rd|fourth|4th|fifth|5th|last)\b/i,
   );
   if (ordinalMatch) {
     const word = ordinalMatch[1].toLowerCase();
     let idx = ORDINAL_MAP[word] ?? 0;
-    // Gather result pool: session lastResults first, then most recent history results
-    const resultPool = lastResults.length > 0
-      ? lastResults
-      : getLastHistoryResults(history);
+    const resultPool = lastResults.length > 0 ? lastResults : getLastHistoryResults(history);
 
     if (resultPool.length > 0) {
       if (idx === -1) idx = resultPool.length - 1;
-      const item = resultPool[Math.min(idx, resultPool.length - 1)];
+      const targetIdx = Math.min(Math.max(0, idx), resultPool.length - 1);
+      const item = resultPool[targetIdx];
       if (item) {
+        const rawRec = item.record || item;
+        const res: ResolvedEntity = {
+          record: rawRec,
+          confidence: 'exact',
+          title: item.title || rawRec.title || 'Untitled',
+          entityId: item.id || rawRec.id || '',
+        };
         return {
-          resolvedEntity: {
-            record: item,
-            confidence: 'exact',
-            title: item.title || 'Untitled',
-            entityId: item.id || '',
-          },
+          resolvedEntity: res,
           wasAnaphoric: true,
-          label: item.title,
+          label: res.title,
+          rewrittenQuery: `${res.title} details`,
         };
       }
     }
   }
 
-  // ── Check pronoun references ─────────────────────────────────────────────
-  if (ANAPHORIC_RE.test(lower)) {
-    // 1. Use server-pinned entity if available
-    if (pinnedEntity) {
-      return { resolvedEntity: pinnedEntity, wasAnaphoric: true, label: pinnedEntity.title };
+  // ── 2. Check pronoun / explicit anaphora or short follow-up attribute questions ──
+  const isAnaphoric = ANAPHORIC_RE.test(lower) || (FOLLOWUP_ATTR_RE.test(lower) && (normPinned !== null || lastResults.length > 0));
+
+  if (isAnaphoric) {
+    // 2a. Use pinned entity if available
+    if (normPinned) {
+      const title = normPinned.title;
+      let rewrite = `${title} ${query}`;
+      if (/\b(?:price|how much|cost)\b/i.test(lower)) {
+        rewrite = `price of ${title}`;
+      } else if (/\b(?:pictures?|photos?|images?|gallery)\b/i.test(lower)) {
+        rewrite = `show me pictures of ${title}`;
+      } else if (/\b(?:open|take me|navigate|go there)\b/i.test(lower)) {
+        rewrite = `take me to the page for ${title}`;
+      } else if (/\b(?:discount|sale|deal|offer)\b/i.test(lower)) {
+        rewrite = `${title} discount price`;
+      }
+
+      return {
+        resolvedEntity: normPinned,
+        wasAnaphoric: true,
+        label: title,
+        rewrittenQuery: rewrite,
+      };
     }
-    // 2. Fall back to last result from session
+
+    // 2b. Fall back to top item of last results
     const resultPool = lastResults.length > 0 ? lastResults : getLastHistoryResults(history);
     if (resultPool.length > 0) {
       const item = resultPool[0];
+      const rawRec = item.record || item;
+      const res: ResolvedEntity = {
+        record: rawRec,
+        confidence: 'semantic',
+        title: item.title || rawRec.title || 'Untitled',
+        entityId: item.id || rawRec.id || '',
+      };
       return {
-        resolvedEntity: {
-          record: item,
-          confidence: 'semantic',
-          title: item.title || 'Untitled',
-          entityId: item.id || '',
-        },
+        resolvedEntity: res,
         wasAnaphoric: true,
-        label: item.title,
+        label: res.title,
+        rewrittenQuery: `${res.title} ${query}`,
       };
     }
-    // Nothing to resolve against — flag it but resolve nothing
+
     return { resolvedEntity: null, wasAnaphoric: true };
   }
 
@@ -555,8 +597,8 @@ export function resolveAnaphora(
 }
 
 function getLastHistoryResults(
-  history: Array<{ role: string; content: string; results?: WebsiteDataRecord[] }>,
-): WebsiteDataRecord[] {
+  history: Array<{ role: string; content: string; results?: any[] }>,
+): any[] {
   for (let i = history.length - 1; i >= 0; i--) {
     const msg = history[i];
     if (msg.role === 'agent' && Array.isArray(msg.results) && msg.results.length > 0) {
@@ -565,3 +607,4 @@ function getLastHistoryResults(
   }
   return [];
 }
+
