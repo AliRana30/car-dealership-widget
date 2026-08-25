@@ -11,6 +11,8 @@ import ColorEditorPanel from './ColorEditorPanel';
 import ColorsSection from './ColorsSection';
 import DeploySection from './DeploySection';
 import CrawlerSection from './CrawlerSection';
+import { Sparkles } from 'lucide-react';
+import CustomizerOnboardingTour from './CustomizerOnboardingTour';
 import {
   BrandingSection,
   TypographySection,
@@ -297,6 +299,8 @@ export default function WidgetCustomizerApp() {
   const [widgetStatus, setWidgetStatus] = useState<'active' | 'inactive' | 'paused'>('active');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isTourOpen, setIsTourOpen] = useState(false);
+  const [hasCheckedOnboarding, setHasCheckedOnboarding] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 860) {
@@ -354,12 +358,57 @@ export default function WidgetCustomizerApp() {
         }
 
         setIsSavedOnServer(true);
+
+        // 3. Check onboarding eligibility for new users
+        try {
+          const resOnboard = await fetchFn('/api/user/onboarding', { cache: 'no-store' });
+          if (resOnboard && resOnboard.ok) {
+            const onboardData = await resOnboard.json().catch(() => null);
+            if (onboardData && onboardData.shouldShowOnboarding) {
+              const localCompleted = typeof window !== 'undefined' ? localStorage.getItem('fd_customizer_onboarding_completed') : null;
+              if (!localCompleted) {
+                // Give DOM a short tick to mount before starting the tour
+                setTimeout(() => {
+                  setIsTourOpen(true);
+                }, 500);
+              }
+            }
+          }
+        } catch (onboardErr) {
+          console.warn('Could not verify onboarding status:', onboardErr);
+        } finally {
+          setHasCheckedOnboarding(true);
+        }
       } catch (err) {
         console.error('Failed to load widget config:', err);
         toast.error('Failed to load widget configurations');
       }
     }
     loadWidget();
+  }, []);
+
+  const handleTourClose = useCallback(async (completed: boolean) => {
+    setIsTourOpen(false);
+    const status = completed ? 'completed' : 'skipped';
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('fd_customizer_onboarding_completed', 'true');
+    }
+    try {
+      await fetch('/api/user/onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch (err) {
+      console.error('Failed to persist onboarding tour status:', err);
+    }
+    if (completed) {
+      toast.success('Onboarding tour completed! You are ready to customize.');
+    }
+  }, []);
+
+  const handleReplayTour = useCallback(() => {
+    setIsTourOpen(true);
   }, []);
 
   const patchDraft = useCallback((patch: Partial<VoiceWidgetConfig>) => {
@@ -481,11 +530,25 @@ export default function WidgetCustomizerApp() {
           <div style={styles.headerTitle} className="customizer-header-title">Widget Customizer</div>
         </div>
         <div style={styles.headerActions} className="customizer-header-actions">
+          <button
+            onClick={handleReplayTour}
+            style={styles.btnTour}
+            className="customizer-btn-tour"
+            title="Replay guided onboarding tour"
+          >
+            <Sparkles size={13.5} strokeWidth={2.2} />
+            <span>Tour</span>
+          </button>
           <button onClick={handleReset} style={styles.btnSecondary} className="customizer-btn-reset">Reset</button>
-          <button onClick={handleSave} style={{
-            ...styles.btnPrimary,
-            background: saved ? '#16a34a' : '#2563eb',
-          }} className="customizer-btn-save">
+          <button
+            data-onboarding="save"
+            onClick={handleSave}
+            style={{
+              ...styles.btnPrimary,
+              background: saved ? '#16a34a' : '#2563eb',
+            }}
+            className="customizer-btn-save"
+          >
             {saved ? '✓ Saved' : 'Save'}
           </button>
         </div>
@@ -636,6 +699,18 @@ export default function WidgetCustomizerApp() {
           />
         )}
       </div>
+
+      {/* ── Guided First-Time Onboarding Tour ── */}
+      <CustomizerOnboardingTour
+        isOpen={isTourOpen}
+        onClose={handleTourClose}
+        activeSection={activeSection}
+        onSelectSection={handleSectionChange}
+        mobileTab={mobileTab}
+        setMobileTab={setMobileTab}
+        isSidebarCollapsed={isSidebarCollapsed}
+        setIsSidebarCollapsed={setIsSidebarCollapsed}
+      />
     </div>
   );
 }
@@ -700,6 +775,22 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '8px',
     flexShrink: 0,
+  },
+  btnTour: {
+    height: '32px',
+    padding: '0 12px',
+    borderRadius: '7px',
+    border: '1px solid #e2e8f0',
+    background: '#eff6ff',
+    color: '#2563eb',
+    fontSize: '12.5px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '5px',
+    transition: 'all 0.15s ease',
+    fontFamily: 'inherit',
   },
   btnSecondary: {
     height: '32px',

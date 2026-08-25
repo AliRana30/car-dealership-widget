@@ -109,7 +109,7 @@ export default function PreviewArea({ draft, widgetId, onUpdateDraft }: Props) {
   const currentComputedWidth = activePreset === 'fluid' && customWidth >= 1000 ? '100%' : `${customWidth}px`;
 
   return (
-    <div style={styles.previewOuter} className="customizer-preview-outer">
+    <div data-onboarding="preview" style={styles.previewOuter} className="customizer-preview-outer">
       {/* Top bar with preset selector and resolution indicator */}
       <div style={styles.previewHeader} className="customizer-preview-header">
         <div style={styles.previewLabel}>

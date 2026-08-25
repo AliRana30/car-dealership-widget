@@ -30,6 +30,7 @@ export interface AppUser {
   fullName: string | null;
   createdAt: string;
   lastLoginAt: string | null;
+  customizerOnboardingStatus?: 'pending' | 'completed' | 'skipped' | null;
 }
 
 // Convert DB row to AppUser (no password_hash exposed)
@@ -40,6 +41,7 @@ function toAppUser(row: any): AppUser {
     fullName: row.full_name ?? null,
     createdAt: row.created_at,
     lastLoginAt: row.last_login_at ?? null,
+    customizerOnboardingStatus: row.customizer_onboarding_status ?? null,
   };
 }
 
@@ -292,3 +294,67 @@ export async function verifyOtp(email: string, code: string): Promise<boolean> {
 
   return true;
 }
+
+// ── Widget Customizer Onboarding Status ──────────────────────────────────────
+
+export async function getCustomizerOnboardingStatus(userId: string): Promise<{
+  status: 'pending' | 'completed' | 'skipped';
+  shouldShowOnboarding: boolean;
+}> {
+  const supabase = getSupabase();
+
+  const { data: user, error } = await supabase
+    .from('app_users')
+    .select('id, customizer_onboarding_status, created_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error || !user) {
+    return { status: 'completed', shouldShowOnboarding: false };
+  }
+
+  // If already explicitly marked completed or skipped
+  if (user.customizer_onboarding_status === 'completed' || user.customizer_onboarding_status === 'skipped') {
+    return { status: user.customizer_onboarding_status, shouldShowOnboarding: false };
+  }
+
+  // Requirement 12: Existing users check
+  // If an existing user has widgets in the widgets table, they must NOT see the onboarding tour.
+  const { count: widgetCount } = await supabase
+    .from('widgets')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  if (widgetCount && widgetCount > 0) {
+    // Auto-mark existing accounts with existing widgets as completed
+    await supabase
+      .from('app_users')
+      .update({ customizer_onboarding_status: 'completed' })
+      .eq('id', userId);
+    return { status: 'completed', shouldShowOnboarding: false };
+  }
+
+  const status = (user.customizer_onboarding_status as 'pending' | 'completed' | 'skipped') || 'pending';
+  return {
+    status,
+    shouldShowOnboarding: status === 'pending',
+  };
+}
+
+export async function setCustomizerOnboardingStatus(
+  userId: string,
+  status: 'pending' | 'completed' | 'skipped'
+): Promise<boolean> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('app_users')
+    .update({ customizer_onboarding_status: status })
+    .eq('id', userId);
+
+  if (error) {
+    console.error('[users] setCustomizerOnboardingStatus failed:', error.message);
+    return false;
+  }
+  return true;
+}
+

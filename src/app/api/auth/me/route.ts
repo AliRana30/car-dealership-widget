@@ -24,6 +24,7 @@ async function handler() {
     fullName: user.fullName,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt,
+    customizerOnboardingStatus: user.customizerOnboardingStatus || 'pending',
   });
 }
 

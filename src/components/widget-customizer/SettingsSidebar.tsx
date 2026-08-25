@@ -117,6 +117,7 @@ export default function SettingsSidebar({
                   padding: isCollapsed ? '9px 0' : '8px 10px',
                 }}
                 className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+                data-onboarding={`sidebar-${item.id}`}
               >
                 {/* Icon */}
                 <span

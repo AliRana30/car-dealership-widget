@@ -1,5 +1,5 @@
-import { CrawledEntity, CrawlResult } from './types';
-import { safeFetch, extractPageEntities, extractNextJsRoutes } from './extractor';
+import { CrawledEntity } from './types';
+import { safeFetch, extractPageEntities } from './extractor';
 import { discoverAndFetchPageApis } from './networkExtractor';
 
 // ── Crawl Diagnostic & Coverage Types ────────────────────────────────────────

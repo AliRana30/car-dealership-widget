@@ -38,7 +38,7 @@ export function BrandingSection({ draft, onChange, widgetId = 'front-desk' }: Pr
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    <div data-onboarding="branding" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {/* Avatar Sub-Card */}
       <div style={cardStyle}>
         <div style={rowStyle}>
@@ -133,7 +133,7 @@ export function TypographySection({ draft, onChange }: Props) {
   const isPreset = FONT_PRESETS.some((p) => p.value.toLowerCase() === currentFont.toLowerCase());
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div data-onboarding="typography" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div>
         <label style={labelStyle}>Font Family</label>
         <select
@@ -206,7 +206,7 @@ export function LauncherSection({ draft, onChange }: Props) {
     });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div data-onboarding="launcher" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div>
         <label style={labelStyle}>Variant</label>
         <select value={draft.launcher.variant} onChange={(e) => set('variant', e.target.value)} style={inputStyle}>
@@ -300,7 +300,7 @@ export function PanelSection({ draft, onChange }: Props) {
     onChange({ panel: { ...draft.panel, [key]: val } as any });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+    <div data-onboarding="panel" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div>
         <label style={labelStyle}>Width (px)</label>
         <input type="number" value={Number(draft.panel.width) || 360} onChange={(e) => set('width', Number(e.target.value))} style={inputStyle} />
@@ -362,7 +362,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div data-onboarding="behavior" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {toggles.map(([key, label]) => (
         <div key={key} style={rowStyle}>
           <span style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>{label}</span>
