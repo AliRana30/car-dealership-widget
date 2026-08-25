@@ -246,8 +246,15 @@ export async function hybridRetrieve(
     }
   }
 
+  // Determine if informational site pages (FAQ, Policies, About, Contact) should be included
+  const shouldIncludeInfo = Boolean(
+    options.includeInformational ||
+    structuredQuery.isInformational ||
+    ['about', 'policy', 'faq', 'contact'].includes(intent)
+  );
+
   // In-flight deduplication key
-  const flightKey = `${widget.id}:${normQuery}:${limit}:${options.includeInformational ? '1' : '0'}`;
+  const flightKey = `${widget.id}:${normQuery}:${limit}:${shouldIncludeInfo ? '1' : '0'}`;
 
   return retrievalSingleFlight.do(flightKey, async () => {
     // Scope filter: widget.id and widget.websiteId
@@ -354,7 +361,7 @@ export async function hybridRetrieve(
     const rerankerOutput = rerankCandidates(rawCandidates, cleanQuery, structuredQuery, {
       limit,
       minScore,
-      includeInformational: options.includeInformational,
+      includeInformational: shouldIncludeInfo,
     });
     const tRerankEnd = performance.now();
 

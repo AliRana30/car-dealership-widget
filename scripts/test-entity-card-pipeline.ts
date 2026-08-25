@@ -105,7 +105,7 @@ async function runEntityCardPipelineTests() {
 
   const jeep = autoVehicles.results.find(r => r.title.includes('Jeep'));
   report(!!jeep, 'Jeep vehicle card retrieved in catalog');
-  report(Boolean(jeep?.price?.includes('$')), `Vehicle price formatted properly: "${jeep?.price}"`);
+  report(Boolean(jeep?.price && String(jeep.price).includes('$')), `Vehicle price formatted properly: "${jeep?.price}"`);
   report(Boolean(jeep?.sourceUrl?.includes('/new-vehicles/')), `Destination URL accurate: "${jeep?.sourceUrl}"`);
 
   // Test 3: Specific Vehicle Card - "Show me 2024 Dodge Durango"
@@ -208,7 +208,7 @@ async function runEntityCardPipelineTests() {
     title: 'Campus Policy',
     metadata: { description: 'Terms of service' },
   });
-  report(freePolicy.price === undefined, 'Scenario 8: Entity with no price has price = undefined (no fake price)');
+  report((freePolicy as any).price === undefined, 'Scenario 8: Entity with no price has price = undefined (no fake price)');
 
   // Scenario 9: Entity with no rating
   const unratedCourse = mapRowToEntity({
@@ -217,7 +217,7 @@ async function runEntityCardPipelineTests() {
     title: 'Brand New Course',
     metadata: { price: '$49' },
   });
-  report(unratedCourse.rating === undefined, 'Scenario 9: Entity with no rating has rating = undefined (no fake 5-stars)');
+  report((unratedCourse as any).rating === undefined, 'Scenario 9: Entity with no rating has rating = undefined (no fake 5-stars)');
 
   // Scenario 10: Entity with incomplete metadata
   const partialMeta = mapRowToEntity({

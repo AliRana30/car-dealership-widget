@@ -302,7 +302,7 @@ async function runAdversarialSuite() {
     const retrievedTitles = (chatRetrieval.results || []).map(r => r.title);
     const retrievedIds = (chatRetrieval.results || []).map(r => r.id);
     const retrievedPrices = (chatRetrieval.results || []).map(r => r.price || r.metadata?.price || 'N/A');
-    const retrievedUrls = (chatRetrieval.results || []).map(r => r.sourceUrl || r.canonicalUrl || 'N/A');
+    const retrievedUrls = (chatRetrieval.results || []).map(r => r.sourceUrl || (r as any).canonicalUrl || 'N/A');
 
     console.log(`[CHAT RETRIEVAL]`);
     console.log(`  Count: ${chatRetrieval.count}`);

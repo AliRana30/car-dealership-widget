@@ -197,6 +197,11 @@ export function rerankCandidates(
     let matchType = cand.matchType || 'keyword';
     const matchReasons: string[] = [...(cand.matchReasons || [])];
 
+    const isInformationalPage =
+      (sourceUrlLower && /\/(about|privacy|terms|cookie|policy|faq|faqs|help|contact)\/?$/i.test(sourceUrlLower)) ||
+      /terms|privacy|policy|cookie|disclaimer|faq|frequently asked/.test(titleLower) ||
+      ['faq', 'policy', 'info'].includes(row.entity_type);
+
     // ── 1. EXACT TITLE & ENTITY NAME SIMILARITY ──
     if (normTitle && normQuery) {
       if (normTitle === normQuery) {
@@ -301,14 +306,70 @@ export function rerankCandidates(
       }
     }
 
+    // Informational Semantic Category Channel
+    if (structuredQuery.isInformational || options.includeInformational) {
+      if (
+        structuredQuery.intent === 'faq' &&
+        (row.entity_type === 'faq' || sourceUrlLower.includes('/faq') || /faq|frequently asked|questions/.test(titleLower))
+      ) {
+        keywordHits += 2;
+        titleKeywordHits += 1;
+        isKeyword = true;
+        score += 150;
+        matchReasons.push(`FAQ semantic category match (+150)`);
+      } else if (
+        structuredQuery.intent === 'about' &&
+        (sourceUrlLower.includes('/about') || /about|who we are|our story|empowering learners|connecting talent|mission/.test(titleLower))
+      ) {
+        keywordHits += 2;
+        titleKeywordHits += 1;
+        isKeyword = true;
+        score += 150;
+        matchReasons.push(`About page semantic category match (+150)`);
+      } else if (
+        structuredQuery.intent === 'policy' &&
+        (sourceUrlLower.includes('/policy') || sourceUrlLower.includes('/privacy') || sourceUrlLower.includes('/terms') || sourceUrlLower.includes('/cookie') || /policy|policies|terms|privacy|cookie|legal/.test(titleLower))
+      ) {
+        keywordHits += 2;
+        titleKeywordHits += 1;
+        isKeyword = true;
+        score += 150;
+        matchReasons.push(`Policy/terms semantic category match (+150)`);
+      } else if (
+        structuredQuery.intent === 'contact' &&
+        (sourceUrlLower.includes('/contact') || /contact|support/.test(titleLower))
+      ) {
+        keywordHits += 2;
+        titleKeywordHits += 1;
+        isKeyword = true;
+        score += 150;
+        matchReasons.push(`Contact page semantic category match (+150)`);
+      }
+    }
+
+    // Freelancer / Talent Synonym Matching for Marketplace
+    if (
+      (rawQuery.toLowerCase().includes('freelancer') || rawQuery.toLowerCase().includes('talent')) &&
+      (/talent|freelance|services?|noretmy/i.test(titleLower) || /talent|freelance/i.test(contentLower))
+    ) {
+      keywordHits += 2;
+      titleKeywordHits += 1;
+      isKeyword = true;
+      score += 120;
+      matchReasons.push(`Freelancer / Talent marketplace match (+120)`);
+    }
+
     // Specific Keyword Constraint enforcement:
     // If the query specified distinct keywords (e.g. "backend", "wrangler", "16th", "president"),
     // items with 0 keyword matches and no exact/partial title match must be rejected.
-    if (trueSpecificKeywords.length > 0 && keywordHits === 0 && !isExact && !isPartial) {
+    // Skip this rejection if it's an informational query matching an informational page.
+    const isGroundedInformationalMatch = (structuredQuery.isInformational || options.includeInformational) && isInformationalPage && keywordHits > 0;
+
+    if (!isGroundedInformationalMatch && trueSpecificKeywords.length > 0 && keywordHits === 0 && !isExact && !isPartial) {
       score -= 800;
       isKeyword = false;
       matchReasons.push(`No match for specific required keywords [${trueSpecificKeywords.join(', ')}] (-800)`);
-    } else if (trueSpecificKeywords.length >= 2 && keywordHits < 2 && titleKeywordHits === 0 && !isExact && !isPartial) {
+    } else if (!isGroundedInformationalMatch && trueSpecificKeywords.length >= 2 && keywordHits < 2 && titleKeywordHits === 0 && !isExact && !isPartial) {
       // Multiple required keywords but only 1 spurious body hit (e.g. "president of united states")
       score -= 800;
       isKeyword = false;
@@ -498,11 +559,6 @@ export function rerankCandidates(
     }
 
     // ── 5. SOURCE AUTHORITY & SPECIFICITY HIERARCHY ──
-    // Specific Detail Page: specific slug (e.g. /courses/mern-stack-development-course, /inventory/2024-jeep...) or specific specs
-    const isInformationalPage =
-      (sourceUrlLower && /\/(about|privacy|terms|cookie|policy|faq|help|contact)\/?$/i.test(sourceUrlLower)) ||
-      /terms|privacy|policy|cookie|disclaimer|faq|frequently asked/.test(titleLower);
-
     const isDirectoryPage =
       (sourceUrlLower && /\/(courses|products|services|catalog|inventory|shop|all)\/?$/i.test(sourceUrlLower)) ||
       (!isInformationalPage && /courses\s*catalog|all\s*courses|vehicle\s*inventory|all\s*inventory/i.test(titleLower));
@@ -518,7 +574,10 @@ export function rerankCandidates(
         matchReasons.push(`Directory page downranked on specific entity query (-250)`);
       }
     } else if (isInformationalPage) {
-      if (isSpecificEntityQuery) {
+      if (structuredQuery.isInformational || options.includeInformational) {
+        score += 350;
+        matchReasons.push(`Informational/policy page boosted on informational query (+350)`);
+      } else if (isSpecificEntityQuery) {
         score -= 500;
         matchReasons.push(`Informational/policy page excluded on specific entity query (-500)`);
       }
@@ -568,7 +627,12 @@ export function rerankCandidates(
     }
 
     // ── RELEVANCE GATE: Discard candidates with zero match signals on non-catalog queries ──
-    const hasRelevanceSignal = isExact || isPartial || isKeyword || (isVector && (cand.vectorSimilarity ?? 0) >= 0.35);
+    const hasRelevanceSignal =
+      isExact ||
+      isPartial ||
+      isKeyword ||
+      (isVector && (cand.vectorSimilarity ?? 0) >= 0.35) ||
+      ((structuredQuery.isInformational || options.includeInformational) && isInformationalPage);
     if (!isCatalogQuery && !hasRelevanceSignal) {
       score = -9999;
       matchReasons.push(`No relevance match signals found for query (-9999)`);

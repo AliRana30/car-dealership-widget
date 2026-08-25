@@ -57,7 +57,7 @@ const ENTITY_TYPE_PATTERNS: Array<{ type: StructuredQueryIntent['entityType']; r
   },
   {
     type: 'service',
-    regex: /\b(?:services?|solutions?|consultings?|packages?|treatments?|appointments?|consultations?)\b/i,
+    regex: /\b(?:services?|solutions?|consultings?|packages?|treatments?|appointments?|consultations?|freelancers?|freelance|talent|contractors?)\b/i,
   },
   {
     type: 'property',
@@ -117,13 +117,13 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
   const lower = cleanQuery.toLowerCase();
   const normQuery = lower.replace(/[^a-z0-9]/g, '');
 
-  // 1. Informational & Page Intents
-  const isAbout = /(?:about (?:us|the company|your team|you)|who (?:are you|made you|built you)|company mission|our story|company story|team members|founder)/i.test(lower);
-  const isPolicy = /(?:policy|policies|terms|privacy|gdpr|refund|cookie|compliance|legal|disclaimer|security|data protection)/i.test(lower);
-  const isFaq = /(?:faq|frequently asked|questions|help center)/i.test(lower);
-  const isContact = /(?:contact (?:us|team)|reach out|email address|phone number|office location|support team)/i.test(lower);
+  // 1. Informational & Page Intents (Semantic Targets)
+  const isAbout = /\b(?:about(?:-us|\s+us|\s+the\s+company|\s+page|\s+your\s+team|\s+you)?|who\s+(?:are\s+you|made\s+you|built\s+you|we\s+are)|company\s+mission|our\s+story|company\s+story|team\s+members|founder|leadership)\b/i.test(lower);
+  const isPolicy = /\b(?:policies|policy|terms(?:\s+and\s+conditions|\s+of\s+service|\s+of\s+use)?|privacy(?:\s+policy)?|gdpr|refund(?:\s+policy)?|cookie(?:\s+policy)?|compliance|legal(?:\s+notice)?|disclaimer|security|data\s+protection)\b/i.test(lower);
+  const isFaq = /\b(?:faqs?|frequently\s+asked(?:\s+questions)?|questions\s+and\s+answers|q\s*(?:and|&)\s*a|help\s+center)\b/i.test(lower);
+  const isContact = /\b(?:contact(?:\s+us|\s+team|\s+page|\s+info)?|reach\s+out|email\s+address|phone\s+number|office\s+location|support\s+team|support)\b/i.test(lower);
   const isGreeting = /^(?:hi|hello|hey|greetings|good\s*(?:morning|afternoon|evening)|howdy|sup|welcome|start|help)(?:\s+(?:there|everyone|team|bot|assistant|friend|all))?[!.]*$/i.test(lower.trim());
-  const isNavigation = /\b(?:take me to|navigate to|open the page|go to|open)\b/i.test(lower);
+  const isNavigation = /\b(?:take\s+me\s+to|navigate\s+to|open\s+the\s+page|go\s+to|redirect\s+to)\b/i.test(lower);
 
   const isInformational = isAbout || isPolicy || isFaq || isContact;
 
@@ -282,16 +282,27 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
     .split(/[^a-z0-9_-]+/)
     .filter(w => w.length > 2 && !/^\d+k?$/i.test(w) && !STOP_WORDS.has(w) && !negSet.has(w));
 
-  // 13. Intent Determination
+  // 13. Intent Determination based on Semantic Target (not leading verb)
   let intent: StructuredQueryIntent['intent'] = 'general';
-  if (isGreeting) intent = 'greeting';
-  else if (isComparison) intent = 'comparison';
-  else if (isNavigation) intent = 'navigation';
-  else if (isAbout) intent = 'about';
-  else if (isPolicy) intent = 'policy';
-  else if (isFaq) intent = 'faq';
-  else if (isContact) intent = 'contact';
-  else if (entityType || maxPrice !== undefined || minPrice !== undefined || sortBy || onSale !== undefined) intent = 'catalog';
+  if (isGreeting) {
+    intent = 'greeting';
+  } else if (isComparison) {
+    intent = 'comparison';
+  } else if (isFaq) {
+    intent = 'faq';
+  } else if (isPolicy) {
+    intent = 'policy';
+  } else if (isAbout) {
+    intent = 'about';
+  } else if (isContact) {
+    intent = 'contact';
+  } else if (isNavigation) {
+    intent = 'navigation';
+  } else if (entityType || maxPrice !== undefined || minPrice !== undefined || sortBy || onSale !== undefined) {
+    intent = 'catalog';
+  } else if (/\b(?:show|list|display|find|give\s+me|all|every|browse|explore|catalog|inventory|offerings?)\b/i.test(lower)) {
+    intent = 'catalog';
+  }
 
   return {
     rawQuery: cleanQuery,
