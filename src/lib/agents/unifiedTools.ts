@@ -805,9 +805,9 @@ async function toolNavigateToEntity(
   context: UnifiedToolContext,
   businessName: string
 ): Promise<UnifiedToolResult> {
-  const entityId = String(args.entityId || args.entity_id || args.id || args.target || args.url || args.page || args.query || '').trim();
+  const entityId = String(args.target || args.entityId || args.entity_id || args.id || args.url || args.page || args.query || args.slug || '').trim();
   if (!entityId) {
-    return scopeError('navigate_to_entity', widgetId, 'missing_entity_id', 'entityId or navigation target is required for navigate_to_entity.');
+    return scopeError('navigate_to_entity', widgetId, 'missing_entity_id', 'target or entityId is required for navigate_to_entity.');
   }
 
   if (context.allowAgentNavigation === false) {
@@ -852,6 +852,7 @@ async function toolNavigateToEntity(
 
   const sessionId = context.sessionId || '';
   const finalUrl = navResult.targetUrl;
+  const pageTitle = navResult.resolvedEntity?.title || navResult.resolvedPageTitle || navResult.pageTitle || entityId;
 
   if (sessionId) {
     await setLastNavigation(sessionId, widgetId, finalUrl).catch(() => {});
@@ -859,14 +860,15 @@ async function toolNavigateToEntity(
     await broadcastToSession(sessionId, 'navigate', {
       url: finalUrl,
       entityId: navResult.resolvedEntity?.id,
-      title: navResult.resolvedEntity?.title || navResult.resolvedPageTitle || entityId,
+      title: pageTitle,
+      source: navResult.source || 'discovered_page',
     });
   }
 
   const results = navResult.resolvedEntity ? [navResult.resolvedEntity] : [];
   const sources = [{
     id: navResult.resolvedEntity?.id || 'nav-target',
-    title: navResult.resolvedEntity?.title || navResult.resolvedPageTitle || entityId,
+    title: pageTitle,
     url: finalUrl,
   }];
 
@@ -969,13 +971,14 @@ export const UNIFIED_TOOL_DEFINITIONS = {
   },
   navigate_to_entity: {
     name: 'navigate_to_entity',
-    description: 'Navigate the visitor browser to the full web page for a specific entity.',
+    description: 'Navigate the visitor browser to a verified web page, section, or specific offering/entity on the connected website.',
     parameters: {
       type: 'object',
       properties: {
-        entityId: { type: 'string', description: 'UUID of the entity to navigate to.' },
+        target: { type: 'string', description: 'Page name, section, slug, URL, or entity name/ID to navigate to.' },
+        entityId: { type: 'string', description: 'Optional entity ID or title.' },
+        url: { type: 'string', description: 'Optional specific page URL or slug.' },
       },
-      required: ['entityId'],
     },
   },
 };

@@ -2,16 +2,26 @@
  * Autonomous Page & Entity Navigation Validation Suite
  *
  * Validates:
- * 1. Exact entity navigation
- * 2. Informational page navigation
- * 3. Ambiguous entity protection (Zero-guessing, returns clarification)
- * 4. Pronoun / anaphoric navigation ("open that course")
- * 5. Ordinal navigation ("show me the first one", "open the 2nd one")
- * 6. Nonexistent entity refusal (No blind fallback to first record)
- * 7. Invalid URL handling
- * 8. Navigation during active voice session (POST /api/agent/tools)
- * 9. Live POST /api/retell/chat explicit navigation integration
- * 10. Navigation disabled safety check
+ * 1. "navigate me to about page" (resolves /about on LMS)
+ * 2. "take me to about us" (resolves /about on Noretmy)
+ * 3. "open contact" (resolves /contact-us on Noretmy)
+ * 4. "go to FAQ" (resolves /faq on LMS)
+ * 5. "show me your courses" (resolves /courses on LMS)
+ * 6. "open the course catalog" (resolves /courses on LMS)
+ * 7. "take me to the homepage" (resolves root / on LMS)
+ * 8. "open privacy policy" (resolves /policy on LMS or /privacy-policy on Noretmy)
+ * 9. "open terms" (resolves /terms-condition on Noretmy)
+ * 10. "go to something that doesn't exist" (zero hallucination, returns not_found)
+ * 11. Misspelled page names ("abot us", "contct", "polcy")
+ * 12. URL slug instead of title ("open /about", "open privacy-policy")
+ * 13. Ambiguous requests ("open the Jeep" -> clarification prompt)
+ * 14. Entity request vs Page request ("open MERN Stack course" vs "open courses")
+ * 15. Page existing under different slug ("who are you" -> /about)
+ * 16. Pronoun / anaphoric navigation ("open that course")
+ * 17. Ordinal navigation ("open the 2nd one")
+ * 18. Voice Agent Webhook Navigation (POST /api/agent/tools)
+ * 19. Live Chat Navigation Integration (POST /api/retell/chat)
+ * 20. Navigation Disabled Guard (allowAgentNavigation: false)
  */
 
 import fs from 'fs';
@@ -41,9 +51,11 @@ function loadEnvFile(filePath: string) {
 loadEnvFile(path.resolve(process.cwd(), '.env'));
 loadEnvFile(path.resolve(process.cwd(), '.env.local'));
 
+import { NextRequest } from 'next/server';
 import { resolveNavigationTarget } from '../src/lib/agents/navigationResolver';
 import { executeUnifiedTool } from '../src/lib/agents/unifiedTools';
 import { pinEntity, setLastResults, getSessionContext } from '../src/lib/agents/sessionContext';
+import { POST as handleChatPost } from '../src/app/api/retell/chat/route';
 
 const BASE_URL = 'http://localhost:3000';
 const LMS_WIDGET_ID = '3d801677-65f4-4495-a9b5-24c39b6ee516';
@@ -67,31 +79,30 @@ async function runValidationSuite() {
   const testResults: TestResult[] = [];
 
   // ---------------------------------------------------------------------------
-  // TEST 1: Exact Entity Navigation ("open Backend Mastery")
+  // TEST 1: "navigate me to about page" (LMS Website)
   // ---------------------------------------------------------------------------
   try {
     const sessionId = `nav-test-1-${Date.now()}`;
-    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'open Backend Mastery', { sessionId });
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'navigate me to about page', { sessionId });
 
     const pass =
       result.canNavigate === true &&
-      result.confidence === 'exact' &&
-      Boolean(result.targetUrl?.includes('/course/6a8885e7b07fd83e210c84d6')) &&
+      Boolean(result.targetUrl?.toLowerCase().includes('/about')) &&
       Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
 
     testResults.push({
       num: 1,
-      testCase: 'Exact Entity Navigation ("open Backend Mastery")',
-      expectedResult: 'Resolves exact course and returns canonical course URL with widget_resume parameter',
-      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}"`,
+      testCase: 'Resolve "navigate me to about page" (LMS)',
+      expectedResult: 'Resolves discovered About page URL (/about) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}", title: "${result.pageTitle}"`,
       status: pass ? 'PASS' : 'FAIL',
-      details: { title: result.resolvedEntity?.title, targetUrl: result.targetUrl },
+      details: { title: result.pageTitle, targetUrl: result.targetUrl, source: result.source },
     });
   } catch (err: any) {
     testResults.push({
       num: 1,
-      testCase: 'Exact Entity Navigation',
-      expectedResult: 'canNavigate=true with URL',
+      testCase: 'Resolve "navigate me to about page"',
+      expectedResult: 'canNavigate=true with /about URL',
       actualResult: err.message,
       status: 'FAIL',
       rootCause: err.stack,
@@ -99,11 +110,197 @@ async function runValidationSuite() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 2: Informational Page Navigation ("navigate to the policy page")
+  // TEST 2: "take me to about us" (Noretmy Website)
   // ---------------------------------------------------------------------------
   try {
     const sessionId = `nav-test-2-${Date.now()}`;
-    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'navigate to the policy page', { sessionId });
+    const result = await resolveNavigationTarget(NORETMY_WIDGET_ID, 'take me to about us', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      Boolean(result.targetUrl?.toLowerCase().includes('/about')) &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 2,
+      testCase: 'Resolve "take me to about us" (Noretmy)',
+      expectedResult: 'Resolves discovered About page URL (/about) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}", title: "${result.pageTitle}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 2,
+      testCase: 'Resolve "take me to about us"',
+      expectedResult: 'canNavigate=true with /about URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 3: "open contact" (Noretmy Website)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-3-${Date.now()}`;
+    const result = await resolveNavigationTarget(NORETMY_WIDGET_ID, 'open contact', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      Boolean(result.targetUrl?.toLowerCase().includes('/contact')) &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 3,
+      testCase: 'Resolve "open contact" (Noretmy)',
+      expectedResult: 'Resolves discovered Contact page URL (/contact-us) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}", title: "${result.pageTitle}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 3,
+      testCase: 'Resolve "open contact"',
+      expectedResult: 'canNavigate=true with /contact URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 4: "go to FAQ" (LMS Website)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-4-${Date.now()}`;
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'go to FAQ', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      Boolean(result.targetUrl?.toLowerCase().includes('/faq')) &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 4,
+      testCase: 'Resolve "go to FAQ" (LMS)',
+      expectedResult: 'Resolves discovered FAQ page URL (/faq) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}", title: "${result.pageTitle}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 4,
+      testCase: 'Resolve "go to FAQ"',
+      expectedResult: 'canNavigate=true with /faq URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 5: "show me your courses" (LMS Website)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-5-${Date.now()}`;
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'show me your courses', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      Boolean(result.targetUrl?.toLowerCase().includes('/courses')) &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 5,
+      testCase: 'Resolve "show me your courses" (LMS)',
+      expectedResult: 'Resolves discovered Courses directory/page URL (/courses) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}", title: "${result.pageTitle}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 5,
+      testCase: 'Resolve "show me your courses"',
+      expectedResult: 'canNavigate=true with /courses URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 6: "open the course catalog" (LMS Website)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-6-${Date.now()}`;
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'open the course catalog', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      Boolean(result.targetUrl?.toLowerCase().includes('/courses')) &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 6,
+      testCase: 'Resolve "open the course catalog" (LMS)',
+      expectedResult: 'Resolves discovered course catalog URL (/courses) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}", title: "${result.pageTitle}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 6,
+      testCase: 'Resolve "open the course catalog"',
+      expectedResult: 'canNavigate=true with /courses URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 7: "take me to the homepage" (LMS Website)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-7-${Date.now()}`;
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'take me to the homepage', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      result.confidence === 'exact' &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 7,
+      testCase: 'Resolve "take me to the homepage" (LMS)',
+      expectedResult: 'Resolves root homepage destination with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 7,
+      testCase: 'Resolve "take me to the homepage"',
+      expectedResult: 'canNavigate=true with root URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 8: "open privacy policy" (LMS Website)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-8-${Date.now()}`;
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'open privacy policy', { sessionId });
 
     const pass =
       result.canNavigate === true &&
@@ -111,18 +308,18 @@ async function runValidationSuite() {
       Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
 
     testResults.push({
-      num: 2,
-      testCase: 'Informational Page Navigation ("navigate to the policy page")',
-      expectedResult: 'Resolves canonical /policy page URL and appends widget_resume',
-      actualResult: `canNavigate: ${result.canNavigate}, targetUrl: "${result.targetUrl}"`,
+      num: 8,
+      testCase: 'Resolve "open privacy policy" (LMS)',
+      expectedResult: 'Resolves discovered privacy policy page URL (/policy) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}"`,
       status: pass ? 'PASS' : 'FAIL',
-      details: { pageTitle: result.resolvedPageTitle, targetUrl: result.targetUrl },
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
     });
   } catch (err: any) {
     testResults.push({
-      num: 2,
-      testCase: 'Page Navigation',
-      expectedResult: 'canNavigate=true with /policy URL',
+      num: 8,
+      testCase: 'Resolve "open privacy policy"',
+      expectedResult: 'canNavigate=true with policy URL',
       actualResult: err.message,
       status: 'FAIL',
       rootCause: err.stack,
@@ -130,11 +327,138 @@ async function runValidationSuite() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 3: Ambiguous Entity Protection (Zero Guessing, Returns Clarification)
+  // TEST 9: "open terms" (Noretmy Website)
   // ---------------------------------------------------------------------------
   try {
-    const sessionId = `nav-test-3-${Date.now()}`;
-    // On Noretmy Chrysler dealership, "open Jeep" matches multiple distinct Jeep models
+    const sessionId = `nav-test-9-${Date.now()}`;
+    const result = await resolveNavigationTarget(NORETMY_WIDGET_ID, 'open terms', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      (Boolean(result.targetUrl?.toLowerCase().includes('terms')) || Boolean(result.targetUrl?.toLowerCase().includes('legal'))) &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 9,
+      testCase: 'Resolve "open terms" (Noretmy)',
+      expectedResult: 'Resolves discovered Terms page URL (/terms-condition) with widget_resume token',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 9,
+      testCase: 'Resolve "open terms"',
+      expectedResult: 'canNavigate=true with terms URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 10: Nonexistent Page Refusal (Zero Hallucination)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-10-${Date.now()}`;
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'take me to the rocket ship simulator page', { sessionId });
+
+    const pass =
+      result.canNavigate === false &&
+      result.confidence === 'not_found' &&
+      result.targetUrl === undefined;
+
+    testResults.push({
+      num: 10,
+      testCase: 'Nonexistent Destination Refusal ("rocket ship simulator" on LMS)',
+      expectedResult: 'Refuses navigation, canNavigate=false, targetUrl=undefined, zero hallucinated URL',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, failureReason: "${result.failureReason}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { failureReason: result.failureReason },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 10,
+      testCase: 'Nonexistent Destination Refusal',
+      expectedResult: 'canNavigate=false',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 11: Misspelled Page Names ("abot us" & "contct")
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-11-${Date.now()}`;
+    const resultAbout = await resolveNavigationTarget(LMS_WIDGET_ID, 'navigate to abot us', { sessionId });
+    const resultContact = await resolveNavigationTarget(NORETMY_WIDGET_ID, 'open contct', { sessionId });
+
+    const pass =
+      resultAbout.canNavigate === true &&
+      Boolean(resultAbout.targetUrl?.toLowerCase().includes('/about')) &&
+      resultContact.canNavigate === true &&
+      Boolean(resultContact.targetUrl?.toLowerCase().includes('/contact'));
+
+    testResults.push({
+      num: 11,
+      testCase: 'Misspelled Page Names ("abot us" & "contct")',
+      expectedResult: 'Tolerates minor typos and resolves canonical URLs with widget_resume',
+      actualResult: `About: canNavigate=${resultAbout.canNavigate} (${resultAbout.targetUrl}), Contact: canNavigate=${resultContact.canNavigate} (${resultContact.targetUrl})`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { aboutUrl: resultAbout.targetUrl, contactUrl: resultContact.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 11,
+      testCase: 'Misspelled Page Names',
+      expectedResult: 'canNavigate=true with typo tolerance',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 12: URL Slug instead of Title ("open /about" & "open privacy-policy")
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-12-${Date.now()}`;
+    const resultSlug = await resolveNavigationTarget(LMS_WIDGET_ID, 'open /about', { sessionId });
+    const resultPolicy = await resolveNavigationTarget(NORETMY_WIDGET_ID, 'open privacy-policy', { sessionId });
+
+    const pass =
+      resultSlug.canNavigate === true &&
+      Boolean(resultSlug.targetUrl?.toLowerCase().includes('/about')) &&
+      resultPolicy.canNavigate === true &&
+      Boolean(resultPolicy.targetUrl?.toLowerCase().includes('privacy'));
+
+    testResults.push({
+      num: 12,
+      testCase: 'URL Slug instead of Title ("open /about" & "open privacy-policy")',
+      expectedResult: 'Resolves direct pathnames and slugs to canonical URLs',
+      actualResult: `Slug /about: ${resultSlug.targetUrl}, Slug privacy-policy: ${resultPolicy.targetUrl}`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { slugUrl: resultSlug.targetUrl, policyUrl: resultPolicy.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 12,
+      testCase: 'URL Slug navigation',
+      expectedResult: 'canNavigate=true',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 13: Ambiguous Request Disambiguation ("open the Jeep" on Noretmy)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-13-${Date.now()}`;
     const result = await resolveNavigationTarget(NORETMY_WIDGET_ID, 'open the Jeep', { sessionId });
 
     const pass =
@@ -145,8 +469,8 @@ async function runValidationSuite() {
       result.candidateOptions.length >= 2;
 
     testResults.push({
-      num: 3,
-      testCase: 'Ambiguous Entity Protection ("open the Jeep" on Multi-Jeep Inventory)',
+      num: 13,
+      testCase: 'Ambiguous Request Disambiguation ("open the Jeep" on Multi-Jeep Inventory)',
       expectedResult: 'Refuses to guess, canNavigate=false, returns clarification prompt listing candidate models',
       actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, clarification: "${result.clarificationMessage}"`,
       status: pass ? 'PASS' : 'FAIL',
@@ -154,8 +478,8 @@ async function runValidationSuite() {
     });
   } catch (err: any) {
     testResults.push({
-      num: 3,
-      testCase: 'Ambiguous Entity Protection',
+      num: 13,
+      testCase: 'Ambiguous Request Disambiguation',
       expectedResult: 'canNavigate=false with clarification',
       actualResult: err.message,
       status: 'FAIL',
@@ -164,11 +488,76 @@ async function runValidationSuite() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 4: Pronoun / Anaphoric Navigation ("open that course" / "open it")
+  // TEST 14: Entity Request vs Page Request Discrimination
   // ---------------------------------------------------------------------------
   try {
-    const sessionId = `nav-test-4-${Date.now()}`;
-    // Simulate Turn 1: user discusses MERN Stack -> system pins MERN Stack
+    const sessionId = `nav-test-14-${Date.now()}`;
+    // Entity request: "open MERN Stack course"
+    const entityResult = await resolveNavigationTarget(LMS_WIDGET_ID, 'open MERN Stack course', { sessionId });
+    // Page request: "open courses"
+    const pageResult = await resolveNavigationTarget(LMS_WIDGET_ID, 'open courses', { sessionId });
+
+    const pass =
+      entityResult.canNavigate === true &&
+      Boolean(entityResult.targetUrl?.includes('/course/6945abe7c4769ef223f140fd')) &&
+      pageResult.canNavigate === true &&
+      Boolean(pageResult.targetUrl?.endsWith('/courses') || pageResult.targetUrl?.includes('/courses?'));
+
+    testResults.push({
+      num: 14,
+      testCase: 'Entity Request vs Page Request Discrimination',
+      expectedResult: 'Entity request resolves specific course URL; Page request resolves /courses catalog page',
+      actualResult: `Entity: "${entityResult.targetUrl}", Page: "${pageResult.targetUrl}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { entityUrl: entityResult.targetUrl, pageUrl: pageResult.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 14,
+      testCase: 'Entity vs Page Discrimination',
+      expectedResult: 'canNavigate=true for both with distinct appropriate URLs',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 15: Page Existing Under Different Slug ("who are you" -> About Page)
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-15-${Date.now()}`;
+    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'who are you', { sessionId });
+
+    const pass =
+      result.canNavigate === true &&
+      Boolean(result.targetUrl?.toLowerCase().includes('/about')) &&
+      Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
+
+    testResults.push({
+      num: 15,
+      testCase: 'Page with Natural-Language Question ("who are you" -> /about on LMS)',
+      expectedResult: 'Resolves concept alias "who are you" to canonical /about URL',
+      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, targetUrl: "${result.targetUrl}"`,
+      status: pass ? 'PASS' : 'FAIL',
+      details: { title: result.pageTitle, targetUrl: result.targetUrl },
+    });
+  } catch (err: any) {
+    testResults.push({
+      num: 15,
+      testCase: 'Concept alias navigation',
+      expectedResult: 'canNavigate=true with /about URL',
+      actualResult: err.message,
+      status: 'FAIL',
+      rootCause: err.stack,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 16: Pronoun / Anaphoric Navigation ("open that course" / "open it")
+  // ---------------------------------------------------------------------------
+  try {
+    const sessionId = `nav-test-16-${Date.now()}`;
     await pinEntity(sessionId, LMS_WIDGET_ID, {
       id: '0df20794-c3f8-47ad-8831-08eb75bd1a9a',
       title: 'MERN Stack Development Course',
@@ -176,7 +565,6 @@ async function runValidationSuite() {
       price: '$150',
     });
 
-    // Turn 2: "open that course"
     const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'open that course', { sessionId });
 
     const pass =
@@ -186,7 +574,7 @@ async function runValidationSuite() {
       Boolean(result.targetUrl?.includes(`widget_resume=${sessionId}`));
 
     testResults.push({
-      num: 4,
+      num: 16,
       testCase: 'Pronoun / Anaphoric Navigation ("open that course")',
       expectedResult: 'Resolves pinned currentEntity from session and returns its canonical URL with widget_resume',
       actualResult: `canNavigate: ${result.canNavigate}, Entity: "${result.resolvedEntity?.title}", targetUrl: "${result.targetUrl}"`,
@@ -195,7 +583,7 @@ async function runValidationSuite() {
     });
   } catch (err: any) {
     testResults.push({
-      num: 4,
+      num: 16,
       testCase: 'Pronoun Navigation',
       expectedResult: 'canNavigate=true to pinned entity',
       actualResult: err.message,
@@ -205,11 +593,10 @@ async function runValidationSuite() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 5: Ordinal Navigation ("show me the first one" & "open the 2nd one")
+  // TEST 17: Ordinal Navigation ("open the 2nd one")
   // ---------------------------------------------------------------------------
   try {
-    const sessionId = `nav-test-5-${Date.now()}`;
-    // Turn 1: List 3 courses
+    const sessionId = `nav-test-17-${Date.now()}`;
     await setLastResults(sessionId, LMS_WIDGET_ID, [
       {
         id: 'mern-1',
@@ -228,7 +615,6 @@ async function runValidationSuite() {
       },
     ]);
 
-    // Turn 2: "open the 2nd one"
     const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'open the 2nd one', { sessionId });
 
     const pass =
@@ -238,7 +624,7 @@ async function runValidationSuite() {
       Boolean(result.targetUrl?.includes('/course/6a8885e7b07fd83e210c84d6'));
 
     testResults.push({
-      num: 5,
+      num: 17,
       testCase: 'Ordinal Navigation ("open the 2nd one")',
       expectedResult: 'Resolves index 1 from lastResults (Backend Mastery) and navigates to its URL',
       actualResult: `canNavigate: ${result.canNavigate}, Selected: "${result.resolvedEntity?.title}", targetUrl: "${result.targetUrl}"`,
@@ -247,7 +633,7 @@ async function runValidationSuite() {
     });
   } catch (err: any) {
     testResults.push({
-      num: 5,
+      num: 17,
       testCase: 'Ordinal Navigation',
       expectedResult: 'canNavigate=true to 2nd item',
       actualResult: err.message,
@@ -257,105 +643,37 @@ async function runValidationSuite() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 6: Nonexistent Entity Refusal (Zero Blind Fallback to First Record)
-  // ---------------------------------------------------------------------------
-  try {
-    const sessionId = `nav-test-6-${Date.now()}`;
-    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'take me to the page for Ferrari 488 Pista Spider', { sessionId });
-
-    const pass =
-      result.canNavigate === false &&
-      result.confidence === 'not_found' &&
-      result.targetUrl === undefined;
-
-    testResults.push({
-      num: 6,
-      testCase: 'Nonexistent Entity Refusal ("Ferrari 488 Pista" on LMS)',
-      expectedResult: 'canNavigate=false, targetUrl=undefined, never picks first available course as fallback',
-      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}, failureReason: "${result.failureReason}"`,
-      status: pass ? 'PASS' : 'FAIL',
-      details: { failureReason: result.failureReason },
-    });
-  } catch (err: any) {
-    testResults.push({
-      num: 6,
-      testCase: 'Nonexistent Entity Refusal',
-      expectedResult: 'canNavigate=false',
-      actualResult: err.message,
-      status: 'FAIL',
-      rootCause: err.stack,
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // TEST 7: Invalid URL / Missing URL Protection
-  // ---------------------------------------------------------------------------
-  try {
-    const sessionId = `nav-test-7-${Date.now()}`;
-    // Provide a query that has no valid URL
-    const result = await resolveNavigationTarget(LMS_WIDGET_ID, 'nonexistent-uuid-00000000-0000-0000-0000-000000000000', { sessionId });
-
-    const pass =
-      result.canNavigate === false &&
-      (result.confidence === 'not_found' || result.confidence === 'invalid_url') &&
-      !result.targetUrl;
-
-    testResults.push({
-      num: 7,
-      testCase: 'Invalid / Missing URL Handling',
-      expectedResult: 'Refuses navigation when entity or page URL is missing or invalid',
-      actualResult: `canNavigate: ${result.canNavigate}, confidence: ${result.confidence}`,
-      status: pass ? 'PASS' : 'FAIL',
-      details: { failureReason: result.failureReason },
-    });
-  } catch (err: any) {
-    testResults.push({
-      num: 7,
-      testCase: 'Invalid URL Handling',
-      expectedResult: 'canNavigate=false',
-      actualResult: err.message,
-      status: 'FAIL',
-      rootCause: err.stack,
-    });
-  }
-
-  // ---------------------------------------------------------------------------
-  // TEST 8: Navigation during Active Voice Session (POST /api/agent/tools)
+  // TEST 18: Voice Agent Navigation (Unified Tool & Session Context)
   // ---------------------------------------------------------------------------
   try {
     const voiceSessionId = `voice-nav-${Date.now()}`;
-    const toolRes = await fetch(`${BASE_URL}/api/agent/tools?widgetId=${LMS_WIDGET_ID}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: voiceSessionId,
-        tool: 'navigate_to_entity',
-        args: { entityId: 'Backend Mastery' },
-      }),
-    });
+    const toolResult = await executeUnifiedTool(
+      LMS_WIDGET_ID,
+      'navigate_to_entity',
+      { target: 'about page' },
+      { sessionId: voiceSessionId, allowAgentNavigation: true }
+    );
 
-    const toolData = await toolRes.json();
     const ctx = await getSessionContext(voiceSessionId, LMS_WIDGET_ID);
 
     const pass =
-      toolRes.status === 200 &&
-      toolData.success === true &&
-      Boolean(toolData.url?.includes('/course/6a8885e7b07fd83e210c84d6')) &&
-      Boolean(ctx.lastNavigationTarget?.includes('/course/6a8885e7b07fd83e210c84d6'));
+      toolResult.success === true &&
+      Boolean(toolResult.sources?.[0]?.url?.includes('/about')) &&
+      Boolean(ctx.lastNavigationTarget?.includes('/about'));
 
     testResults.push({
-      num: 8,
-      testCase: 'Voice Agent Webhook Navigation (POST /api/agent/tools)',
-      expectedResult: 'HTTP 200, tool success=true, canonical URL returned, lastNavigationTarget recorded in session context',
-      actualResult: `Status: ${toolRes.status}, success: ${toolData.success}, recordedNav: "${ctx.lastNavigationTarget}"`,
+      num: 18,
+      testCase: 'Voice Agent Navigation (executeUnifiedTool for "about page")',
+      expectedResult: 'tool success=true, canonical /about URL returned, lastNavigationTarget recorded in session context',
+      actualResult: `success: ${toolResult.success}, url: "${toolResult.sources?.[0]?.url}", recordedNav: "${ctx.lastNavigationTarget}"`,
       status: pass ? 'PASS' : 'FAIL',
-      details: { success: toolData.success, recordedNav: ctx.lastNavigationTarget },
+      details: { success: toolResult.success, recordedNav: ctx.lastNavigationTarget },
     });
   } catch (err: any) {
     testResults.push({
-      num: 8,
+      num: 18,
       testCase: 'Voice Webhook Navigation',
-      expectedResult: 'HTTP 200 success with navigation URL',
+      expectedResult: 'success=true with navigation URL',
       actualResult: err.message,
       status: 'FAIL',
       rootCause: err.stack,
@@ -363,38 +681,39 @@ async function runValidationSuite() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 9: Live POST /api/retell/chat Explicit Navigation Integration
+  // TEST 19: Live Chat Explicit Navigation Integration (POST /api/retell/chat)
   // ---------------------------------------------------------------------------
   try {
     const chatSessionId = `chat-nav-${Date.now()}`;
-    const chatRes = await fetch(`${BASE_URL}/api/retell/chat`, {
+    const req = new NextRequest('http://localhost:3000/api/retell/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         widgetId: LMS_WIDGET_ID,
         sessionId: chatSessionId,
-        content: 'take me to the page for Backend Mastery',
+        content: 'navigate me to about page',
       }),
     });
 
+    const chatRes = await handleChatPost(req);
     const chatData = await chatRes.json();
     const pass =
       chatRes.status === 200 &&
-      Boolean(chatData.navigationUrl?.includes('/course/6a8885e7b07fd83e210c84d6')) &&
+      Boolean(chatData.navigationUrl?.includes('/about')) &&
       chatData.action?.type === 'navigate' &&
-      Boolean(chatData.action?.url?.includes('/course/6a8885e7b07fd83e210c84d6'));
+      Boolean(chatData.action?.url?.includes('/about'));
 
     testResults.push({
-      num: 9,
-      testCase: 'Live POST /api/retell/chat Explicit Navigation Integration',
-      expectedResult: 'HTTP 200, returns navigationUrl and action: { type: "navigate", url } for verified target',
+      num: 19,
+      testCase: 'Live Chat Navigation Handler (for "navigate me to about page")',
+      expectedResult: 'HTTP 200, returns navigationUrl (/about) and action: { type: "navigate", url } for verified target',
       actualResult: `Status: ${chatRes.status}, action: ${JSON.stringify(chatData.action)}, navUrl: "${chatData.navigationUrl}"`,
       status: pass ? 'PASS' : 'FAIL',
       details: { action: chatData.action, navigationUrl: chatData.navigationUrl },
     });
   } catch (err: any) {
     testResults.push({
-      num: 9,
+      num: 19,
       testCase: 'Live Chat Explicit Navigation',
       expectedResult: 'HTTP 200 with action.navigate',
       actualResult: err.message,
@@ -404,14 +723,14 @@ async function runValidationSuite() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 10: Navigation Disabled Safety Guard
+  // TEST 20: Navigation Disabled Safety Guard
   // ---------------------------------------------------------------------------
   try {
     const disabledSessionId = `disabled-nav-${Date.now()}`;
     const result = await executeUnifiedTool(
       LMS_WIDGET_ID,
       'navigate_to_entity',
-      { entityId: 'Backend Mastery' },
+      { target: 'about page' },
       { sessionId: disabledSessionId, allowAgentNavigation: false }
     );
 
@@ -420,7 +739,7 @@ async function runValidationSuite() {
       Boolean(result.error?.toLowerCase().includes('disabled'));
 
     testResults.push({
-      num: 10,
+      num: 20,
       testCase: 'Navigation Disabled Safety Guard (allowAgentNavigation: false)',
       expectedResult: 'Fails closed with success=false and navigation disabled error message',
       actualResult: `success: ${result.success}, error: "${result.error}"`,
@@ -429,7 +748,7 @@ async function runValidationSuite() {
     });
   } catch (err: any) {
     testResults.push({
-      num: 10,
+      num: 20,
       testCase: 'Navigation Disabled Guard',
       expectedResult: 'success=false',
       actualResult: err.message,

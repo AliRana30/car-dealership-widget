@@ -4,6 +4,15 @@ import { CallState, TranscriptMessage, VoiceWidgetConfig } from '@/config/voiceW
 export type { CallState };
 import { defaultVoiceWidgetConfig, deepMerge } from '@/config/voiceWidget/default';
 import { subscribeToSessionChannel } from '@/lib/realtime/session';
+import {
+  checkMicrophonePermissions,
+  preflightMicrophoneAccess,
+  createAudioLevelMonitor,
+  stopMediaStream,
+  verifyRetellMicrophoneAttachment,
+  verifyVapiMicrophoneAttachment,
+  AudioLevelMonitor,
+} from '@/lib/voice/microphonePipeline';
 import VoiceAgentLauncher from './VoiceAgentLauncher';
 import VoiceAgentPanel from './VoiceAgentPanel';
 
@@ -62,25 +71,28 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
     const isFloating = mergedConfig.mode === 'floating';
 
-    // 2. State management with session persistence
-    const [isOpen, setIsOpen] = useState(() => {
-      if (initialOpen) return true;
-      if (typeof window !== 'undefined') {
-        const sp = new URLSearchParams(window.location.search);
-        if (sp.get('open') === '1' || Boolean(sp.get('widget_resume'))) return true;
-        try {
-          const wasOpen = sessionStorage.getItem(`myfrontdesk_open_${widgetId || 'default'}`);
-          if (wasOpen === '1') return true;
-        } catch (_) {}
-      }
-      return false;
-    });
+    // 2. State management with session persistence (hydration-safe)
+    const [isOpen, setIsOpen] = useState(Boolean(initialOpen));
 
     useEffect(() => {
       if (initialOpen) {
         setIsOpen(true);
+        return;
       }
-    }, [initialOpen]);
+      if (typeof window !== 'undefined') {
+        const sp = new URLSearchParams(window.location.search);
+        if (sp.get('open') === '1' || Boolean(sp.get('widget_resume'))) {
+          setIsOpen(true);
+          return;
+        }
+        try {
+          const wasOpen = sessionStorage.getItem(`myfrontdesk_open_${widgetId || 'default'}`);
+          if (wasOpen === '1') {
+            setIsOpen(true);
+          }
+        } catch (_) {}
+      }
+    }, [initialOpen, widgetId]);
 
     // Save isOpen state to sessionStorage whenever it changes
     useEffect(() => {
@@ -219,8 +231,8 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
         // 1. Real-time Spoken Navigation Listener
         if (mergedConfig.behavior.allowAgentNavigation) {
-          // Check for embedded URLs in speech (e.g. "https://.../about", "https://.../courses", "/about")
-          const urlMatch = content.match(/https?:\/\/[^\s<>"')]+|\/(?:about|courses|policy|faq|contact|course\/[a-z0-9_-]+|product\/[a-z0-9_-]+)/i);
+          // Check for embedded URLs in speech (e.g. "https://...", "/about", "/contact-us", "/services", etc.)
+          const urlMatch = content.match(/https?:\/\/[^\s<>"')]+|\/[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\/?/i);
           let targetUrl = urlMatch ? urlMatch[0] : null;
 
           if (targetUrl && lastNavigatedUrlRef.current !== targetUrl) {
@@ -290,8 +302,14 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     const hasUserSpokenRef = useRef(false);
     const isStartingRef = useRef(false);
     const transcriptEndRef = useRef<HTMLDivElement>(null);
+    const localMediaStreamRef = useRef<MediaStream | null>(null);
+    const audioMonitorRef = useRef<AudioLevelMonitor | null>(null);
+    const chatMessagesRef = useRef(chatMessages);
+    chatMessagesRef.current = chatMessages;
+    const transcriptRef = useRef(transcript);
+    transcriptRef.current = transcript;
 
-    // Safe stop helper to tear down active call and timers
+    // Safe stop helper to tear down active call, streams, analyser, and timers
     const safeStopCurrentCall = useCallback(() => {
       if (initialSilenceTimerRef.current) {
         clearTimeout(initialSilenceTimerRef.current);
@@ -300,6 +318,16 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       if (connectionTimeoutRef.current) {
         clearTimeout(connectionTimeoutRef.current);
         connectionTimeoutRef.current = null;
+      }
+      if (audioMonitorRef.current) {
+        try {
+          audioMonitorRef.current.cleanup();
+        } catch {}
+        audioMonitorRef.current = null;
+      }
+      if (localMediaStreamRef.current) {
+        stopMediaStream(localMediaStreamRef.current);
+        localMediaStreamRef.current = null;
       }
       if (clientRef.current) {
         try {
@@ -317,6 +345,25 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       setAgentSpeaking(false);
       setUserSpeaking(false);
     }, []);
+
+    // Handle microphone device changes dynamically during active calls
+    useEffect(() => {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.addEventListener) return;
+      const handleDeviceChange = async () => {
+        console.log('[VoiceAgentWidget] Audio input device change detected.');
+        if (['connected', 'agent_speaking', 'user_listening'].includes(callState)) {
+          if (providerRef.current === 'retell' && clientRef.current) {
+            await verifyRetellMicrophoneAttachment(clientRef.current).catch(() => {});
+          } else if (providerRef.current === 'vapi' && clientRef.current) {
+            await verifyVapiMicrophoneAttachment(clientRef.current).catch(() => {});
+          }
+        }
+      };
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      };
+    }, [callState]);
 
     // Initial silence watchdog speech activity detector (Task C.2)
     const notifySpeechActivity = useCallback(() => {
@@ -437,11 +484,12 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
     }, [chatMessages, transcript, activeSessionId]);
 
     // ── Phase 9.2 & 9.4: Realtime Session Channel Subscription & Navigation Bridge ───
+    const isSessionActive =
+      ['connecting', 'connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState) ||
+      (isOpen && activeTab === 'text' && Boolean(activeSessionId || sessionIdRef.current));
+
     useEffect(() => {
       const targetSessionId = activeSessionId || sessionIdRef.current;
-      const isSessionActive =
-        ['connecting', 'connected', 'agent_speaking', 'user_listening', 'muted'].includes(callState) ||
-        (isOpen && activeTab === 'text' && Boolean(targetSessionId));
 
       if (!targetSessionId || !isSessionActive) {
         return;
@@ -457,8 +505,8 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
               try {
                 const sessionData = {
                   sessionId: targetSessionId,
-                  chatMessages,
-                  transcript,
+                  chatMessages: chatMessagesRef.current,
+                  transcript: transcriptRef.current,
                   updatedAt: Date.now(),
                 };
                 sessionStorage.setItem(`widget_session_${targetSessionId}`, JSON.stringify(sessionData));
@@ -489,7 +537,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       return () => {
         unsubscribe();
       };
-    }, [activeSessionId, callState, isOpen, activeTab, mergedConfig.behavior.allowAgentNavigation, chatMessages, transcript]);
+    }, [activeSessionId, isSessionActive, isOpen, activeTab, mergedConfig.behavior.allowAgentNavigation]);
 
     // Iframe postMessage communications
     useEffect(() => {
@@ -856,22 +904,10 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       let activeClient: any = null;
 
       try {
-        if (clientRef.current) {
-          try {
-            if (providerRef.current === 'vapi') {
-              clientRef.current.stop();
-            } else {
-              clientRef.current.stopCall();
-            }
-          } catch {}
-          clientRef.current = null;
-        }
+        safeStopCurrentCall();
 
-        if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
-          throw new Error(
-            'Microphone access requires a secure context (HTTPS). Please ensure you are visiting via a secure connection.'
-          );
-        }
+        // 1. Pre-flight check and prompt microphone permission (releases probe tracks immediately)
+        await preflightMicrophoneAccess();
 
         updateState('connecting');
 
@@ -889,11 +925,11 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           callEndpoint = '/api/widgets/create-call';
           callBody = { widgetId };
         } else if (configProvider === 'vapi') {
-          // Inline Vapi path — not yet wired to a single endpoint, handled below
+          // Inline Vapi path
           callEndpoint = '/api/vapi/create-call';
           callBody = { agentId: configAgentId };
         } else {
-          // Default: Retell (existing working path)
+          // Default: Retell
           callEndpoint = '/api/retell/create-web-call';
           callBody = configAgentId ? { agentId: configAgentId } : {};
         }
@@ -927,26 +963,69 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
           activeClient = new RetellWebClient();
           clientRef.current = activeClient;
 
-          const initialSilenceSec = Number(data.initialSilenceTimeoutSeconds || mergedConfig.behavior.initialSilenceTimeoutSeconds || 15);
+          const initialSilenceSec = Number(data.initialSilenceTimeoutSeconds || mergedConfig.behavior.initialSilenceTimeoutSeconds || 60);
 
-          activeClient.on('call_started', () => {
+          activeClient.on('call_started', async () => {
             if (connectionTimeoutRef.current) {
               clearTimeout(connectionTimeoutRef.current);
               connectionTimeoutRef.current = null;
             }
+
+            // Explicitly verify Retell audio playback & track publishing
+            await verifyRetellMicrophoneAttachment(activeClient).catch((err) => {
+              console.warn('[VoiceAgentWidget] Retell microphone attachment check warning:', err);
+            });
+
+            // Listen for local audio track publication and attach real-time volume monitor
+            const attachTrackMonitor = (trackPub: any) => {
+              const mediaTrack = trackPub?.track?.mediaStreamTrack;
+              if (mediaTrack) {
+                mediaTrack.enabled = true;
+                console.log(`[VoiceAgentWidget] Microphone track active: "${mediaTrack.label}" (transmitting: ${mediaTrack.enabled}, hardwareState: ${mediaTrack.muted ? 'waiting_first_frame' : 'streaming'})`);
+                if (mediaTrack.muted) {
+                  mediaTrack.addEventListener('unmute', () => {
+                    console.log('[VoiceAgentWidget] Hardware audio stream established — microphone transmitting.');
+                  }, { once: true });
+                }
+                const stream = new MediaStream([mediaTrack]);
+                localMediaStreamRef.current = stream;
+                if (audioMonitorRef.current) {
+                  audioMonitorRef.current.cleanup();
+                }
+                audioMonitorRef.current = createAudioLevelMonitor(stream, {
+                  onSpeechDetected: () => {
+                    notifySpeechActivity();
+                  },
+                });
+              }
+            };
+
+            const existingPub = activeClient.room?.localParticipant?.getTrackPublication?.('microphone');
+            if (existingPub) {
+              attachTrackMonitor(existingPub);
+            } else if (activeClient.room) {
+              activeClient.room.on('localTrackPublished', (pub: any) => {
+                if (pub?.source === 'microphone' || pub?.kind === 'audio') {
+                  attachTrackMonitor(pub);
+                }
+              });
+            }
+
             updateState('connected');
             sendTelemetry('call_start');
 
-            // Start initial silence watchdog (Task C.2)
+            // Start initial silence watchdog (e.g. 15s) to save call costs on inactive connections
             if (initialSilenceTimerRef.current) clearTimeout(initialSilenceTimerRef.current);
-            initialSilenceTimerRef.current = setTimeout(() => {
-              if (!hasUserSpokenRef.current && clientRef.current === activeClient) {
-                console.warn(`[SILENCE_AUTO_HANGUP] No user speech detected within ${initialSilenceSec}s. Terminating call.`);
-                safeStopCurrentCall();
-                setErrorMessage('Call ended due to inactivity.');
-                sendTelemetry('call_end', 'initial_silence_timeout');
-              }
-            }, initialSilenceSec * 1000);
+            if (initialSilenceSec > 0) {
+              initialSilenceTimerRef.current = setTimeout(() => {
+                if (!hasUserSpokenRef.current && clientRef.current === activeClient) {
+                  console.warn(`[SILENCE_AUTO_HANGUP] No user speech detected within ${initialSilenceSec}s. Terminating call to prevent idle usage.`);
+                  safeStopCurrentCall();
+                  setErrorMessage('Call ended due to inactivity.');
+                  sendTelemetry('call_end', 'initial_silence_timeout');
+                }
+              }, initialSilenceSec * 1000);
+            }
           });
 
           activeClient.on('call_ended', () => {
@@ -1064,13 +1143,19 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
 
           let agentSpeakingTimeout: NodeJS.Timeout | null = null;
 
-          const initialSilenceSec = Number(data.initialSilenceTimeoutSeconds || mergedConfig.behavior.initialSilenceTimeoutSeconds || 15);
+          const initialSilenceSec = Number(data.initialSilenceTimeoutSeconds || mergedConfig.behavior.initialSilenceTimeoutSeconds || 60);
 
-          activeClient.on('call-start', () => {
+          activeClient.on('call-start', async () => {
             if (connectionTimeoutRef.current) {
               clearTimeout(connectionTimeoutRef.current);
               connectionTimeoutRef.current = null;
             }
+
+            // Explicitly verify Vapi unmute state
+            await verifyVapiMicrophoneAttachment(activeClient).catch((err) => {
+              console.warn('[VoiceAgentWidget] Vapi microphone attachment check warning:', err);
+            });
+
             updateState('connected');
             sendTelemetry('call_start');
 
@@ -1137,6 +1222,12 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
             setCallState((prev) => (prev === 'muted' ? 'muted' : 'user_listening'));
           });
 
+          activeClient.on('local-audio-level', (level: number) => {
+            if (level > 0.01) {
+              notifySpeechActivity();
+            }
+          });
+
           activeClient.on('volume-level', (volume: number) => {
             // Volume is between 0 and 1. Volume > 0.01 indicates assistant is active
             if (volume > 0.01) {
@@ -1200,22 +1291,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         }
       } catch (err) {
         console.error('Error starting voice assistant:', err);
-        if (connectionTimeoutRef.current) {
-          clearTimeout(connectionTimeoutRef.current);
-          connectionTimeoutRef.current = null;
-        }
-        if (activeClient) {
-          try {
-            if (providerRef.current === 'vapi') {
-              activeClient.stop();
-            } else {
-              activeClient.stopCall();
-            }
-          } catch {}
-        }
-        if (clientRef.current === activeClient) {
-          clientRef.current = null;
-        }
+        safeStopCurrentCall();
 
         const errorMsg = err instanceof Error ? err.message : '';
         const friendlyMsg =
@@ -1227,7 +1303,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
         updateState('error');
         isStartingRef.current = false;
       }
-    }, [callState, updateState, sendTelemetry, mergedConfig, widgetId, isDemo, clearDemoSimulation]);
+    }, [callState, updateState, sendTelemetry, mergedConfig, widgetId, isDemo, clearDemoSimulation, safeStopCurrentCall, notifySpeechActivity]);
 
     const stopCall = useCallback(() => {
       if (callState === 'idle' || callState === 'ending' || callState === 'ended') {

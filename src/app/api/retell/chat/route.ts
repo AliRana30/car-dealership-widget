@@ -43,6 +43,7 @@ import {
   setLastNavigation,
   setLastIntent,
 } from '@/lib/agents/sessionContext';
+import { resolveNavigationTarget } from '@/lib/agents/navigationResolver';
 
 function maskIp(ip: string): string {
   if (ip.includes('.')) {
@@ -208,7 +209,10 @@ async function generateChatFallbackResponse(
   content: string,
   businessName: string,
   validation: GroundedContextValidation,
-  lastNavUrl?: string | null
+  lastNavUrl?: string | null,
+  widgetId?: string,
+  sessionId?: string,
+  allowAgentNavigation?: boolean
 ): Promise<ChatFallbackResult> {
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMINI_KEY;
   const openAiKey = (process.env.OPENAI_API_KEY || '').trim();
@@ -217,7 +221,38 @@ async function generateChatFallbackResponse(
   const isExplicit = isExplicitNavigationIntent(content);
   const trimmed = content.trim().toLowerCase();
 
-  // 1. If not grounded, return deterministic fallback directly (Zero LLM hallucination)
+  // 1. Explicit Navigation Intent Handling via Unified Page & Entity Resolver
+  if (isExplicit && widgetId) {
+    const navResult = await resolveNavigationTarget(widgetId, content, {
+      sessionId,
+      allowAgentNavigation,
+    });
+
+    if (navResult.canNavigate && navResult.targetUrl) {
+      const pageTitle = navResult.resolvedEntity?.title || navResult.resolvedPageTitle || navResult.pageTitle || 'the requested page';
+      return {
+        text: `Opening the page for **${pageTitle}** on your screen now! Let me know if you have any questions.`,
+        navigationUrl: navResult.targetUrl,
+        grounding: validation.groundingMetadata,
+      };
+    }
+
+    if (navResult.confidence === 'ambiguous' && navResult.clarificationMessage) {
+      return {
+        text: navResult.clarificationMessage,
+        grounding: validation.groundingMetadata,
+      };
+    }
+
+    if (navResult.confidence === 'not_found') {
+      return {
+        text: navResult.failureReason || `I couldn't find that page on this website. I can help you explore our available offerings or sections.`,
+        grounding: validation.groundingMetadata,
+      };
+    }
+  }
+
+  // 2. If not grounded, return deterministic fallback directly (Zero LLM hallucination)
   if (!validation.isGrounded) {
     return {
       text: validation.fallbackText || `I couldn't find verified information for that inquiry in the available website records for ${businessName}. Feel free to ask about our available offerings or pricing.`,
@@ -236,61 +271,6 @@ async function generateChatFallbackResponse(
   }
 
   const matchedRecords = validation.structuredResults;
-
-  // 1. Explicit Navigation Intent Handling
-  if (isExplicit) {
-    // 1a. Navigation to About Page
-    if (/\b(?:about|who\s+are\s+you|mission|story|company|founder|developer|team)\b/i.test(trimmed)) {
-      const match = matchedRecords.find(r => /about/i.test(r.title || '') || /about/i.test(r.sourceUrl || ''));
-      if (match?.sourceUrl) {
-        return {
-          text: `Navigating you to our About page now so you can learn more about ${businessName}!`,
-          navigationUrl: match.sourceUrl,
-          grounding: validation.groundingMetadata,
-        };
-      }
-    }
-
-    // 1b. Navigation to Policies & Terms
-    if (/\b(?:policy|policies|terms|privacy|gdpr|refund|legal)\b/i.test(trimmed)) {
-      const match = matchedRecords.find(r => /policy|terms|privacy/i.test(r.title || '') || /policy|terms/i.test(r.sourceUrl || ''));
-      if (match?.sourceUrl) {
-        return {
-          text: `Opening our Policies & Terms page on your screen now!`,
-          navigationUrl: match.sourceUrl,
-          grounding: validation.groundingMetadata,
-        };
-      }
-    }
-
-    // 1c. Navigation to FAQ / Help / Contact
-    if (/\b(?:faq|frequently asked|questions?|help|contact|support)\b/i.test(trimmed)) {
-      const isFaq = /\b(?:faq|frequently asked|questions?|help)\b/i.test(trimmed);
-      const match = matchedRecords.find(r => (isFaq ? /faq/i : /contact/i).test(r.title || '') || (isFaq ? /faq/i : /contact/i).test(r.sourceUrl || ''));
-      if (match?.sourceUrl) {
-        return {
-          text: `Navigating you to our ${isFaq ? 'FAQ' : 'Contact'} page now!`,
-          navigationUrl: match.sourceUrl,
-          grounding: validation.groundingMetadata,
-        };
-      }
-    }
-
-    // 1d. Navigation to specific named item or general catalog
-    const queryWords = trimmed.split(/\s+/).filter(w => w.length > 2 && !['navigate', 'take', 'open', 'page', 'course', 'product', 'item', 'me', 'the', 'you', 'show', 'to', 'can'].includes(w));
-    const targetItem = matchedRecords.find(r => {
-      const t = (r.title || '').toLowerCase();
-      return queryWords.length > 0 && queryWords.some(w => t.includes(w));
-    });
-
-    if (targetItem?.sourceUrl) {
-      return {
-        text: `Opening the page for **${targetItem.title}** on your screen now! Let me know if you have any questions about it.`,
-        navigationUrl: targetItem.sourceUrl,
-        grounding: validation.groundingMetadata,
-      };
-    }
-  }
 
   // 2. Try LLMs with strict grounding prompt from validation.systemPrompt
   const systemPrompt = validation.systemPrompt;
@@ -718,6 +698,18 @@ export async function POST(req: NextRequest) {
 
   // ── Empty-Context Hallucination Prevention (Deterministic Fallback) ────────
   if (!validation.isGrounded) {
+    const totalChatDurationMs = Math.round((performance.now() - reqT0) * 100) / 100;
+    const retrievalTimings = toolResult.timings || planResult.stepResults.find(s => s.result?.timings)?.result?.timings || {
+      queryUnderstandingMs: 0,
+      widgetLookupMs: 0,
+      dbFetchMs: 0,
+      parallelRetrievalMs: 0,
+      rerankingMs: 0,
+      contextSummaryMs: 0,
+      totalRetrievalMs: planResult.totalDurationMs,
+      cacheHit: 'none',
+    };
+
     return NextResponse.json(
       {
         chatId: chatId || `chat_${Date.now()}`,
@@ -731,6 +723,11 @@ export async function POST(req: NextRequest) {
         ],
         sessionId,
         grounding: validation.groundingMetadata,
+        timings: {
+          totalMs: totalChatDurationMs,
+          plannerDurationMs: planResult.totalDurationMs,
+          retrieval: retrievalTimings,
+        },
       },
       { status: 200, headers }
     );
@@ -742,7 +739,10 @@ export async function POST(req: NextRequest) {
       resolvedQuery !== content ? resolvedQuery : content,
       businessName,
       validation,
-      effectiveNavUrl
+      effectiveNavUrl,
+      retrievalId,
+      sessionId,
+      allowNav
     );
 
     const isInfoIntent = /^(?:about\s+(?:us|the\s+company|the\s+business)|privacy\s+policy|terms|contact\s+us)$/i.test(content.trim());
@@ -758,6 +758,18 @@ export async function POST(req: NextRequest) {
       },
     ];
 
+    const totalChatDurationMs = Math.round((performance.now() - reqT0) * 100) / 100;
+    const retrievalTimings = toolResult.timings || planResult.stepResults.find(s => s.result?.timings)?.result?.timings || {
+      queryUnderstandingMs: 0,
+      widgetLookupMs: 0,
+      dbFetchMs: 0,
+      parallelRetrievalMs: 0,
+      rerankingMs: 0,
+      contextSummaryMs: 0,
+      totalRetrievalMs: planResult.totalDurationMs,
+      cacheHit: 'none',
+    };
+
     return NextResponse.json(
       {
         chatId: chatId || `chat_${Date.now()}`,
@@ -767,6 +779,11 @@ export async function POST(req: NextRequest) {
         suggestedUrl: fallbackResult.suggestedUrl,
         action: fallbackResult.navigationUrl ? { type: 'navigate', url: fallbackResult.navigationUrl } : undefined,
         grounding: validation.groundingMetadata,
+        timings: {
+          totalMs: totalChatDurationMs,
+          plannerDurationMs: planResult.totalDurationMs,
+          retrieval: retrievalTimings,
+        },
       },
       { status: 200, headers }
     );
@@ -921,7 +938,10 @@ export async function POST(req: NextRequest) {
       resolvedQuery !== content ? resolvedQuery : content,
       businessName,
       validation,
-      effectiveNavUrl
+      effectiveNavUrl,
+      retrievalId,
+      sessionId,
+      allowNav
     );
 
     const isInfoIntent = /^(?:about\s+(?:us|the\s+company|the\s+business)|privacy\s+policy|terms|contact\s+us)$/i.test(content.trim());

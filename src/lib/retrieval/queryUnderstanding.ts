@@ -92,7 +92,11 @@ const STOP_WORDS = new Set([
   'tuition', 'dollar', 'dollars', 'bucks', 'stars', 'star', 'rating', 'ratings',
   'discount', 'discounts', 'discounted', 'sale', 'sales', 'deal', 'deals', 'promo',
   'promos', 'special', 'specials', 'regular', 'priced', 'stock', 'availability', 'reviews', 'review',
-  'model', 'models', 'make', 'makes', 'type', 'types', 'kind', 'kinds', 'option', 'options', 'lineup'
+  'model', 'models', 'make', 'makes', 'type', 'types', 'kind', 'kinds', 'option', 'options', 'lineup',
+  'which', 'where', 'who', 'when', 'why', 'whose', 'whom', 'provides', 'provided', 'providing', 'provide',
+  'offers', 'offered', 'offering', 'teach', 'teaches', 'teaching', 'learn', 'learning', 'study',
+  'enroll', 'enrolling', 'enrollment', 'information', 'please', 'suggest', 'recommend', 'recommendation',
+  'recommendations', 'available'
 ]);
 
 function parseNumericPrice(str: string): number | null {

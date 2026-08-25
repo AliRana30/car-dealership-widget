@@ -209,7 +209,7 @@ export default function VoiceAgentStatus({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: 'center', gap: spacing.gap }}>
-      {/* Tab Selector - ALWAYS visible when enabled, with clean mutual-exclusion disabling */}
+      {/* Tab Selector - ALWAYS visible and clickable so user can freely switch between voice & chat */}
       {panel.showTabs && behavior.allowTextChat && behavior.allowVoiceChat && (
         <div
           style={{
@@ -225,11 +225,8 @@ export default function VoiceAgentStatus({
         >
           <button
             type="button"
-            disabled={isVoiceOperating}
-            onClick={() => {
-              if (!isVoiceOperating) onTabChange('text');
-            }}
-            title={isVoiceOperating ? 'Voice call in progress' : 'Switch to Text Chat'}
+            onClick={() => onTabChange('text')}
+            title="Switch to Text Chat"
             style={{
               flex: 1,
               padding: '6px 12px',
@@ -239,8 +236,8 @@ export default function VoiceAgentStatus({
               color: activeTab === 'text' ? '#0F172A' : '#64748B',
               fontWeight: 700,
               fontSize: '12px',
-              cursor: isVoiceOperating ? 'not-allowed' : 'pointer',
-              opacity: isVoiceOperating && activeTab !== 'text' ? 0.45 : 1,
+              cursor: 'pointer',
+              opacity: 1,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -257,11 +254,8 @@ export default function VoiceAgentStatus({
 
           <button
             type="button"
-            disabled={isChatOperating}
-            onClick={() => {
-              if (!isChatOperating) onTabChange('voice');
-            }}
-            title={isChatOperating ? 'Chat response in progress' : 'Switch to Voice Agent'}
+            onClick={() => onTabChange('voice')}
+            title="Switch to Voice Agent"
             style={{
               flex: 1,
               padding: '6px 12px',
@@ -271,8 +265,8 @@ export default function VoiceAgentStatus({
               color: activeTab === 'voice' ? '#0F172A' : '#64748B',
               fontWeight: 700,
               fontSize: '12px',
-              cursor: isChatOperating ? 'not-allowed' : 'pointer',
-              opacity: isChatOperating && activeTab !== 'voice' ? 0.45 : 1,
+              cursor: 'pointer',
+              opacity: 1,
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',

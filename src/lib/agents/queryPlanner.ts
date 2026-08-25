@@ -233,7 +233,20 @@ export function planQuery(
     );
   }
 
-  // ── Page / informational lookup ────────────────────────────────────────────
+  const isNav = isNavigationQuery(rawQuery) || intent.intent === 'navigation';
+  const isMedia = isMediaQuery(rawQuery);
+  const isComparison = isComparisonQuery(rawQuery) || intent.intent === 'comparison';
+  const hasFilters = hasFilterConstraints(intent);
+  const entityName = intent.exactEntityName || rawQuery;
+
+  // ── Direct Navigation ──────────────────────────────────────────────────────
+  if (isNav && options.allowNavigation) {
+    return makePlan(rawQuery, 'navigation', true, [
+      { tool: 'navigate_to_entity', args: { query: rawQuery }, dependsOn: [], label: `Navigate: "${rawQuery}"` },
+    ], intent);
+  }
+
+  // ── Page / informational lookup (non-navigation questions) ─────────────────
   if (intent.isInformational && intent.intent !== 'comparison') {
     return makePlan(rawQuery, 'page_lookup', true, [
       {
@@ -244,12 +257,6 @@ export function planQuery(
       },
     ], intent);
   }
-
-  const isNav = isNavigationQuery(rawQuery) || intent.intent === 'navigation';
-  const isMedia = isMediaQuery(rawQuery);
-  const isComparison = isComparisonQuery(rawQuery) || intent.intent === 'comparison';
-  const hasFilters = hasFilterConstraints(intent);
-  const entityName = intent.exactEntityName || rawQuery;
 
   // ── Media request ──────────────────────────────────────────────────────────
   if (isMedia && !isComparison) {
@@ -304,14 +311,6 @@ export function planQuery(
     ], intent);
   }
 
-  // ── Navigation ─────────────────────────────────────────────────────────────
-  if (isNav && options.allowNavigation) {
-    const navTarget = intent.navigationTarget || entityName;
-    return makePlan(rawQuery, 'navigation', false, [
-      { tool: 'get_entity', args: { query: navTarget }, dependsOn: [], label: `Lookup: "${navTarget}"` },
-      { tool: 'navigate_to_entity', args: { query: navTarget }, dependsOn: [0], injectPriorResults: true, label: `Navigate to "${navTarget}"` },
-    ], intent);
-  }
 
   // ── Exact entity lookup ────────────────────────────────────────────────────
   if (looksLikeExactEntity(rawQuery, intent)) {

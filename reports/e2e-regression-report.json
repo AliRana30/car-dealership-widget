@@ -1,44 +1,40 @@
 {
-  "timestamp": "2026-08-25T14:40:07.187Z",
+  "timestamp": "2026-08-25T16:30:14.942Z",
   "widgetId": "3d801677-65f4-4495-a9b5-24c39b6ee516",
   "widgetName": "Lms",
   "totalTests": 40,
-  "passed": 40,
-  "failed": 0,
+  "passed": 16,
+  "failed": 24,
   "partial": 0,
-  "successRate": "100%",
+  "successRate": "40%",
   "results": [
     {
       "testId": "E2E-01",
       "category": "Retrieval Core",
       "userInput": "Leetcode Mastery",
-      "expectedRetrieval": "Exact entity match for \"Leetcode Mastery\"",
-      "expectedAnswer": "Mentions \"Leetcode Mastery\" factually",
-      "expectedCards": "At least 1 structured entity card returned",
-      "expectedNavigation": "None required",
-      "actualBehavior": "Status: 200, Entities: 1, Grounded: true",
-      "status": "PASS",
-      "latency": "4872 ms",
-      "latencyMs": 4872,
-      "details": {
-        "topEntity": "Leetcode Mastery"
-      }
+      "expectedRetrieval": "Exact match",
+      "expectedAnswer": "Factual text",
+      "expectedCards": "1 card",
+      "expectedNavigation": "None",
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:243:41)"
     },
     {
       "testId": "E2E-02",
       "category": "Retrieval Core",
-      "userInput": "Leetcode is a very good platform for beginners",
-      "expectedRetrieval": "Semantically matches relevant offerings",
-      "expectedAnswer": "Coherent answer referencing retrieved entity",
-      "expectedCards": "Grounded entity card",
+      "userInput": "semantic query",
+      "expectedRetrieval": "Semantic match",
+      "expectedAnswer": "Coherent answer",
+      "expectedCards": "Card",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Returned 2 entities",
-      "status": "PASS",
-      "latency": "3482 ms",
-      "latencyMs": 3482,
-      "details": {
-        "entitiesCount": 2
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:266:41)"
     },
     {
       "testId": "E2E-03",
@@ -50,19 +46,19 @@
       "expectedNavigation": "None",
       "actualBehavior": "Retrieved 1 items, top score: 2040",
       "status": "PASS",
-      "latency": "2373 ms",
-      "latencyMs": 2373,
+      "latency": "1870 ms",
+      "latencyMs": 1870,
       "details": {
         "topItem": "Leetcode Mastery",
         "timings": {
-          "queryUnderstandingMs": 3.94,
-          "widgetLookupMs": 1425.86,
-          "dbFetchMs": 935.28,
-          "vectorSearchMs": 524.02,
-          "parallelRetrievalMs": 935.3,
-          "rerankingMs": 7.17,
-          "contextSummaryMs": 0.04,
-          "totalRetrievalMs": 2373.15,
+          "queryUnderstandingMs": 2.89,
+          "widgetLookupMs": 1050.66,
+          "dbFetchMs": 811.41,
+          "vectorSearchMs": 261.55,
+          "parallelRetrievalMs": 811.42,
+          "rerankingMs": 4.3,
+          "contextSummaryMs": 0.05,
+          "totalRetrievalMs": 1869.85,
           "cacheHit": "none"
         }
       }
@@ -86,40 +82,16 @@
     {
       "testId": "E2E-05",
       "category": "Retrieval Core",
-      "userInput": "Show me options under $190",
-      "expectedRetrieval": "Entities satisfying price cap",
-      "expectedAnswer": "Lists items adhering to budget constraint",
-      "expectedCards": "Cards with prices <= budget",
+      "userInput": "price constraint",
+      "expectedRetrieval": "Budget items",
+      "expectedAnswer": "Answer",
+      "expectedCards": "Cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Entities returned: 6",
-      "status": "PASS",
-      "latency": "5209 ms",
-      "latencyMs": 5209,
-      "details": {
-        "entities": [
-          {
-            "title": "Leetcode Mastery",
-            "price": "$90"
-          },
-          {
-            "title": "MERN Stack Development Course",
-            "price": "$150"
-          },
-          {
-            "title": "Backend Mastery",
-            "price": "$100"
-          },
-          {
-            "title": "Expand Your Knowledge — CampusCore"
-          },
-          {
-            "title": "Medeaz"
-          },
-          {
-            "title": "CampusCore"
-          }
-        ]
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:332:41)"
     },
     {
       "testId": "E2E-06",
@@ -140,18 +112,16 @@
     {
       "testId": "E2E-07",
       "category": "Retrieval Core",
-      "userInput": "Is Leetcode Mastery available in stock?",
-      "expectedRetrieval": "Retrieves Leetcode Mastery availability state",
-      "expectedAnswer": "States availability factually without fabricating live guarantee if stale",
-      "expectedCards": "Availability badge in card metadata",
+      "userInput": "availability query",
+      "expectedRetrieval": "Item state",
+      "expectedAnswer": "Factual availability",
+      "expectedCards": "Badge",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Text: \"Here are the details for **Leetcode Mastery** ($90):\n\nLeetcode is a very good pl...\"",
-      "status": "PASS",
-      "latency": "3138 ms",
-      "latencyMs": 3138,
-      "details": {
-        "textSnippet": "Here are the details for **Leetcode Mastery** ($90):\n\nLeetcode is a very good platform for beginners"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:376:41)"
     },
     {
       "testId": "E2E-08",
@@ -202,8 +172,8 @@
       "expectedNavigation": "None",
       "actualBehavior": "Rank 1: \"Leetcode Mastery\" (Score: 2040)",
       "status": "PASS",
-      "latency": "829 ms",
-      "latencyMs": 829,
+      "latency": "705 ms",
+      "latencyMs": 705,
       "details": {
         "topScore": 2040
       }
@@ -211,66 +181,58 @@
     {
       "testId": "E2E-11",
       "category": "Conversational Context",
-      "userInput": "Tell me about Leetcode",
-      "expectedRetrieval": "Multiple candidate entities with shared prefix/term",
-      "expectedAnswer": "Presents relevant choices or clarifies specific model",
-      "expectedCards": "Structured cards for candidates",
+      "userInput": "disambiguation query",
+      "expectedRetrieval": "Multiple candidates",
+      "expectedAnswer": "Clarification",
+      "expectedCards": "Cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Entities: 1",
-      "status": "PASS",
-      "latency": "3973 ms",
-      "latencyMs": 3973,
-      "details": {
-        "entitiesCount": 1
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:470:41)"
     },
     {
       "testId": "E2E-12",
       "category": "Conversational Context",
-      "userInput": "How much does it cost and what are the details?",
-      "expectedRetrieval": "Resolves pronoun \"it\" to pinned entity \"Leetcode Mastery\"",
-      "expectedAnswer": "Answers cost and details for \"Leetcode Mastery\"",
-      "expectedCards": "Preserves active entity card",
+      "userInput": "pronoun query",
+      "expectedRetrieval": "Resolved pronoun",
+      "expectedAnswer": "Details",
+      "expectedCards": "Card",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Grounded: true",
-      "status": "PASS",
-      "latency": "2360 ms",
-      "latencyMs": 2360,
-      "details": {
-        "textSnippet": "The pricing for [Leetcode Mastery](https://lms-e-learning-system.vercel.app/course/69309149f53ad7494"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:493:5)"
     },
     {
       "testId": "E2E-13",
       "category": "Conversational Context",
-      "userInput": "Can you give me a summary of what it covers?",
-      "expectedRetrieval": "Maintains topic context across turns",
-      "expectedAnswer": "Detailed factual summary without losing entity focus",
-      "expectedCards": "Entity card",
+      "userInput": "followup query",
+      "expectedRetrieval": "Topic context",
+      "expectedAnswer": "Summary",
+      "expectedCards": "Card",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Answer length: 178 chars",
-      "status": "PASS",
-      "latency": "2530 ms",
-      "latencyMs": 2530,
-      "details": {
-        "textSnippet": "I couldn't find verified information for \"give summary covers\" in the available "
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:525:41)"
     },
     {
       "testId": "E2E-14",
       "category": "Conversational Context",
-      "userInput": "Which item were we talking about in our previous message?",
-      "expectedRetrieval": "Recalls \"Leetcode Mastery\" from conversation history",
-      "expectedAnswer": "Explicitly references \"Leetcode Mastery\"",
-      "expectedCards": "Card for remembered entity",
+      "userInput": "memory query",
+      "expectedRetrieval": "History recall",
+      "expectedAnswer": "Identifies entity",
+      "expectedCards": "Card",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Response: \"I couldn't find verified information for \"which item were\" in the available webs...\"",
-      "status": "PASS",
-      "latency": "2217 ms",
-      "latencyMs": 2217,
-      "details": {
-        "textSnippet": "I couldn't find verified information for \"which item were\" in the available website records for Lms."
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:556:41)"
     },
     {
       "testId": "E2E-15",
@@ -293,202 +255,16 @@
     {
       "testId": "E2E-16",
       "category": "Multimodal & Navigation",
-      "userInput": "Show me the card for Leetcode Mastery",
-      "expectedRetrieval": "Complete entity metadata for \"Leetcode Mastery\"",
-      "expectedAnswer": "Formatted prose with embedded card metadata",
-      "expectedCards": "Structured Card payload with title, price, images, sourceUrl, and freshness",
+      "userInput": "card query",
+      "expectedRetrieval": "Entity payload",
+      "expectedAnswer": "Prose",
+      "expectedCards": "Structured Card",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Entities returned: 3",
-      "status": "PASS",
-      "latency": "3687 ms",
-      "latencyMs": 3687,
-      "details": {
-        "entityCard": {
-          "id": "f774f11f-b917-4ce5-8f8d-d4f4240169c5",
-          "title": "Leetcode Mastery",
-          "entityType": "service",
-          "entity_type": "service",
-          "type": "service",
-          "description": "Leetcode is a very good platform for beginners",
-          "shortDescription": "Leetcode is a very good platform for beginners",
-          "price": "$90",
-          "currency": "$",
-          "rating": 5,
-          "availability": "in_stock",
-          "imageUrls": [
-            "https://res.cloudinary.com/dqytzakzv/image/upload/v1764790379/courses/sbq95dwy7wjxg2av4r2v.jpg"
-          ],
-          "images": [
-            "https://res.cloudinary.com/dqytzakzv/image/upload/v1764790379/courses/sbq95dwy7wjxg2av4r2v.jpg"
-          ],
-          "image_urls": [
-            "https://res.cloudinary.com/dqytzakzv/image/upload/v1764790379/courses/sbq95dwy7wjxg2av4r2v.jpg"
-          ],
-          "sourceUrl": "https://lms-e-learning-system.vercel.app/course/69309149f53ad74946204d40",
-          "source_url": "https://lms-e-learning-system.vercel.app/course/69309149f53ad74946204d40",
-          "canonicalUrl": "https://lms-e-learning-system.vercel.app/course/69309149f53ad74946204d40",
-          "freshness": "stale_or_unlisted",
-          "freshnessStatus": "stale_or_unlisted",
-          "firstSeen": "2026-08-20T20:10:18.999395+00:00",
-          "lastSeen": "2026-08-21T18:39:21.964405+00:00",
-          "metadata": {
-            "__v": 30,
-            "_id": "69309149f53ad74946204d40",
-            "tags": "LeetCode",
-            "image": "https://res.cloudinary.com/dqytzakzv/image/upload/v1764790379/courses/sbq95dwy7wjxg2av4r2v.jpg",
-            "level": "beginner",
-            "price": "$90",
-            "images": [
-              "https://res.cloudinary.com/dqytzakzv/image/upload/v1764790379/courses/sbq95dwy7wjxg2av4r2v.jpg"
-            ],
-            "demoUrl": "6e77c34e0851c5d255944a6ddcf7cd25",
-            "ratings": 5,
-            "reviews": [
-              {
-                "_id": "6942fd5dd40044ec3d2e3672",
-                "user": {
-                  "__v": 1,
-                  "_id": "69404feb0ee3f7e949a5eeeb",
-                  "name": "Ali Mahmood Rana",
-                  "role": "user",
-                  "email": "alimahmoodrana2005@gmail.com",
-                  "avatar": {
-                    "url": "https://lh3.googleusercontent.com/a/ACg8ocLglB3D4Kcc5eVz_h0dxZLqZanOJ4JOJAZ3nAiMIjMYYfpnDg=s96-c",
-                    "public_id": ""
-                  },
-                  "courses": [
-                    {
-                      "_id": "69309149f53ad74946204d40"
-                    }
-                  ],
-                  "password": "$2b$10$ffg1qmmi78Gha8NUUzGQqeNiJwrqZiNgT1UsnB2VGUYTg6aPCiCtm",
-                  "createdAt": "2025-12-15T18:14:03.125Z",
-                  "updatedAt": "2025-12-15T18:14:43.545Z",
-                  "isVerified": false
-                },
-                "rating": 5,
-                "comment": "Very Good  Course",
-                "createdAt": "2025-12-17T18:58:37.153Z",
-                "updatedAt": "2025-12-17T18:58:37.153Z",
-                "commentReplies": []
-              },
-              {
-                "_id": "6946ba8236b9617357718294",
-                "user": {
-                  "__v": 2,
-                  "_id": "690f82b4ddbdd24ec982a8e7",
-                  "name": "Ali Rana",
-                  "role": "admin",
-                  "email": "alimahmoodrana82@gmail.com",
-                  "avatar": {
-                    "url": "https://lh3.googleusercontent.com/a/ACg8ocLpCbwFeD33TaphaTERIn8Q5vtQiW9mRccT4i5ilcMzf5s9dVUl=s96-c",
-                    "public_id": ""
-                  },
-                  "courses": [
-                    {
-                      "_id": "69309149f53ad74946204d40"
-                    }
-                  ],
-                  "password": "$2b$10$UeFRM0SD8FOfxfMffGyXLeIA7yG1OsaGIQtYHxPU2rtHzUR7jPOLG",
-                  "createdAt": "2025-11-08T17:49:40.052Z",
-                  "updatedAt": "2025-12-19T19:23:15.385Z",
-                  "isVerified": false
-                },
-                "rating": 5,
-                "comment": ".",
-                "createdAt": "2025-12-20T15:02:26.852Z",
-                "updatedAt": "2025-12-20T15:02:26.852Z",
-                "commentReplies": []
-              },
-              {
-                "_id": "6948416aa183d6816cb59fbb",
-                "user": {
-                  "__v": 0,
-                  "_id": "69483fa9a183d6816cb59f1b",
-                  "name": "Ali Mahmood Rana",
-                  "role": "user",
-                  "email": "alimahmoodrana28@gmail.com",
-                  "avatar": {
-                    "url": "https://lh3.googleusercontent.com/a/ACg8ocIFd8pyKAzuWHXp4kaFZXA4-2mvNhAV1mVxkkPmzxSf2A4h7Q=s96-c",
-                    "public_id": ""
-                  },
-                  "courses": [
-                    {
-                      "_id": "69309149f53ad74946204d40"
-                    }
-                  ],
-                  "password": "$2b$10$vbz9DBQhuoCevyZcByqjK.jKcz6X6qhV4eXq2Y/i9NsM73x6C.JQG",
-                  "createdAt": "2025-12-21T18:42:49.387Z",
-                  "updatedAt": "2025-12-21T18:42:49.387Z",
-                  "isVerified": false
-                },
-                "rating": 5,
-                "comment": "Best course",
-                "createdAt": "2025-12-21T18:50:18.351Z",
-                "updatedAt": "2025-12-21T18:50:18.351Z",
-                "commentReplies": []
-              }
-            ],
-            "benefits": [
-              {
-                "_id": "693097b2a2ac9ca29b677e31",
-                "title": "LeetCode"
-              },
-              {
-                "_id": "693097b2a2ac9ca29b677e32",
-                "title": "Leetcode Mastery"
-              }
-            ],
-            "category": "LeetCode",
-            "createdAt": "2025-12-03T19:36:41.269Z",
-            "last_seen": "2026-08-21T17:09:37.608Z",
-            "purchased": 5,
-            "updatedAt": "2026-01-07T19:30:07.543Z",
-            "courseData": [
-              {
-                "_id": "69309149f53ad74946204d43",
-                "title": "LeetCode",
-                "description": "LeetCode",
-                "videoSection": "LeetCode"
-              }
-            ],
-            "first_seen": "2026-08-21T17:09:37.608Z",
-            "apiEndpoint": "https://lms-1-0b8z.onrender.com/api/v1/get-courses",
-            "description": "Leetcode is a very good platform for beginners",
-            "still_listed": true,
-            "prerequisites": [
-              {
-                "_id": "693097b2a2ac9ca29b677e2f",
-                "title": "LeetCode"
-              },
-              {
-                "_id": "693097b2a2ac9ca29b677e30",
-                "title": "Leetcode Mastery"
-              }
-            ],
-            "estimatedPrice": "100",
-            "discoveryMethod": "api",
-            "score": 1157,
-            "matchType": "keyword",
-            "matchReasons": [
-              "Query contains exact entity title (+550)",
-              "Moderate token overlap (67%) (+167)",
-              "Keyword match 'leetcode' in title (+60)",
-              "Keyword match 'mastery' in title (+60)",
-              "Multi-channel synergy boost (2 channels) (+50)",
-              "Specific entity detail page authority boost (+150)",
-              "Item is currently active & listed (+40)",
-              "Live connector inventory authority (+60)",
-              "Data is stale (4d ago (Connector)) (-60)"
-            ],
-            "freshnessStatus": "stale_or_unlisted",
-            "lastSeenHuman": "4d ago (Connector)",
-            "isConnectorBacked": true,
-            "dataSource": "connector",
-            "hedgeInstruction": "HEDGING REQUIRED: Connector sync is stale (>3 days). Do NOT guarantee current availability or pricing; direct customer to confirm with staff."
-          }
-        }
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:612:41)"
     },
     {
       "testId": "E2E-17",
@@ -510,34 +286,30 @@
     {
       "testId": "E2E-18",
       "category": "Grounding & Freshness",
-      "userInput": "What is the rocket launch schedule for Mars mission?",
-      "expectedRetrieval": "Empty / zero catalog match",
-      "expectedAnswer": "Gracefully states information is not available in catalog",
-      "expectedCards": "0 cards (no false cards)",
+      "userInput": "missing data query",
+      "expectedRetrieval": "Zero match",
+      "expectedAnswer": "Not found",
+      "expectedCards": "0 cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Grounded: false, Entities: 0",
-      "status": "PASS",
-      "latency": "4041 ms",
-      "latencyMs": 4041,
-      "details": {
-        "textSnippet": "Could not find a verified \"about\" page for this website."
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:660:41)"
     },
     {
       "testId": "E2E-19",
       "category": "Grounding & Freshness",
-      "userInput": "Do you sell Quantum Teleportation Device 9000 for $5?",
-      "expectedRetrieval": "Zero catalog match",
-      "expectedAnswer": "Refuses to confirm nonexistent product/service",
-      "expectedCards": "0 hallucinated cards",
+      "userInput": "hallucination test",
+      "expectedRetrieval": "Zero match",
+      "expectedAnswer": "Refusal",
+      "expectedCards": "0 cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Hallucinated: false, Text: \"I couldn't find verified information for \"sell quantum teleportation\" in the ava...\"",
-      "status": "PASS",
-      "latency": "2042 ms",
-      "latencyMs": 2042,
-      "details": {
-        "textSnippet": "I couldn't find verified information for \"sell quantum teleportation\" in the ava"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:682:41)"
     },
     {
       "testId": "E2E-20",
@@ -563,12 +335,12 @@
       "expectedAnswer": "Refusal without blind fallback",
       "expectedCards": "0 cards",
       "expectedNavigation": "None (canNavigate: false)",
-      "actualBehavior": "CanNavigate: false, Confidence: not_found",
-      "status": "PASS",
+      "actualBehavior": "CanNavigate: true, Confidence: exact",
+      "status": "FAIL",
       "latency": "15 ms",
       "latencyMs": 15,
       "details": {
-        "canNavigate": false
+        "canNavigate": true
       }
     },
     {
@@ -581,8 +353,8 @@
       "expectedNavigation": "None",
       "actualBehavior": "Cross-tenant leakage: NONE (ISOLATED)",
       "status": "PASS",
-      "latency": "1543 ms",
-      "latencyMs": 1543,
+      "latency": "1357 ms",
+      "latencyMs": 1357,
       "details": {
         "foreignItemsCount": 0
       }
@@ -590,51 +362,44 @@
     {
       "testId": "E2E-23",
       "category": "Provider Compatibility",
-      "userInput": "Hello, what services or products do you provide?",
-      "expectedRetrieval": "Retrieves overview / catalog items",
-      "expectedAnswer": "Helpful greeting and overview",
-      "expectedCards": "Cards if relevant",
+      "userInput": "chat query",
+      "expectedRetrieval": "Overview",
+      "expectedAnswer": "Greeting",
+      "expectedCards": "Cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Response: \"I couldn't find verified information for \"hello services products\" in the availa...\"",
-      "status": "PASS",
-      "latency": "2581 ms",
-      "latencyMs": 2581,
-      "details": {
-        "textSnippet": "I couldn't find verified information for \"hello services products\" in the availa"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:777:41)"
     },
     {
       "testId": "E2E-24",
       "category": "Provider Compatibility",
-      "userInput": "Retell custom tool call: search_entities \"Leetcode Mastery\"",
-      "expectedRetrieval": "Retell custom tool JSON format `{ success: true, count, results }`",
-      "expectedAnswer": "Structured result payload",
-      "expectedCards": "Compatible with Retell dynamic variables",
+      "userInput": "retell tool call",
+      "expectedRetrieval": "Retell format",
+      "expectedAnswer": "JSON",
+      "expectedCards": "Results",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Success: true, Count: 1",
-      "status": "PASS",
-      "latency": "803 ms",
-      "latencyMs": 803,
-      "details": {
-        "count": 1,
-        "topTitle": "Leetcode Mastery"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendAgentToolRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:146:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:799:41)"
     },
     {
       "testId": "E2E-25",
       "category": "Provider Compatibility",
-      "userInput": "Vapi tool-calls batch format for \"Leetcode Mastery\"",
-      "expectedRetrieval": "Vapi tool-calls response `{ results: [{ toolCallId, result }] }`",
-      "expectedAnswer": "Stringified tool result in result field",
-      "expectedCards": "Embedded in stringified JSON",
+      "userInput": "vapi tool call",
+      "expectedRetrieval": "Vapi batch format",
+      "expectedAnswer": "JSON string",
+      "expectedCards": "Results",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, toolCallId: vapi_e2e_1",
-      "status": "PASS",
-      "latency": "924 ms",
-      "latencyMs": 924,
-      "details": {
-        "toolCallId": "vapi_e2e_1"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:822:17)"
     },
     {
       "testId": "E2E-26",
@@ -646,8 +411,8 @@
       "expectedNavigation": "None",
       "actualBehavior": "Plan: comparison, Steps: 3, Executed: 3",
       "status": "PASS",
-      "latency": "1544 ms",
-      "latencyMs": 1544,
+      "latency": "1506 ms",
+      "latencyMs": 1506,
       "details": {
         "planType": "comparison",
         "executedSteps": 3
@@ -672,18 +437,16 @@
     {
       "testId": "E2E-28",
       "category": "Resilience & Fallbacks",
-      "userInput": "Greeting prompt triggering fast-path without deep LLM recursion",
-      "expectedRetrieval": "Short-circuits without unnecessary LLM planning delays",
-      "expectedAnswer": "Friendly fast greeting",
+      "userInput": "fastpath test",
+      "expectedRetrieval": "Fast greeting",
+      "expectedAnswer": "Greeting",
       "expectedCards": "0 cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Latency: 378ms, Response: \"Hello! How can I help you today?...\"",
-      "status": "PASS",
-      "latency": "378 ms",
-      "latencyMs": 378,
-      "details": {
-        "textSnippet": "Hello! How can I help you today?"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:906:41)"
     },
     {
       "testId": "E2E-29",
@@ -695,8 +458,8 @@
       "expectedNavigation": "None",
       "actualBehavior": "Match type: exact, Score: 2040",
       "status": "PASS",
-      "latency": "827 ms",
-      "latencyMs": 827,
+      "latency": "588 ms",
+      "latencyMs": 588,
       "details": {
         "matchType": "exact"
       }
@@ -727,8 +490,8 @@
       "expectedNavigation": "None",
       "actualBehavior": "Items returned: 2, Top title: \"Leetcode Mastery\"",
       "status": "PASS",
-      "latency": "813 ms",
-      "latencyMs": 813,
+      "latency": "497 ms",
+      "latencyMs": 497,
       "details": {
         "typoQuery": "Leexxode Mastery",
         "recovered": "Leetcode Mastery"
@@ -737,121 +500,100 @@
     {
       "testId": "E2E-32",
       "category": "Query Understanding",
-      "userInput": "What lessons, classes, or items are offered?",
-      "expectedRetrieval": "Understands synonyms and domain aliases",
-      "expectedAnswer": "Lists relevant offerings understanding contextual terminology",
-      "expectedCards": "Relevant cards",
+      "userInput": "synonym query",
+      "expectedRetrieval": "Domain items",
+      "expectedAnswer": "Overview",
+      "expectedCards": "Cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Response: \"I couldn't find verified information for \"lessons classes items\" in the availabl...\"",
-      "status": "PASS",
-      "latency": "3388 ms",
-      "latencyMs": 3388,
-      "details": {
-        "textSnippet": "I couldn't find verified information for \"lessons classes items\" in the availabl"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:999:41)"
     },
     {
       "testId": "E2E-33",
       "category": "Query Understanding",
-      "userInput": "What can you tell me about this business and everything you do?",
-      "expectedRetrieval": "Synthesizes broad business overview from crawled content",
-      "expectedAnswer": "Comprehensive multi-sentence answer summarizing key services/products",
-      "expectedCards": "Top catalog cards",
+      "userInput": "broad query",
+      "expectedRetrieval": "Overview",
+      "expectedAnswer": "Summary",
+      "expectedCards": "Cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Response length: 176 chars",
-      "status": "PASS",
-      "latency": "2144 ms",
-      "latencyMs": 2144,
-      "details": {
-        "textSnippet": "I couldn't find verified information for \"this business and\" in the available website records for Lm"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:1021:41)"
     },
     {
       "testId": "E2E-34",
       "category": "Query Understanding",
-      "userInput": "What is the exact price of Leetcode Mastery?",
-      "expectedRetrieval": "Pins exact entity \"Leetcode Mastery\" and its specific price attribute",
-      "expectedAnswer": "Accurately states price for \"Leetcode Mastery\"",
-      "expectedCards": "Card highlighting price",
+      "userInput": "specific query",
+      "expectedRetrieval": "Exact attribute",
+      "expectedAnswer": "Price quote",
+      "expectedCards": "Card",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Grounded: true",
-      "status": "PASS",
-      "latency": "13514 ms",
-      "latencyMs": 13514,
-      "details": {
-        "textSnippet": "The pricing for [Leetcode Mastery](https://lms-e-learning-system.vercel.app/cour"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:1044:41)"
     },
     {
       "testId": "E2E-35",
       "category": "Query Understanding",
-      "userInput": "Can you book a flight ticket to Tokyo and charge my credit card?",
-      "expectedRetrieval": "Identifies unsupported out-of-scope transactional capability",
-      "expectedAnswer": "Politely clarifies capability boundaries and directs to relevant website actions",
+      "userInput": "unsupported query",
+      "expectedRetrieval": "Out of scope",
+      "expectedAnswer": "Polite boundary",
       "expectedCards": "0 cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Handled gracefully without fabrication",
-      "status": "PASS",
-      "latency": "4001 ms",
-      "latencyMs": 4001,
-      "details": {
-        "textSnippet": "I couldn't find verified information for \"book flight ticket\" in the available w"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:1066:41)"
     },
     {
       "testId": "E2E-36",
       "category": "Security & Production",
-      "userInput": "Tool injection: drop_table_users",
-      "expectedRetrieval": "Allowlist blocks unauthorized tool execution",
-      "expectedAnswer": "`error=\"unknown_tool\"`, zero SQL execution",
+      "userInput": "malicious tool",
+      "expectedRetrieval": "Blocked",
+      "expectedAnswer": "Error",
       "expectedCards": "0 cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Success: false, Error: unknown_tool",
-      "status": "PASS",
-      "latency": "19 ms",
-      "latencyMs": 19,
-      "details": {
-        "error": "unknown_tool"
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendAgentToolRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:146:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:1092:41)"
     },
     {
       "testId": "E2E-37",
       "category": "Security & Production",
-      "userInput": "Burst of 65 concurrent tool requests from test IP",
-      "expectedRetrieval": "Sliding-window rate limiter triggers HTTP 429 Too Many Requests",
-      "expectedAnswer": "Returns 429 status code with Retry-After header",
+      "userInput": "rate limit test",
+      "expectedRetrieval": "429 trigger",
+      "expectedAnswer": "Rate limit response",
       "expectedCards": "0 cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Rate limit triggered: true, 429 responses count: 5 / 65",
-      "status": "PASS",
-      "latency": "914 ms",
-      "latencyMs": 914,
-      "details": {
-        "hit429": true,
-        "count429": 5
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendAgentToolRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:146:15)\n    at async Promise.all (index 0)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:1118:23)"
     },
     {
       "testId": "E2E-38",
       "category": "Security & Production",
-      "userInput": "5 concurrent distinct queries: [Leetcode Mastery, Backend Mastery, overview, pricing, contact]",
-      "expectedRetrieval": "Parallel non-blocking query handling across sessions",
-      "expectedAnswer": "All 5 concurrent requests return HTTP 200 successfully",
-      "expectedCards": "Individual session cards",
+      "userInput": "concurrent test",
+      "expectedRetrieval": "Parallel handling",
+      "expectedAnswer": "HTTP 200 all",
+      "expectedCards": "Cards",
       "expectedNavigation": "None",
-      "actualBehavior": "All 5 returned HTTP 200: true",
-      "status": "PASS",
-      "latency": "4067 ms",
-      "latencyMs": 4067,
-      "details": {
-        "statuses": [
-          200,
-          200,
-          200,
-          200,
-          200
-        ]
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async Promise.all (index 0)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:1146:23)"
     },
     {
       "testId": "E2E-39",
@@ -861,20 +603,20 @@
       "expectedAnswer": "High-speed candidate retrieval",
       "expectedCards": "Grounded entity cards",
       "expectedNavigation": "None",
-      "actualBehavior": "Total retrieval time: 1864 ms",
+      "actualBehavior": "Total retrieval time: 496 ms",
       "status": "PASS",
-      "latency": "1864 ms",
-      "latencyMs": 1864,
+      "latency": "496 ms",
+      "latencyMs": 496,
       "details": {
         "timings": {
-          "queryUnderstandingMs": 0.2,
-          "widgetLookupMs": 1063.56,
-          "dbFetchMs": 799.29,
-          "vectorSearchMs": 472.23,
-          "parallelRetrievalMs": 799.3,
-          "rerankingMs": 1.26,
-          "contextSummaryMs": 0.01,
-          "totalRetrievalMs": 1864.39,
+          "queryUnderstandingMs": 0.04,
+          "widgetLookupMs": 0.01,
+          "dbFetchMs": 495.1,
+          "vectorSearchMs": 287.91,
+          "parallelRetrievalMs": 495.11,
+          "rerankingMs": 0.78,
+          "contextSummaryMs": 0,
+          "totalRetrievalMs": 496.01,
           "cacheHit": "none"
         }
       }
@@ -882,19 +624,16 @@
     {
       "testId": "E2E-40",
       "category": "Security & Production",
-      "userInput": "Give me full details for Leetcode Mastery",
-      "expectedRetrieval": "Complete entity and card schema adherence for \"Leetcode Mastery\"",
-      "expectedAnswer": "Factual text with title, description, and details",
-      "expectedCards": "Structured card payload matching catalog entity schema",
+      "userInput": "correctness query",
+      "expectedRetrieval": "Valid card schema",
+      "expectedAnswer": "Full details",
+      "expectedCards": "Valid Card",
       "expectedNavigation": "None",
-      "actualBehavior": "Status: 200, Response text valid: true, Entities count: 1",
-      "status": "PASS",
-      "latency": "4280 ms",
-      "latencyMs": 4280,
-      "details": {
-        "textLength": 244,
-        "entitiesCount": 1
-      }
+      "actualBehavior": "fetch failed",
+      "status": "FAIL",
+      "latency": "N/A",
+      "latencyMs": 0,
+      "rootCause": "TypeError: fetch failed\n    at node:internal/deps/undici/undici:16416:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async sendChatRequest (D:\\front desk\\scripts\\test-e2e-regression.ts:113:15)\n    at async runE2ESuite (D:\\front desk\\scripts\\test-e2e-regression.ts:1194:41)"
     }
   ]
 }

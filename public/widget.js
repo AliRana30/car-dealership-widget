@@ -71,7 +71,7 @@
   iframe.style.border = 'none';
   iframe.style.background = 'transparent';
   iframe.style.colorScheme = 'light';
-  iframe.setAttribute('allow', 'microphone *; autoplay *; camera *; display-capture *; encrypted-media *');
+  iframe.setAttribute('allow', 'microphone *; autoplay *; camera *; display-capture *; encrypted-media *; clipboard-write *; speaker-selection *');
   iframe.setAttribute('allowusermedia', 'true');
 
   container.appendChild(iframe);

@@ -38,7 +38,7 @@ export async function endCallServerSide(
     if (provider === 'retell') {
       const client = new Retell({ apiKey });
       await client.call.stop(callId);
-      console.log(`[SERVER_CALL_STOP] Successfully stopped Retell call ${callId} server-side (reason: ${reason}).`);
+      console.log(`[SERVER_CALL_CAP] Successfully stopped Retell call ${callId} server-side (reason: ${reason}).`);
       return true;
     } else if (provider === 'vapi') {
       const res = await fetch(`https://api.vapi.ai/call/${callId}`, {
@@ -48,23 +48,18 @@ export async function endCallServerSide(
           'Content-Type': 'application/json',
         },
       });
-      if (!res.ok) {
-        await fetch(`https://api.vapi.ai/call/${callId}/stop`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-        });
+      if (res.ok) {
+        console.log(`[SERVER_CALL_CAP] Successfully stopped Vapi call ${callId} server-side (reason: ${reason}).`);
+        return true;
       }
-      console.log(`[SERVER_CALL_STOP] Successfully terminated Vapi call ${callId} server-side (reason: ${reason}).`);
-      return true;
+      console.warn(`[SERVER_CALL_CAP] Vapi delete call ${callId} returned status ${res.status}`);
+      return false;
     }
+    return false;
   } catch (err: any) {
-    console.error(`[SERVER_CALL_STOP] Failed to terminate call ${callId} server-side:`, err?.message || err);
+    console.error(`[SERVER_CALL_CAP] Failed to terminate call ${callId} server-side:`, err.message || err);
     return false;
   }
-  return false;
 }
 
 /**
@@ -85,7 +80,9 @@ export function registerCallTimeout(params: CallTimeoutParams): void {
   clearCallTimeout(callId);
 
   const maxDurationMs = Math.max(0.01, maxDurationMinutes) * 60 * 1000;
-  const silenceTimeoutMs = Math.max(0.1, initialSilenceTimeoutSeconds) * 1000;
+  // If silence timeout is > 0, set silence auto-hangup watchdog (default 15s)
+  const effectiveSilenceSeconds = initialSilenceTimeoutSeconds > 0 ? initialSilenceTimeoutSeconds : DEFAULT_INITIAL_SILENCE_TIMEOUT_SECONDS;
+  const silenceTimeoutMs = effectiveSilenceSeconds * 1000;
 
   // 1. Hard max duration watchdog
   const timer = setTimeout(async () => {
@@ -94,13 +91,13 @@ export function registerCallTimeout(params: CallTimeoutParams): void {
     await endCallServerSide(callId, provider, apiKey, 'max_duration_cap');
   }, maxDurationMs);
 
-  // 2. Initial silence watchdog (C.2): Ends call if caller never speaks in the first ~10-15s
+  // 2. Initial silence watchdog: Ends call if caller never speaks in the first window
   let silenceTimer: NodeJS.Timeout | undefined;
   if (silenceTimeoutMs > 0) {
     silenceTimer = setTimeout(async () => {
       const record = activeCallTimers.get(callId);
       if (record && !record.hasUserSpoken) {
-        console.log(`[SILENCE_AUTO_HANGUP] No user speech detected within ${initialSilenceTimeoutSeconds}s initial window for call ${callId} (widget: ${widgetId || 'default'}). Ending call server-side.`);
+        console.log(`[SILENCE_AUTO_HANGUP] No user speech detected within ${effectiveSilenceSeconds}s initial window for call ${callId} (widget: ${widgetId || 'default'}). Ending call server-side.`);
         activeCallTimers.delete(callId);
         await endCallServerSide(callId, provider, apiKey, 'initial_silence_timeout');
       }

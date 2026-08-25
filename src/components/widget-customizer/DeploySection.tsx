@@ -35,7 +35,7 @@ function getIframeSnippet(origin: string, widgetId: string) {
   width="100%"
   height="620px"
   style="border:none;border-radius:12px;"
-  allow="microphone"
+  allow="microphone; autoplay; camera; display-capture; encrypted-media"
 ></iframe>`;
 }
 
@@ -596,7 +596,7 @@ export default function DeploySection({
                       background: '#F8FAFC',
                     }}
                     title="Widget Sandbox Preview"
-                    allow="microphone"
+                    allow="microphone; autoplay; camera; display-capture; encrypted-media"
                   />
                 </div>
                 <p style={{ margin: '6px 0 0', fontSize: '10px', color: '#94A3B8', textAlign: 'center' }}>

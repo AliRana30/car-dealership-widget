@@ -159,7 +159,7 @@ export default function VoiceAgentControls({
         </div>
       )}
 
-      {/* 2. Text Input Row: Disabled when Voice is active or connecting */}
+      {/* 2. Text Input Row: Always enabled so user can chat and call simultaneously */}
       <form
         onSubmit={onSendChatMessage}
         style={{
@@ -172,15 +172,15 @@ export default function VoiceAgentControls({
           borderRadius: '999px',
           padding: '3px 4px 3px 14px',
           boxSizing: 'border-box',
-          opacity: isVoiceOperating ? 0.5 : 1,
+          opacity: 1,
         }}
       >
         <input
           type="text"
           value={chatInput}
           onChange={(e) => onChatInputChange(e.target.value)}
-          placeholder={isVoiceOperating ? "Voice call active..." : (branding.placeholderText || "Type a message instead...")}
-          disabled={chatTyping || isVoiceOperating}
+          placeholder={branding.placeholderText || "Type a message..."}
+          disabled={chatTyping}
           style={{
             flex: 1,
             padding: '7px 0',
@@ -189,27 +189,27 @@ export default function VoiceAgentControls({
             fontSize: '12.5px',
             color: 'var(--voice-widget-text, #0F172A)',
             background: 'transparent',
-            cursor: isVoiceOperating ? 'not-allowed' : 'text',
+            cursor: 'text',
           }}
         />
         <button
           type="submit"
-          disabled={chatTyping || isVoiceOperating || !chatInput.trim()}
+          disabled={chatTyping || !chatInput.trim()}
           style={{
             width: '30px',
             height: '30px',
             borderRadius: '50%',
-            background: chatInput.trim() && !chatTyping && !isVoiceOperating ? 'var(--voice-widget-primary, #2F8FE0)' : 'rgba(14,27,42,0.1)',
-            color: chatInput.trim() && !chatTyping && !isVoiceOperating ? '#FFFFFF' : '#94A3B8',
+            background: chatInput.trim() && !chatTyping ? 'var(--voice-widget-primary, #2F8FE0)' : 'rgba(14,27,42,0.1)',
+            color: chatInput.trim() && !chatTyping ? '#FFFFFF' : '#94A3B8',
             border: 'none',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: chatInput.trim() && !chatTyping && !isVoiceOperating ? 'pointer' : 'not-allowed',
+            cursor: chatInput.trim() && !chatTyping ? 'pointer' : 'not-allowed',
             transition: 'all 0.15s ease',
             flexShrink: 0,
           }}
-          title={isVoiceOperating ? 'Voice call in progress' : 'Send message'}
+          title="Send message"
           aria-label="Send message"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">

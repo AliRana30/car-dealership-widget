@@ -129,7 +129,8 @@ const BROAD_WORDS = new Set([
   'offering', 'offerings', 'program', 'programs', 'course', 'courses', 'product', 'products',
   'service', 'services', 'inventory', 'catalog', 'item', 'items', 'stock', 'availability',
   'discount', 'discounts', 'discounted', 'sale', 'sales', 'regular', 'priced', 'deal', 'deals', 'promo',
-  'tell', 'details', 'information', 'about', 'what'
+  'tell', 'details', 'information', 'about', 'what', 'which', 'where', 'who', 'when', 'why', 'how',
+  'provide', 'provides', 'provided', 'offer', 'offers', 'offered', 'teach', 'teaches', 'learn', 'recommend'
 ]);
 
 const NEGATIVE_SYNONYMS: Record<string, string[]> = {

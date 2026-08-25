@@ -54,8 +54,15 @@ export async function POST(req: NextRequest) {
     const websiteContext = await getWebsiteContextSummary(websiteId);
 
     const client = new Retell({ apiKey });
+    const sessionId = randomUUID();
     
-    const safeDynamicVars: Record<string, string> = {};
+    const safeDynamicVars: Record<string, string> = {
+      business_name: widget?.config?.branding?.companyName || widget?.name || 'CampusCore',
+      company_name: widget?.config?.branding?.companyName || widget?.name || 'CampusCore',
+      assistant_name: widget?.config?.branding?.assistantName || 'Alex',
+      user_name: 'Caller',
+      transfer_phone_number: '+13464441353',
+    };
     if (body.retell_llm_dynamic_variables && typeof body.retell_llm_dynamic_variables === 'object') {
       for (const [k, v] of Object.entries(body.retell_llm_dynamic_variables)) {
         if (typeof v === 'string') safeDynamicVars[k] = v;
@@ -66,14 +73,23 @@ export async function POST(req: NextRequest) {
       safeDynamicVars.website_context = websiteContext;
     }
 
-    const retellPayload: any = {
+    const safeMetadata: Record<string, string> = {
+      widget_id: widget?.widgetId || widgetId,
+      session_id: sessionId,
+      website_id: websiteId,
+      organization_id: widget?.organizationId || '',
       agent_id: agentId,
-      ...(body.metadata && typeof body.metadata === 'object' ? { metadata: body.metadata } : {}),
+      user_id: `user_${Date.now()}`,
+      provider: 'retell',
+      voice_provider: 'retell',
+      ...(body.metadata && typeof body.metadata === 'object' ? body.metadata : {}),
     };
 
-    if (Object.keys(safeDynamicVars).length > 0) {
-      retellPayload.retell_llm_dynamic_variables = safeDynamicVars;
-    }
+    const retellPayload: any = {
+      agent_id: agentId,
+      metadata: safeMetadata,
+      retell_llm_dynamic_variables: safeDynamicVars,
+    };
 
     const retellResponse = await client.call.createWebCall(retellPayload);
 
@@ -86,7 +102,7 @@ export async function POST(req: NextRequest) {
 
     // Register server-side call duration cap & initial silence watchdog (Task C.1 & C.2)
     const maxCallDurationMinutes = widget?.config?.behavior?.maxCallDurationMinutes ?? 10;
-    const initialSilenceTimeoutSeconds = widget?.config?.behavior?.initialSilenceTimeoutSeconds ?? 15;
+    const initialSilenceTimeoutSeconds = widget?.config?.behavior?.initialSilenceTimeoutSeconds ?? 60;
     registerCallTimeout({
       callId,
       provider: 'retell',
@@ -95,8 +111,6 @@ export async function POST(req: NextRequest) {
       initialSilenceTimeoutSeconds,
       widgetId: widget?.widgetId || widgetId,
     });
-
-    const sessionId = randomUUID();
 
     return NextResponse.json({
       provider: 'retell',
