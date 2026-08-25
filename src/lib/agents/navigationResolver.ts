@@ -111,11 +111,15 @@ function cleanBrandingFromTitle(title: string): string {
  * Extracts clean entity or page target name by stripping conversational navigation triggers.
  */
 export function cleanNavigationQuery(query: string): string {
-  let q = query.trim();
-  // Strip leading triggers
-  q = q.replace(/^(?:please\s+)?(?:take\s+me\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|navigate\s+(?:me\s+)?to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|go\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|open\s+(?:up\s+)?(?:the\s+)?(?:page\s+(?:for|of)\s+)?|view\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|show\s+me\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|visit\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|redirect\s+(?:me\s+)?to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|bring\s+me\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|lead\s+me\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|can\s+you\s+(?:take|navigate|redirect)\s+me\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?)/i, '');
-  // Strip trailing "page", "section", "tab", "details"
-  q = q.replace(/\s+(?:page|section|tab|screen|details|offering|item|product|course|vehicle|listing|link)$/i, '');
+  let q = (query || '').trim();
+  // Strip trailing punctuation first
+  q = q.replace(/[?.!,:;]+$/, '').trim();
+  // Strip leading conversational triggers
+  q = q.replace(/^(?:please\s+)?(?:take\s+me\s+to\s+(?:where\s+i\s+can\s+(?:learn|read|see|find)\s+)?(?:the\s+)?(?:page\s+(?:for|of)\s+)?|where\s+(?:can\s+i|to|i\s+can)\s+(?:find|see|read|learn\s+about|learn|view)\s+(?:the\s+)?|navigate\s+(?:me\s+)?to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|go\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|open\s+(?:up\s+)?(?:the\s+)?(?:page\s+(?:for|of)\s+)?|view\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|show\s+me\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|visit\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|redirect\s+(?:me\s+)?to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|bring\s+me\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|lead\s+me\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?|can\s+you\s+(?:take|navigate|redirect)\s+me\s+to\s+(?:the\s+)?(?:page\s+(?:for|of)\s+)?)/i, '');
+  // Strip compound trailing entity suffixes and typo variations
+  q = q.replace(/\s+(?:course\s+page|vehicle\s+page|product\s+page|service\s+page|freelancer\s+page|profile\s+page|details\s+page|page|paje|paige|section|tab|screen|details|offering|item|product|course|corse|vehicle|listing|link)$/i, '');
+  // Strip trailing punctuation again
+  q = q.replace(/[?.!,:;]+$/, '').trim();
   return q.trim();
 }
 
@@ -124,8 +128,8 @@ export function cleanNavigationQuery(query: string): string {
  */
 function isAnaphoricQuery(query: string): boolean {
   const norm = normalizeString(query);
-  return /^(?:it|this|that|that\s+one|this\s+one|the\s+item|the\s+product|the\s+course|the\s+vehicle|the\s+service|open\s+it|open\s+that|take\s+me\s+to\s+it|navigate\s+to\s+it)$/i.test(norm) ||
-         /^(?:open|show|view|navigate\s+to)\s+(?:it|that|this|that\s+one|this\s+one|that\s+course|that\s+product|that\s+vehicle|the\s+details)$/i.test(norm);
+  return /^(?:it|its|its\s+page|this|this\s+page|that|that\s+one|that\s+page|this\s+one|the\s+item|the\s+product|the\s+course|the\s+vehicle|the\s+service|open\s+it|open\s+that|open\s+its\s+page|take\s+me\s+to\s+it|take\s+me\s+to\s+its\s+page|navigate\s+to\s+it|navigate\s+to\s+its\s+page)$/i.test(norm) ||
+         /^(?:open|show|view|navigate\s+to|take\s+me\s+to)\s+(?:it|its|its\s+page|that|this|that\s+one|this\s+one|that\s+course|that\s+product|that\s+vehicle|the\s+details)$/i.test(norm);
 }
 
 /**
@@ -148,7 +152,8 @@ const CONCEPT_ALIASES: Record<string, string[]> = {
   about: [
     'about', 'about-us', 'about us', 'who-we-are', 'who we are', 'who are you',
     'company', 'our story', 'our-story', 'mission', 'story', 'team', 'our team',
-    'our-team', 'leadership', 'overview', 'founder', 'bio', 'who are we'
+    'our-team', 'leadership', 'overview', 'founder', 'bio', 'who are we',
+    'company story', 'your story', 'learn your story'
   ],
   contact: [
     'contact', 'contact-us', 'contact us', 'reach-us', 'reach us', 'support',
@@ -158,14 +163,15 @@ const CONCEPT_ALIASES: Record<string, string[]> = {
   faq: [
     'faq', 'faqs', 'frequently-asked-questions', 'frequently asked questions',
     'frequently asked', 'help-center', 'help center', 'q-and-a', 'q&a',
-    'q and a', 'questions', 'knowledge-base'
+    'q and a', 'questions', 'knowledge-base', 'questions and answers',
+    'questions & answers', 'common questions'
   ],
   policy: [
     'policy', 'policies', 'privacy', 'privacy-policy', 'privacy policy', 'terms',
     'terms-of-service', 'terms of service', 'terms-condition', 'terms and conditions',
     'terms-of-use', 'terms of use', 'legal', 'legal-notice', 'legal notice',
     'disclaimer', 'cookie-policy', 'cookie policy', 'refund-policy', 'refund policy',
-    'gdpr', 'security', 'compliance'
+    'gdpr', 'security', 'compliance', 'our policies', 'our policy'
   ],
   privacy: [
     'privacy', 'privacy-policy', 'privacy policy', 'gdpr', 'data protection',
@@ -492,9 +498,13 @@ function scoreDestinationForQuery(
 
   // 3. Exact Title or Clean Title match
   if (normCleanTitle && normTarget && (normCleanTitle === normTarget || normTitle === normTarget)) {
+    score += 1000;
+    isExact = true;
+    matchReasons.push(`Exact clean title match "${dest.cleanTitle}" (+1000)`);
+  } else if (normCleanTitle && normTarget && (normCleanTitle.startsWith(normTarget) || normCleanTitle.includes(normTarget))) {
     score += 950;
     isExact = true;
-    matchReasons.push(`Exact clean title match "${dest.cleanTitle}" (+950)`);
+    matchReasons.push(`Entity title contains search target "${normTarget}" (+950)`);
   }
 
   // 4. Exact Slug match
@@ -505,8 +515,13 @@ function scoreDestinationForQuery(
   }
 
   // 5. Concept & Alias match (e.g. "about us" -> /about, "reach us" -> /contact-us, "faqs" -> /faq, "course catalog" -> /courses)
+  const isGenericCatalogQuery = /^(?:courses?|course\s+catalog|all\s+courses|classes|catalog|catalogue|inventory|vehicles?|all\s+vehicles|cars?|all\s+cars|products?|all\s+products|services?|all\s+services|offerings|shop|store)$/i.test(cleanTarget);
+  const targetConcept = getConceptForTerm(cleanTarget);
+  const isInformationalConcept = Boolean(targetConcept && ['about', 'policy', 'privacy', 'terms', 'faq', 'contact', 'careers', 'docs'].includes(targetConcept));
+
   const isConceptMatch =
     dest.isPage &&
+    (isGenericCatalogQuery || isInformationalConcept) &&
     (areTermsConceptuallyRelated(cleanTarget, dest.slug) ||
      areTermsConceptuallyRelated(cleanTarget, dest.cleanTitle) ||
      areTermsConceptuallyRelated(cleanTarget, dest.pathname.replace(/^\//, '')));
@@ -517,26 +532,40 @@ function scoreDestinationForQuery(
     matchReasons.push(`Concept alias match with '${dest.slug || dest.cleanTitle}' (+900)`);
   }
 
-  // 6. Title / Slug Token Overlap
+  // 6. Title / Slug / Metadata Token Overlap
   if (targetTokens.length > 0) {
+    const metaTokens: string[] = [];
+    if (dest.record?.metadata) {
+      const meta = dest.record.metadata as Record<string, any>;
+      ['make', 'model', 'trim', 'year', 'category', 'tags', 'level', 'skills'].forEach(k => {
+        if (meta[k]) metaTokens.push(...tokenize(String(meta[k])));
+      });
+    }
+    const allDestTokens = [...dest.titleTokens, ...dest.slugTokens, ...metaTokens];
+
     const isTokenMatch = (t: string, list: string[], text: string) => {
       if (list.includes(t) || text.includes(t)) return true;
       return list.some(item => isTypoMatch(item, t)) ||
              text.split(' ').some(w => isTypoMatch(w, t));
     };
 
-    const matchedTitleTokens = targetTokens.filter(t => isTokenMatch(t, dest.titleTokens, normCleanTitle));
+    const matchedTitleTokens = targetTokens.filter(t => isTokenMatch(t, allDestTokens, normCleanTitle));
     const matchedSlugTokens = targetTokens.filter(t => isTokenMatch(t, dest.slugTokens, rawSlug));
 
     const titleOverlapRatio = matchedTitleTokens.length / targetTokens.length;
     const slugOverlapRatio = matchedSlugTokens.length / targetTokens.length;
 
     if (titleOverlapRatio >= 1.0) {
-      score += 750;
-      matchReasons.push(`Full title token coverage (+750)`);
+      score += 850;
+      if (dest.isEntity) {
+        isExact = true;
+        matchReasons.push(`100% query token coverage on entity record (+850)`);
+      } else {
+        matchReasons.push(`Full title token coverage (+850)`);
+      }
     } else if (titleOverlapRatio >= 0.6) {
-      score += Math.round(titleOverlapRatio * 500);
-      matchReasons.push(`Partial title token overlap (${Math.round(titleOverlapRatio * 100)}%) (+${Math.round(titleOverlapRatio * 500)})`);
+      score += Math.round(titleOverlapRatio * 550);
+      matchReasons.push(`Partial token overlap (${Math.round(titleOverlapRatio * 100)}%) (+${Math.round(titleOverlapRatio * 550)})`);
     }
 
     if (slugOverlapRatio >= 1.0) {
@@ -551,7 +580,6 @@ function scoreDestinationForQuery(
     let fuzzyMatches = 0;
     for (const tToken of targetTokens) {
       if (tToken.length >= 4) {
-        const allDestTokens = [...dest.slugTokens, ...dest.titleTokens];
         const hasFuzzy = allDestTokens.some(d => isTypoMatch(d, tToken) && d !== tToken);
         if (hasFuzzy) fuzzyMatches++;
       }
@@ -563,18 +591,25 @@ function scoreDestinationForQuery(
   }
 
   // 7. Page vs Entity Intent Adjustments
-  const isGenericCatalogQuery = /^(?:courses?|course\s+catalog|all\s+courses|classes|catalog|catalogue|inventory|vehicles?|products?|all\s+products|services?|all\s+services|offerings|shop|store)$/i.test(cleanTarget);
-
   if (isGenericCatalogQuery) {
     if (dest.isPage) {
-      score += 300;
+      score += 350;
       isExact = true;
-      matchReasons.push('Generic catalog query matches page route (+300)');
+      matchReasons.push('Generic catalog query matches page route (+350)');
     } else if (dest.isEntity) {
       score -= 500;
       matchReasons.push('Individual entity downranked on generic catalog query (-500)');
     }
   } else {
+    if (dest.isEntity && score >= 700) {
+      score += 200;
+      isExact = true;
+      matchReasons.push('Specific entity matches query (+200)');
+    } else if (dest.isPage && !isExplicitPageRequest && targetTokens.length >= 1) {
+      score -= 200;
+      matchReasons.push('Generic page downranked on specific entity search (-200)');
+    }
+
     if (isExplicitPageRequest) {
       if (dest.isPage) {
         score += 200;
@@ -668,15 +703,41 @@ export async function resolveNavigationTarget(
 
   // If query is directly an absolute URL
   if (/^https?:\/\//i.test(query)) {
-    const finalUrl = appendResumeParam(query, sessionId);
-    return {
-      canNavigate: true,
-      targetUrl: finalUrl,
-      destinationUrl: finalUrl,
-      confidence: 'exact',
-      source: 'discovered_page',
-      intent: 'navigate',
-    };
+    try {
+      const parsed = new URL(query);
+      const targetHost = parsed.hostname.toLowerCase();
+      const destinations = await loadDiscoveredDestinations(widgetId);
+      const allowedHosts = new Set<string>();
+      destinations.forEach(d => {
+        try {
+          allowedHosts.add(new URL(d.url).hostname.toLowerCase());
+        } catch {}
+      });
+
+      if (allowedHosts.size > 0 && !allowedHosts.has(targetHost)) {
+        return {
+          canNavigate: false,
+          confidence: 'invalid_url',
+          failureReason: `Navigation to external domain "${targetHost}" is not permitted.`,
+        };
+      }
+
+      const finalUrl = appendResumeParam(query, sessionId);
+      return {
+        canNavigate: true,
+        targetUrl: finalUrl,
+        destinationUrl: finalUrl,
+        confidence: 'exact',
+        source: 'discovered_page',
+        intent: 'navigate',
+      };
+    } catch {
+      return {
+        canNavigate: false,
+        confidence: 'invalid_url',
+        failureReason: 'Invalid URL format.',
+      };
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
