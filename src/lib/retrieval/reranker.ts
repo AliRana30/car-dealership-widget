@@ -130,7 +130,9 @@ const BROAD_WORDS = new Set([
   'service', 'services', 'inventory', 'catalog', 'item', 'items', 'stock', 'availability',
   'discount', 'discounts', 'discounted', 'sale', 'sales', 'regular', 'priced', 'deal', 'deals', 'promo',
   'tell', 'details', 'information', 'about', 'what', 'which', 'where', 'who', 'when', 'why', 'how',
-  'provide', 'provides', 'provided', 'offer', 'offers', 'offered', 'teach', 'teaches', 'learn', 'recommend'
+  'provide', 'provides', 'provided', 'offer', 'offers', 'offered', 'teach', 'teaches', 'learn', 'recommend',
+  'immediate', 'immediately', 'now', 'currently', 'current', 'enroll', 'enrollment', 'enrolling', 'enrolled',
+  'join', 'joining', 'open', 'openings', 'active', 'listed', 'ready', 'accepting'
 ]);
 
 const NEGATIVE_SYNONYMS: Record<string, string[]> = {
@@ -605,14 +607,32 @@ export function rerankCandidates(
 
     // D. Availability / In-Stock
     if (structuredQuery.inStock !== undefined) {
-      const isAvailable = row.still_listed !== false && meta.availability !== 'out of stock' && meta.availability !== 'sold out';
+      const isStillListed = row.still_listed !== false;
+      const metaAvail = (meta.availability || meta.status || meta.state || '').toLowerCase();
+      const isExplicitlyUnavailable =
+        row.still_listed === false ||
+        metaAvail === 'out of stock' ||
+        metaAvail === 'sold out' ||
+        metaAvail === 'closed' ||
+        metaAvail === 'unavailable' ||
+        metaAvail === 'inactive';
+      const isAvailable = isStillListed && !isExplicitlyUnavailable;
+
       if (structuredQuery.inStock === true) {
         if (isAvailable) {
-          score += 60;
-          matchReasons.push(`Item available / in stock (+60)`);
+          score += 80;
+          matchReasons.push(`Item available / active & listed (+80)`);
         } else {
-          score -= 500;
-          matchReasons.push(`Item unavailable / out of stock (-500)`);
+          score -= 600;
+          matchReasons.push(`Item unavailable / out of stock / unlisted (-600)`);
+        }
+      } else if (structuredQuery.inStock === false) {
+        if (!isAvailable) {
+          score += 80;
+          matchReasons.push(`Item matches unavailable constraint (+80)`);
+        } else {
+          score -= 600;
+          matchReasons.push(`Item is active & listed / excluded by unavailable filter (-600)`);
         }
       }
     }

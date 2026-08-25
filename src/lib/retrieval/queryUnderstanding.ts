@@ -96,7 +96,8 @@ const STOP_WORDS = new Set([
   'which', 'where', 'who', 'when', 'why', 'whose', 'whom', 'provides', 'provided', 'providing', 'provide',
   'offers', 'offered', 'offering', 'teach', 'teaches', 'teaching', 'learn', 'learning', 'study',
   'enroll', 'enrolling', 'enrollment', 'information', 'please', 'suggest', 'recommend', 'recommendation',
-  'recommendations', 'available'
+  'recommendations', 'available', 'availability', 'immediate', 'immediately', 'now', 'currently', 'current',
+  'join', 'joining', 'open', 'openings', 'active', 'listed', 'ready', 'accepting'
 ]);
 
 function parseNumericPrice(str: string): number | null {
@@ -195,10 +196,12 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
 
   // 6. Availability / In-Stock
   let inStock: boolean | undefined;
-  if (/\b(?:in stock|available now|ready to (?:buy|ship|enroll)|on the lot|in inventory)\b/i.test(lower)) {
-    inStock = true;
-  } else if (/\b(?:out of stock|sold out|backordered|unavailable)\b/i.test(lower)) {
+  if (/\b(?:out of stock|sold out|backordered|unavailable|closed|no longer available|not listed)\b/i.test(lower)) {
     inStock = false;
+  } else if (
+    /\b(?:available|available now|currently available|immediate enrollment|for immediate enrollment|enroll in|open for enrollment|are open|can join|join now|ready to (?:buy|ship|enroll|join)|on the lot|in inventory|in stock|instock|active|listed)\b/i.test(lower)
+  ) {
+    inStock = true;
   }
 
   // 7. Sort Order Extraction
@@ -298,7 +301,7 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
     intent = 'contact';
   } else if (isNavigation) {
     intent = 'navigation';
-  } else if (entityType || maxPrice !== undefined || minPrice !== undefined || sortBy || onSale !== undefined) {
+  } else if (entityType || maxPrice !== undefined || minPrice !== undefined || sortBy || onSale !== undefined || inStock !== undefined) {
     intent = 'catalog';
   } else if (/\b(?:show|list|display|find|give\s+me|all|every|browse|explore|catalog|inventory|offerings?)\b/i.test(lower)) {
     intent = 'catalog';
