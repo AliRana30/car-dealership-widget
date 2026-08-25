@@ -283,7 +283,7 @@ export async function hybridRetrieve(
       (async () => {
         const tVec0 = performance.now();
         try {
-          const matches = await searchWebsiteDataVector(widget.id, cleanQuery, threshold, 10);
+          const matches = await searchWebsiteDataVector(widget.id, cleanQuery, 10, threshold);
           vectorDuration = performance.now() - tVec0;
           return matches;
         } catch (err: any) {

@@ -268,18 +268,48 @@ export function rerankCandidates(
       }
     }
 
+    // Build comprehensive multi-field searchable corpus (title, description, tags, category, benefits, prerequisites, specs, metadata)
+    const tagsStr = Array.isArray(meta.tags) ? meta.tags.join(' ') : (meta.tags || '');
+    const categoryStr = meta.category || '';
+    const descStr = [row.short_description || '', row.content || '', meta.description || '', meta.summary || ''].join(' ');
+    const structuredFieldsStr = [
+      meta.make || '',
+      meta.model || '',
+      meta.trim || '',
+      meta.drivetrain || '',
+      meta.transmission || '',
+      meta.fuelType || '',
+      meta.engine || '',
+      meta.skills ? (Array.isArray(meta.skills) ? meta.skills.join(' ') : JSON.stringify(meta.skills)) : '',
+      meta.curriculum ? JSON.stringify(meta.curriculum) : '',
+      meta.syllabus ? JSON.stringify(meta.syllabus) : '',
+      meta.benefits ? JSON.stringify(meta.benefits) : '',
+      meta.prerequisites ? JSON.stringify(meta.prerequisites) : '',
+      meta.courseData ? JSON.stringify(meta.courseData) : '',
+    ].join(' ');
+
+    const candidateFullCorpus = [
+      titleLower,
+      tagsStr,
+      categoryStr,
+      descStr,
+      structuredFieldsStr,
+      metaStrings,
+    ].join(' ').toLowerCase();
+
     // ── 2. SEMANTIC SIMILARITY INTEGRATION ──
+    const isStrongVectorMatch = Boolean(cand.vectorSimilarity !== undefined && cand.vectorSimilarity >= 0.28);
     if (cand.vectorSimilarity !== undefined) {
       const sim = cand.vectorSimilarity;
-      if (sim >= 0.40 || isExact || isPartial || isKeyword || isCatalogQuery) {
-        const vectorBoost = Math.round(sim * 400);
+      if (sim >= 0.28 || isExact || isPartial || isCatalogQuery) {
+        const vectorBoost = Math.round(sim * 450);
         score += vectorBoost;
         isVector = true;
         matchReasons.push(`pgvector cosine similarity ${sim.toFixed(3)} (+${vectorBoost})`);
       }
     }
 
-    // Keyword hit detection
+    // Keyword hit detection across title, metadata, tags, structured fields, and content
     let keywordHits = 0;
     let titleKeywordHits = 0;
     for (const word of structuredQuery.specificKeywords) {
@@ -291,18 +321,73 @@ export function rerankCandidates(
         titleKeywordHits++;
         isKeyword = true;
         matchReasons.push(`Keyword match '${word}' in title (+60)`);
+      } else if (wordRegex.test(tagsStr) || wordRegex.test(categoryStr) || wordRegex.test(structuredFieldsStr)) {
+        score += 45;
+        keywordHits++;
+        isKeyword = true;
+        matchReasons.push(`Keyword match '${word}' in tags/structured metadata (+45)`);
       } else if (wordRegex.test(metaStrings)) {
         score += 35;
         keywordHits++;
         isKeyword = true;
         matchReasons.push(`Keyword match '${word}' in metadata (+35)`);
-      } else if (wordRegex.test(contentLower)) {
-        score += 15;
+      } else if (wordRegex.test(candidateFullCorpus)) {
+        score += 20;
         keywordHits++;
         if (keywordHits >= 2 || structuredQuery.specificKeywords.length === 1) {
           isKeyword = true;
         }
-        matchReasons.push(`Keyword match '${word}' in content (+15)`);
+        matchReasons.push(`Keyword match '${word}' in content/description (+20)`);
+      }
+    }
+
+    // Domain-Agnostic Semantic Concept Affinity Clusters
+    const SEMANTIC_CLUSTERS = [
+      // 1. Algorithms, Coding, Problem Solving & Interview Prep
+      {
+        queryPattern: /\b(?:coding|code|programmer|programming|algorithm|algorithms|algorithmic|interview|interviews|dsa|data\s+structures?|problem\s+solving|competitive\s+programming|neetcode)\b/i,
+        corpusPattern: /\b(?:leetcode|algorithm|algorithms|coding|code|programmer|programming|dsa|data\s+structures?|problem\s+solving|interview|interviews)\b/i,
+        boost: 240,
+        label: 'Algorithms & Coding Interview semantic affinity',
+      },
+      // 2. Full-Stack & Web Development
+      {
+        queryPattern: /\b(?:full\s*stack|web\s+development|web\s+dev|frontend|backend|mern|mean|react|reactjs|node|nodejs|express|mongodb|javascript|typescript|nextjs|html|css)\b/i,
+        corpusPattern: /\b(?:full\s*stack|web\s+development|web\s+dev|frontend|backend|mern|mean|react|node|javascript|typescript|nextjs|developer)\b/i,
+        boost: 240,
+        label: 'Full-Stack & Web Development semantic affinity',
+      },
+      // 3. Automotive 4x4 & All-Wheel Drivetrain
+      {
+        queryPattern: /\b(?:four\s+wheel\s+drive|four-wheel\s+drive|4x4|4wd|all-wheel\s+drive|all\s+wheel\s+drive|awd|offroad|off-road|trail\s+rated)\b/i,
+        corpusPattern: /\b(?:4x4|4wd|awd|all-wheel\s+drive|four\s+wheel\s+drive|four-wheel|rubicon|4xe|trail\s+rated|offroad)\b/i,
+        boost: 240,
+        label: '4x4 / AWD Drivetrain semantic affinity',
+      },
+      // 4. Freelancers, Talent & Application Builders
+      {
+        queryPattern: /\b(?:freelancers?|freelance|talent|contractors?|consultants?|people\s+who\s+build|builders?|specialists?)\b/i,
+        corpusPattern: /\b(?:talent|freelance|freelancers?|contractors?|consultants?|services?|agency|hire|developer|builders?)\b/i,
+        boost: 240,
+        label: 'Freelancer / Talent semantic affinity',
+      },
+      // 5. Website & Digital Services
+      {
+        queryPattern: /\b(?:website\s+development|web\s+services?|development\s+services?|design\s+services?|solutions?)\b/i,
+        corpusPattern: /\b(?:services?|solutions?|development|consulting|agency|web|courses?|mastery|talent)\b/i,
+        boost: 220,
+        label: 'Website & Digital Services semantic affinity',
+      },
+    ];
+
+    let hasSemanticClusterMatch = false;
+    for (const cluster of SEMANTIC_CLUSTERS) {
+      if (cluster.queryPattern.test(rawQuery.toLowerCase()) && cluster.corpusPattern.test(candidateFullCorpus)) {
+        hasSemanticClusterMatch = true;
+        keywordHits += 2;
+        score += cluster.boost;
+        isKeyword = true;
+        matchReasons.push(`${cluster.label} (+${cluster.boost})`);
       }
     }
 
@@ -362,14 +447,15 @@ export function rerankCandidates(
     // Specific Keyword Constraint enforcement:
     // If the query specified distinct keywords (e.g. "backend", "wrangler", "16th", "president"),
     // items with 0 keyword matches and no exact/partial title match must be rejected.
-    // Skip this rejection if it's an informational query matching an informational page.
+    // Skip this rejection if it's an informational query or has strong semantic vector / cluster matches.
     const isGroundedInformationalMatch = (structuredQuery.isInformational || options.includeInformational) && isInformationalPage && keywordHits > 0;
+    const isSemanticallyProtected = isStrongVectorMatch || hasSemanticClusterMatch || isGroundedInformationalMatch;
 
-    if (!isGroundedInformationalMatch && trueSpecificKeywords.length > 0 && keywordHits === 0 && !isExact && !isPartial) {
+    if (!isSemanticallyProtected && trueSpecificKeywords.length > 0 && keywordHits === 0 && !isExact && !isPartial) {
       score -= 800;
       isKeyword = false;
       matchReasons.push(`No match for specific required keywords [${trueSpecificKeywords.join(', ')}] (-800)`);
-    } else if (!isGroundedInformationalMatch && trueSpecificKeywords.length >= 2 && keywordHits < 2 && titleKeywordHits === 0 && !isExact && !isPartial) {
+    } else if (!isSemanticallyProtected && trueSpecificKeywords.length >= 2 && keywordHits < 2 && titleKeywordHits === 0 && !isExact && !isPartial) {
       // Multiple required keywords but only 1 spurious body hit (e.g. "president of united states")
       score -= 800;
       isKeyword = false;
@@ -631,7 +717,9 @@ export function rerankCandidates(
       isExact ||
       isPartial ||
       isKeyword ||
-      (isVector && (cand.vectorSimilarity ?? 0) >= 0.35) ||
+      isStrongVectorMatch ||
+      hasSemanticClusterMatch ||
+      (isVector && (cand.vectorSimilarity ?? 0) >= 0.28) ||
       ((structuredQuery.isInformational || options.includeInformational) && isInformationalPage);
     if (!isCatalogQuery && !hasRelevanceSignal) {
       score = -9999;
