@@ -26,6 +26,8 @@ export interface StageTimings {
   rerankingMs: number;
   contextSummaryMs: number;
   totalRetrievalMs: number;
+  totalMs?: number;
+  durationMs?: number;
   cacheHit?: 'static_page' | 'embedding' | 'none';
 }
 
