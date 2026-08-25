@@ -446,15 +446,21 @@ export async function discoverAndFetchPageApis(html: string, pageUrl: string): P
     return scoreB - scoreA;
   });
 
+const apiScriptCache = new Map<string, string>();
+
   let discoveredApiBase = '';
-  for (const sUrl of prioritizedScriptUrls.slice(0, 12)) {
+  for (const sUrl of prioritizedScriptUrls.slice(0, 10)) {
     try {
-      const scriptRes = await fetch(sUrl, {
-        signal: AbortSignal.timeout(3000),
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-      });
-      if (!scriptRes.ok) continue;
-      const code = await scriptRes.text();
+      let code = apiScriptCache.get(sUrl);
+      if (!code) {
+        const scriptRes = await fetch(sUrl, {
+          signal: AbortSignal.timeout(2000),
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+        });
+        if (!scriptRes.ok) continue;
+        code = await scriptRes.text();
+        apiScriptCache.set(sUrl, code);
+      }
 
       // Look for backend server URIs (Render, Railway, Heroku, Vercel, or standard /api/v1)
       const baseMatches = code.match(/https?:\/\/[a-zA-Z0-9.-]+\.(?:onrender\.com|railway\.app|herokuapp\.com|vercel\.app|fly\.dev)(?:\/api(?:\/v\d+)?)?/gi);
@@ -511,44 +517,46 @@ export async function discoverAndFetchPageApis(html: string, pageUrl: string): P
   if (candidateApiUrls.size === 0) return [];
 
   const responses: NetworkResponseLog[] = [];
+  const targetUrls = Array.from(candidateApiUrls).slice(0, 10);
 
-  for (const apiUrl of Array.from(candidateApiUrls).slice(0, 10)) {
-    try {
-      let res = await fetch(apiUrl, {
-        signal: AbortSignal.timeout(5000),
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        },
-      });
-
-      // Retry once if 503 (e.g. Render/free-tier cold start)
-      if (res.status === 503) {
-        await new Promise(r => setTimeout(r, 2000));
-        res = await fetch(apiUrl, {
-          signal: AbortSignal.timeout(5000),
-          headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
-        });
-      }
-
-      if (!res.ok) continue;
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('json') && !contentType.includes('javascript') && !contentType.includes('text')) continue;
-
-      const bodyText = await res.text();
+  // Fetch candidate endpoints concurrently in parallel
+  await Promise.allSettled(
+    targetUrls.map(async (apiUrl) => {
       try {
-        const bodyJson = JSON.parse(bodyText);
-        responses.push({
-          url: apiUrl,
-          status: res.status,
-          contentType,
-          body: bodyJson,
+        let res = await fetch(apiUrl, {
+          signal: AbortSignal.timeout(2500),
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          },
         });
+
+        // Retry once if 503 (e.g. Render/free-tier cold start)
+        if (res.status === 503) {
+          await new Promise(r => setTimeout(r, 1500));
+          res = await fetch(apiUrl, {
+            signal: AbortSignal.timeout(3500),
+            headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+          });
+        }
+
+        if (!res.ok) return;
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('json') && !contentType.includes('javascript') && !contentType.includes('text')) return;
+
+        const bodyText = await res.text();
+        try {
+          const bodyJson = JSON.parse(bodyText);
+          responses.push({
+            url: apiUrl,
+            status: res.status,
+            contentType,
+            body: bodyJson,
+          });
+        } catch {}
       } catch {}
-    } catch (fetchErr) {
-      console.warn(`[networkExtractor] Failed to fetch candidate API ${apiUrl}:`, fetchErr);
-    }
-  }
+    })
+  );
 
   return extractEntitiesFromNetworkResponses(responses, pageUrl, base.origin);
 }

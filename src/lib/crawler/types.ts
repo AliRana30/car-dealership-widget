@@ -62,9 +62,11 @@ export interface CrawlResult {
   entitiesFound: number;
   blockedPages: number;
   isBlocked: boolean;
+  qualityStatus?: 'COMPLETE' | 'PARTIAL' | 'FAILED';
   entities: CrawledEntity[];
   discoveredUrls?: string[];
   diagnostics?: any[];
+  coverageReport?: import('./completeness').CrawlCoverageReport;
   errors: string[];
   durationMs: number;
 }

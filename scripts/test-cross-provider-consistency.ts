@@ -101,7 +101,7 @@ async function runConsistencyTests() {
         title: top?.title,
         type: top?.entityType,
         description: top?.description || top?.shortDescription,
-        imageUrls: top?.imageUrls || top?.images || [],
+        imageUrls: Array.from(new Set(top?.imageUrls || top?.images || [])).slice(0, 2),
         canonicalUrl: top?.sourceUrl,
         price: top?.price !== undefined ? String(top.price) : undefined,
         rating: top?.rating !== undefined ? Number(top.rating) : undefined,

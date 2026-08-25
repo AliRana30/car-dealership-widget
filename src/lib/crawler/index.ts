@@ -40,6 +40,13 @@ import {
   extractEntitiesFromNetworkResponses,
   discoverAndFetchPageApis,
 } from './networkExtractor';
+import {
+  assessCrawlCompleteness,
+  escalateAndRecrawlMissingSections,
+  CrawlCoverageReport,
+  CrawlDiagnostic,
+  extractNavigationSections,
+} from './completeness';
 import { createClient } from '@supabase/supabase-js';
 import { saveWebsiteDataBatch, WebsiteDataRow } from '@/config/widgetsDb';
 import crypto from 'crypto';
@@ -67,8 +74,8 @@ export const BLOCKED_THRESHOLD_RATIO = 0.5;  // >50% blocked pages sets job stat
 // ── Supabase (server-side) ────────────────────────────────────────────────────
 
 function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project.supabase.co';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
   return createClient(url, key);
 }
 
@@ -431,7 +438,69 @@ export async function crawlWebsite(
     }
   }
 
-  console.log(`[crawler] Crawl completed for ${base.href}: ${pagesProcessed} processed (new/changed), ${pagesSkipped} skipped (content hash match), ${blockedPages} blocked.`);
+  console.log(`[crawler] Primary crawl completed for ${base.href}: ${pagesProcessed} processed, ${pagesSkipped} skipped, ${blockedPages} blocked.`);
+
+  // ── Step 3c: Completeness Assessment & Targeted Escalation Recrawl ─────────
+  let homepageHtml = '';
+  try {
+    const hpRes = await safeFetch(base.href);
+    homepageHtml = hpRes?.html || '';
+  } catch {}
+
+  const allDiscoveredUrls = Array.from(new Set([...candidateUrls, ...allEntities.map(e => e.url)].filter(Boolean)));
+
+  let coverageReport = assessCrawlCompleteness({
+    websiteId,
+    startUrl: base.href,
+    homepageHtml,
+    discoveredUrls: allDiscoveredUrls,
+    diagnostics: crawlDiagnostics,
+    entities: allEntities,
+    pagesVisited,
+    pagesProcessed,
+    pagesSkipped,
+    blockedPages,
+    errors,
+    durationMs: Date.now() - t0,
+  });
+
+  // If crawl is suspiciously incomplete, attempt targeted escalation on missing sections
+  if (coverageReport.isSuspiciouslyIncomplete && coverageReport.missingExpectedSections.length > 0) {
+    console.warn(`[crawler] Crawl flagged as suspicious (${coverageReport.suspiciousReasons.join('; ')}). Attempting targeted escalation.`);
+    const { newlyDiscoveredEntities, updatedDiagnostics } = await escalateAndRecrawlMissingSections({
+      websiteId,
+      startUrl: base.href,
+      missingSections: coverageReport.missingExpectedSections,
+      existingEntities: allEntities,
+      discoveredUrls: allDiscoveredUrls,
+      diagnostics: crawlDiagnostics,
+      maxRecrawlLimit: 5,
+    });
+
+    if (newlyDiscoveredEntities.length > 0) {
+      for (const ne of newlyDiscoveredEntities) {
+        if (!isDuplicate(ne, allEntities)) {
+          allEntities.push(ne);
+        }
+      }
+      crawlDiagnostics = updatedDiagnostics;
+      // Re-assess completeness with newly recovered entities
+      coverageReport = assessCrawlCompleteness({
+        websiteId,
+        startUrl: base.href,
+        homepageHtml,
+        discoveredUrls: Array.from(new Set([...allDiscoveredUrls, ...newlyDiscoveredEntities.map(e => e.url)])),
+        diagnostics: crawlDiagnostics,
+        entities: allEntities,
+        pagesVisited: pagesVisited + newlyDiscoveredEntities.length,
+        pagesProcessed: pagesProcessed + newlyDiscoveredEntities.length,
+        pagesSkipped,
+        blockedPages,
+        errors,
+        durationMs: Date.now() - t0,
+      });
+    }
+  }
 
   // Calculate if overall job is blocked by anti-bot firewall
   const totalAttempted = pagesVisited + blockedPages;
@@ -444,16 +513,19 @@ export async function crawlWebsite(
     await persistEntities(websiteId, allEntities);
   }
 
-  // Update known_urls on websites table with ALL discovered frontier URLs
-  const allDiscoveredUrls = Array.from(new Set([...candidateUrls, ...allEntities.map(e => e.url)].filter(Boolean)));
-  if (allDiscoveredUrls.length > 0) {
+  // Update known_urls & crawl quality status on websites table
+  const finalDiscoveredUrls = Array.from(new Set([...allDiscoveredUrls, ...allEntities.map(e => e.url)].filter(Boolean)));
+  if (finalDiscoveredUrls.length > 0) {
     try {
       await supabase
         .from('websites')
-        .update({ known_urls: allDiscoveredUrls })
+        .update({
+          known_urls: finalDiscoveredUrls,
+          crawl_quality_status: coverageReport.crawlQualityStatus,
+        })
         .eq('id', websiteId);
     } catch (err: any) {
-      console.warn('[crawler] Could not update known_urls on website:', err.message || err);
+      console.warn('[crawler] Could not update website crawl status:', err.message || err);
     }
   }
 
@@ -466,27 +538,14 @@ export async function crawlWebsite(
     entitiesFound: allEntities.length + structuredProductCount,
     blockedPages,
     isBlocked,
+    qualityStatus: coverageReport.crawlQualityStatus,
+    coverageReport,
     entities: allEntities,
-    discoveredUrls: allDiscoveredUrls,
+    discoveredUrls: finalDiscoveredUrls,
     diagnostics: crawlDiagnostics,
     errors,
     durationMs: Date.now() - t0,
   };
-}
-
-// ── Crawl Diagnostics ────────────────────────────────────────────────────────
-
-export interface CrawlDiagnostic {
-  url: string;
-  status?: number;
-  contentType?: string;
-  discoverySource: 'seed' | 'sitemap' | 'robots_hint' | 'nextjs_route' | 'html_link' | 'crawl4ai_seed' | 'frontier_bfs';
-  depth: number;
-  extractionMethod?: 'crawl4ai' | 'native_html' | 'not_visited';
-  rendered: boolean;
-  crawlStatus: 'queued' | 'visited' | 'skipped' | 'blocked' | 'error';
-  lastSeen?: string;
-  errors?: string[];
 }
 
 // ── BFS Crawl Frontier ───────────────────────────────────────────────────────

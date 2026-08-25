@@ -969,6 +969,8 @@ export function extractDomSemanticCards(html: string, pageUrl: string): CrawledE
 
 // ─── Meta-tag & SPA page extractor ──────────────────────────────────────────
 
+const spaScriptCache = new Map<string, string>();
+
 export async function extractSpaChunkEntities(html: string, pageUrl: string): Promise<CrawledEntity[]> {
   try {
     const base = new URL(pageUrl);
@@ -1000,16 +1002,20 @@ export async function extractSpaChunkEntities(html: string, pageUrl: string): Pr
     const entities: CrawledEntity[] = [];
     const seenTitles = new Set<string>();
 
-    for (const scriptUrl of scriptUrls.slice(0, 12)) {
+    for (const scriptUrl of scriptUrls.slice(0, 10)) {
       try {
-        const res = await fetch(scriptUrl, {
-          signal: AbortSignal.timeout(3000),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          },
-        });
-        if (!res.ok) continue;
-        const code = await res.text();
+        let code = spaScriptCache.get(scriptUrl);
+        if (!code) {
+          const res = await fetch(scriptUrl, {
+            signal: AbortSignal.timeout(2000),
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            },
+          });
+          if (!res.ok) continue;
+          code = await res.text();
+          spaScriptCache.set(scriptUrl, code);
+        }
 
         // 1. Array of objects pattern: [{id:"...",title:"...",...},...]
         const arrayMatches = code.match(/\[\s*\{[^{}]*?(?:title|name|fullName|courseName|gigTitle|productName)\s*:\s*["'][^"']+["'][\s\S]*?\}\s*\]/g) || [];
