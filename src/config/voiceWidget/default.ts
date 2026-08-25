@@ -393,11 +393,16 @@ export function buildVoiceWidgetConfig(
 }
 
 export interface WidgetConfigurationRecord {
+  mode?: string;
+  provider?: Record<string, any>;
   branding: Record<string, any>;
+  avatar?: Record<string, any>;
   theme: Record<string, any>;
   typography: Record<string, any>;
   launcher: Record<string, any>;
   panel: Record<string, any>;
+  audioVisualizer?: Record<string, any>;
+  animation?: Record<string, any>;
   call: Record<string, any>;
   chat: Record<string, any>;
   behavior: Record<string, any>;
@@ -405,7 +410,18 @@ export interface WidgetConfigurationRecord {
 }
 
 export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigurationRecord {
+  const avatarObj = {
+    enabled: config.avatar?.enabled ?? false,
+    src: config.avatar?.src ?? undefined,
+    cloudinaryPublicId: config.avatar?.cloudinaryPublicId ?? undefined,
+    fallbackText: config.avatar?.fallbackText ?? undefined,
+    size: config.avatar?.size ?? 44,
+    shape: config.avatar?.shape ?? 'circle',
+  };
+
   return {
+    mode: config.mode ?? 'floating',
+    provider: config.provider ?? { provider: 'retell', agentId: '' },
     branding: {
       companyName: config.branding?.companyName ?? '',
       assistantName: config.branding?.assistantName ?? '',
@@ -424,12 +440,15 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       placeholderText: config.branding?.placeholderText ?? '',
       agentMessageName: config.branding?.agentMessageName ?? '',
       userMessageName: config.branding?.userMessageName ?? '',
-      avatar: config.avatar ?? {},
+      avatar: avatarObj,
     },
+    avatar: avatarObj,
     theme: config.theme ?? {},
     typography: config.typography ?? {},
     launcher: config.launcher ?? {},
     panel: config.panel ?? {},
+    audioVisualizer: config.audioVisualizer ?? {},
+    animation: config.animation ?? {},
     call: {
       provider: config.provider ?? { provider: 'retell', agentId: '' },
       audioVisualizer: config.audioVisualizer ?? {},
@@ -438,6 +457,7 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
       autoResetEndedTimeout: config.behavior?.autoResetEndedTimeout ?? 5000,
       allowVoiceChat: config.behavior?.allowVoiceChat !== false,
       maxCallDurationMinutes: config.behavior?.maxCallDurationMinutes ?? 10,
+      initialSilenceTimeoutSeconds: config.behavior?.initialSilenceTimeoutSeconds ?? 15,
     },
     chat: {
       allowTextChat: config.behavior?.allowTextChat !== false,
@@ -477,11 +497,11 @@ export function toConfigurationRecord(config: VoiceWidgetConfig): WidgetConfigur
 
 export function fromConfigurationRecord(record: WidgetConfigurationRecord): VoiceWidgetConfig {
   const brandingRecord = record.branding || {};
-  const avatarRecord = brandingRecord.avatar || (record as any).avatar || {};
+  const avatarRecord = record.avatar || brandingRecord.avatar || (record as any).avatar || {};
 
   return {
     mode: (record as any).mode ?? 'floating',
-    provider: record.call?.provider ?? (record as any).provider ?? defaultVoiceWidgetConfig.provider,
+    provider: record.provider ?? record.call?.provider ?? (record as any).provider ?? defaultVoiceWidgetConfig.provider,
     branding: {
       companyName: brandingRecord.companyName ?? defaultVoiceWidgetConfig.branding.companyName,
       assistantName: brandingRecord.assistantName ?? defaultVoiceWidgetConfig.branding.assistantName,
@@ -502,10 +522,10 @@ export function fromConfigurationRecord(record: WidgetConfigurationRecord): Voic
       userMessageName: brandingRecord.userMessageName ?? record.chat?.userMessageName ?? defaultVoiceWidgetConfig.branding.userMessageName,
     },
     avatar: {
-      enabled: avatarRecord.enabled ?? defaultVoiceWidgetConfig.avatar?.enabled ?? false,
-      src: avatarRecord.src ?? defaultVoiceWidgetConfig.avatar?.src,
-      cloudinaryPublicId: avatarRecord.cloudinaryPublicId ?? defaultVoiceWidgetConfig.avatar?.cloudinaryPublicId,
-      fallbackText: avatarRecord.fallbackText ?? defaultVoiceWidgetConfig.avatar?.fallbackText,
+      enabled: avatarRecord.enabled !== undefined ? Boolean(avatarRecord.enabled) : (defaultVoiceWidgetConfig.avatar?.enabled ?? false),
+      src: avatarRecord.src !== undefined ? avatarRecord.src : defaultVoiceWidgetConfig.avatar?.src,
+      cloudinaryPublicId: avatarRecord.cloudinaryPublicId !== undefined ? avatarRecord.cloudinaryPublicId : defaultVoiceWidgetConfig.avatar?.cloudinaryPublicId,
+      fallbackText: avatarRecord.fallbackText !== undefined ? avatarRecord.fallbackText : defaultVoiceWidgetConfig.avatar?.fallbackText,
       size: avatarRecord.size ?? defaultVoiceWidgetConfig.avatar?.size ?? 44,
       shape: avatarRecord.shape ?? defaultVoiceWidgetConfig.avatar?.shape ?? 'circle',
     },
@@ -513,7 +533,10 @@ export function fromConfigurationRecord(record: WidgetConfigurationRecord): Voic
     typography: deepMerge(defaultVoiceWidgetConfig.typography, record.typography || {}),
     launcher: deepMerge(defaultVoiceWidgetConfig.launcher, record.launcher || {}),
     panel: deepMerge(defaultVoiceWidgetConfig.panel, record.panel || {}) as any,
-    audioVisualizer: deepMerge(defaultVoiceWidgetConfig.audioVisualizer, record.call?.audioVisualizer || (record as any).audioVisualizer || {}),
+    audioVisualizer: deepMerge(
+      defaultVoiceWidgetConfig.audioVisualizer,
+      record.audioVisualizer || record.call?.audioVisualizer || (record as any).audioVisualizer || {}
+    ),
     behavior: {
       showTranscript: record.behavior?.showTranscript ?? defaultVoiceWidgetConfig.behavior.showTranscript,
       showMuteButton: record.behavior?.showMuteButton ?? defaultVoiceWidgetConfig.behavior.showMuteButton,
@@ -538,7 +561,10 @@ export function fromConfigurationRecord(record: WidgetConfigurationRecord): Voic
       maxMessageCharacters: (record.behavior as any)?.maxMessageCharacters ?? defaultVoiceWidgetConfig.behavior.maxMessageCharacters ?? 1000,
       templateMessages: (record.behavior as any)?.templateMessages ?? defaultVoiceWidgetConfig.behavior.templateMessages,
     },
-    animation: deepMerge(defaultVoiceWidgetConfig.animation, record.call?.animation || (record as any).animation || {}),
+    animation: deepMerge(
+      defaultVoiceWidgetConfig.animation,
+      record.animation || record.call?.animation || (record as any).animation || {}
+    ),
     responsive: deepMerge(defaultVoiceWidgetConfig.responsive, record.responsive || {}),
   };
 }

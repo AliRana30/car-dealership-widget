@@ -319,7 +319,9 @@ export default function WidgetCustomizerApp() {
         }
 
         // 1. Fetch widget metadata/keys
-        const resMeta = await fetchFn(`/api/widgets?id=${encodeURIComponent(targetId)}`);
+        const resMeta = await fetchFn(`/api/widgets?id=${encodeURIComponent(targetId)}`, {
+          cache: 'no-store',
+        });
         if (resMeta && resMeta.ok) {
           const metaData = await resMeta.json().catch(() => null);
           if (metaData) {
@@ -339,12 +341,15 @@ export default function WidgetCustomizerApp() {
         }
 
         // 2. Fetch exact widget configuration
-        const resConfig = await fetchFn(`/api/widgets/${encodeURIComponent(targetId)}/configuration`);
+        const resConfig = await fetchFn(`/api/widgets/${encodeURIComponent(targetId)}/configuration`, {
+          cache: 'no-store',
+        });
         if (resConfig && resConfig.ok) {
           const configRecord = await resConfig.json().catch(() => null);
           if (configRecord) {
             const voiceConfig = fromConfigurationRecord(configRecord);
             setDraft(voiceConfig);
+            originalRef.current = voiceConfig;
           }
         }
 
@@ -358,7 +363,21 @@ export default function WidgetCustomizerApp() {
   }, []);
 
   const patchDraft = useCallback((patch: Partial<VoiceWidgetConfig>) => {
-    setDraft(prev => deepMerge(prev, patch as any));
+    setDraft(prev => {
+      const next = { ...prev };
+      for (const section of Object.keys(patch) as (keyof VoiceWidgetConfig)[]) {
+        const patchVal = patch[section];
+        if (patchVal && typeof patchVal === 'object' && !Array.isArray(patchVal)) {
+          next[section] = {
+            ...(prev[section] as any),
+            ...patchVal,
+          };
+        } else if (patchVal !== undefined) {
+          (next as any)[section] = patchVal;
+        }
+      }
+      return next;
+    });
   }, []);
 
   const handleColorChange = useCallback((field: string, hex: string) => {
@@ -384,6 +403,7 @@ export default function WidgetCustomizerApp() {
       const res = await fetch('/api/widgets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
         body: JSON.stringify({
           id: widgetId,
           name: widgetName,
@@ -411,6 +431,7 @@ export default function WidgetCustomizerApp() {
       const resConfig = await fetch(`/api/widgets/${encodeURIComponent(savedWidgetId)}/configuration`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
         body: JSON.stringify(configRecord),
       });
 
@@ -419,6 +440,7 @@ export default function WidgetCustomizerApp() {
         throw new Error(dataConfig.message || 'Failed to save widget configuration');
       }
 
+      originalRef.current = draft;
       setIsSavedOnServer(true);
       setSaved(true);
       toast.success('Widget customized configuration saved successfully!', { id: toastId });

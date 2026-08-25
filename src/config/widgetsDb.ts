@@ -5,6 +5,7 @@ import {
   toConfigurationRecord,
   fromConfigurationRecord,
   defaultVoiceWidgetConfig,
+  deepMerge,
 } from './voiceWidget/default';
 import { encrypt, decrypt } from '@/lib/encryption';
 import { embedTexts, embedText } from '@/lib/embeddings';
@@ -324,6 +325,30 @@ export async function saveWidget(
 
   if (widgetErr) throw widgetErr;
 
+  // 6b. Keep widget_configurations table synchronized
+  if (record.config && savedWidgetRow?.id) {
+    try {
+      const configRecord = toConfigurationRecord(record.config);
+      const confPayload = {
+        widget_id: savedWidgetRow.id,
+        branding: configRecord.branding,
+        theme: configRecord.theme,
+        typography: configRecord.typography,
+        launcher: configRecord.launcher,
+        panel: configRecord.panel,
+        call: configRecord.call,
+        chat: configRecord.chat,
+        behavior: configRecord.behavior,
+        responsive: configRecord.responsive,
+      };
+      await supabase
+        .from('widget_configurations')
+        .upsert(confPayload, { onConflict: 'widget_id' });
+    } catch (confErr) {
+      console.warn(`[widgetsDb] Warning: Failed to sync widget_configurations for ${widgetIdSlug}:`, confErr);
+    }
+  }
+
   // 7. Fetch the fully updated data to return it
   let savedAgentRow: any = null;
   let savedSecretRow: any = null;
@@ -480,21 +505,29 @@ export async function getWidgetConfiguration(idOrWidgetId: string, userId?: stri
     if (error) {
       if (error.code === 'PGRST116') {
         // No custom configuration found in DB, return a default record converted from its current widget config
-        return toConfigurationRecord(widget.config);
+        return toConfigurationRecord(widget.config || defaultVoiceWidgetConfig);
       }
       throw error;
     }
 
+    const branding = data.branding || {};
+    const avatar = data.avatar || branding.avatar || (data as any).avatar || {};
+
     return {
-      branding: data.branding,
-      theme: data.theme,
-      typography: data.typography,
-      launcher: data.launcher,
-      panel: data.panel,
-      call: data.call,
-      chat: data.chat,
-      behavior: data.behavior,
-      responsive: data.responsive,
+      mode: data.mode || (widget.config as any)?.mode || 'floating',
+      provider: data.provider || (widget.config as any)?.provider || { provider: widget.provider || 'retell', agentId: widget.agentId || '' },
+      branding,
+      avatar,
+      theme: data.theme || {},
+      typography: data.typography || {},
+      launcher: data.launcher || {},
+      panel: data.panel || {},
+      audioVisualizer: data.audioVisualizer || data.call?.audioVisualizer || {},
+      animation: data.animation || data.call?.animation || {},
+      call: data.call || {},
+      chat: data.chat || {},
+      behavior: data.behavior || {},
+      responsive: data.responsive || {},
     };
   } catch (err) {
     console.error(`[widgetsDb] Error in getWidgetConfiguration for ${idOrWidgetId}:`, err);
@@ -504,24 +537,92 @@ export async function getWidgetConfiguration(idOrWidgetId: string, userId?: stri
 
 export async function saveWidgetConfiguration(
   idOrWidgetId: string,
-  configRecord: WidgetConfigurationRecord,
+  configRecord: Partial<WidgetConfigurationRecord>,
   userId?: string
 ): Promise<WidgetConfigurationRecord | null> {
   const widget = await getWidget(idOrWidgetId, userId);
   if (!widget) return null;
 
+  // Clear cache early
+  widgetLookupCache.clear();
+
   try {
+    // 1. Fetch existing persisted configuration to support safe partial updates
+    let existingRecord: WidgetConfigurationRecord | null = null;
+    try {
+      const { data: existingData } = await supabase
+        .from('widget_configurations')
+        .select('*')
+        .eq('widget_id', widget.id)
+        .single();
+      if (existingData) {
+        existingRecord = {
+          mode: existingData.mode,
+          provider: existingData.provider,
+          branding: existingData.branding || {},
+          avatar: existingData.avatar || existingData.branding?.avatar || {},
+          theme: existingData.theme || {},
+          typography: existingData.typography || {},
+          launcher: existingData.launcher || {},
+          panel: existingData.panel || {},
+          audioVisualizer: existingData.audioVisualizer || existingData.call?.audioVisualizer || {},
+          animation: existingData.animation || existingData.call?.animation || {},
+          call: existingData.call || {},
+          chat: existingData.chat || {},
+          behavior: existingData.behavior || {},
+          responsive: existingData.responsive || {},
+        };
+      }
+    } catch (_) {}
+
+    if (!existingRecord && widget.config) {
+      existingRecord = toConfigurationRecord(widget.config);
+    }
+
+    // 2. Perform deep merge of incoming sections over existing database configuration
+    const resolvedAvatar = configRecord.avatar !== undefined 
+      ? configRecord.avatar 
+      : (configRecord.branding?.avatar !== undefined 
+          ? configRecord.branding.avatar 
+          : existingRecord?.avatar || {});
+
+    const mergedBranding = deepMerge(existingRecord?.branding || {}, configRecord.branding || {});
+    mergedBranding.avatar = resolvedAvatar;
+
+    const mergedRecord: WidgetConfigurationRecord = {
+      mode: configRecord.mode ?? existingRecord?.mode ?? 'floating',
+      provider: configRecord.provider ?? existingRecord?.provider ?? { provider: widget.provider || 'retell', agentId: widget.agentId || '' },
+      branding: mergedBranding,
+      avatar: resolvedAvatar,
+      theme: deepMerge(existingRecord?.theme || {}, configRecord.theme || {}),
+      typography: deepMerge(existingRecord?.typography || {}, configRecord.typography || {}),
+      launcher: deepMerge(existingRecord?.launcher || {}, configRecord.launcher || {}),
+      panel: deepMerge(existingRecord?.panel || {}, configRecord.panel || {}),
+      audioVisualizer: deepMerge(
+        existingRecord?.audioVisualizer || {},
+        configRecord.audioVisualizer || configRecord.call?.audioVisualizer || {}
+      ),
+      animation: deepMerge(
+        existingRecord?.animation || {},
+        configRecord.animation || configRecord.call?.animation || {}
+      ),
+      call: deepMerge(existingRecord?.call || {}, configRecord.call || {}),
+      chat: deepMerge(existingRecord?.chat || {}, configRecord.chat || {}),
+      behavior: deepMerge(existingRecord?.behavior || {}, configRecord.behavior || {}),
+      responsive: deepMerge(existingRecord?.responsive || {}, configRecord.responsive || {}),
+    };
+
     const payload = {
       widget_id: widget.id,
-      branding: configRecord.branding,
-      theme: configRecord.theme,
-      typography: configRecord.typography,
-      launcher: configRecord.launcher,
-      panel: configRecord.panel,
-      call: configRecord.call,
-      chat: configRecord.chat,
-      behavior: configRecord.behavior,
-      responsive: configRecord.responsive,
+      branding: mergedRecord.branding,
+      theme: mergedRecord.theme,
+      typography: mergedRecord.typography,
+      launcher: mergedRecord.launcher,
+      panel: mergedRecord.panel,
+      call: mergedRecord.call,
+      chat: mergedRecord.chat,
+      behavior: mergedRecord.behavior,
+      responsive: mergedRecord.responsive,
     };
 
     const { data, error } = await supabase
@@ -532,9 +633,9 @@ export async function saveWidgetConfiguration(
 
     if (error) throw error;
 
-    // Synchronize back to the main widgets table's config column to keep systems aligned
+    // 3. Synchronize back to the main widgets table's config column to guarantee atomic consistency
     try {
-      const updatedVoiceConfig = fromConfigurationRecord(configRecord);
+      const updatedVoiceConfig = fromConfigurationRecord(mergedRecord);
       await supabase
         .from('widgets')
         .update({ config: updatedVoiceConfig })
@@ -543,17 +644,10 @@ export async function saveWidgetConfiguration(
       console.warn(`[widgetsDb] Warning: Failed to sync config column for ${idOrWidgetId}:`, syncErr);
     }
 
-    return {
-      branding: data.branding,
-      theme: data.theme,
-      typography: data.typography,
-      launcher: data.launcher,
-      panel: data.panel,
-      call: data.call,
-      chat: data.chat,
-      behavior: data.behavior,
-      responsive: data.responsive,
-    };
+    // 4. Invalidate in-memory cache
+    widgetLookupCache.clear();
+
+    return mergedRecord;
   } catch (err) {
     console.error(`[widgetsDb] Error in saveWidgetConfiguration for ${idOrWidgetId}:`, err);
     return null;

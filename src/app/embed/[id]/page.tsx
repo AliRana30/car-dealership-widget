@@ -36,7 +36,9 @@ export default function EmbedWidgetPage() {
 
     async function fetchWidget() {
       try {
-        const res = await fetch(`/api/widgets/${encodeURIComponent(id)}/configuration`);
+        const res = await fetch(`/api/widgets/${encodeURIComponent(id)}/configuration`, {
+          cache: 'no-store',
+        });
         if (res.ok) {
           const configRecord = await res.json();
           const voiceConfig = fromConfigurationRecord(configRecord);

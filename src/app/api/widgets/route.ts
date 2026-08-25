@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getWidget, saveWidget, listWidgets, deleteWidget, supabase } from '@/config/widgetsDb';
 import { getWidgetUsageStatus } from '@/lib/usage/spendLimiter';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
 // GET /api/widgets
 // If ID is provided, returns client-safe visual config and provider name.
 // Otherwise, returns the list of all configured widgets for admin dashboard.

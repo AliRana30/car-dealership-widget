@@ -70,7 +70,7 @@ export default function VoiceAgentHeader({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: '#FFFFFF',
+        background: 'var(--voice-widget-bg-header, #FFFFFF)',
         fontFamily: config.typography.fontFamily,
       }}
     >

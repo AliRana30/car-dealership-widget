@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWidgetConfiguration, saveWidgetConfiguration } from '@/config/widgetsDb';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type RouteContext = {
   params: Promise<{ widgetId: string }> | { widgetId: string };
+};
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
 };
 
 // GET /api/widgets/[widgetId]/configuration
@@ -24,11 +33,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json(config, {
       status: 200,
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      },
+      headers: NO_CACHE_HEADERS,
     });
   } catch (error: any) {
     console.error('[api/widgets/[widgetId]/configuration] GET failed:', error);
@@ -49,50 +54,12 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     }
 
     const body = await req.json();
-    const {
-      branding,
-      theme,
-      typography,
-      launcher,
-      panel,
-      call,
-      chat,
-      behavior,
-      responsive,
-    } = body;
-
-    // Validate structure
-    if (
-      !branding ||
-      !theme ||
-      !typography ||
-      !launcher ||
-      !panel ||
-      !call ||
-      !chat ||
-      !behavior ||
-      !responsive
-    ) {
-      return NextResponse.json(
-        {
-          error: 'bad_request',
-          message: 'Missing required configuration sections. Make sure to provide branding, theme, typography, launcher, panel, call, chat, behavior, and responsive.',
-        },
-        { status: 400 }
-      );
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'bad_request', message: 'Invalid payload' }, { status: 400 });
     }
 
-    const savedConfig = await saveWidgetConfiguration(widgetId, {
-      branding,
-      theme,
-      typography,
-      launcher,
-      panel,
-      call,
-      chat,
-      behavior,
-      responsive,
-    }, userId);
+    // Save configuration with deep partial merging supported
+    const savedConfig = await saveWidgetConfiguration(widgetId, body, userId);
 
     if (!savedConfig) {
       return NextResponse.json({ error: 'not_found', message: 'Widget not found' }, { status: 404 });
@@ -103,7 +70,10 @@ export async function PUT(req: NextRequest, context: RouteContext) {
         message: 'Configuration saved successfully',
         configuration: savedConfig,
       },
-      { status: 200 }
+      {
+        status: 200,
+        headers: NO_CACHE_HEADERS,
+      }
     );
   } catch (error: any) {
     console.error('[api/widgets/[widgetId]/configuration] PUT failed:', error);

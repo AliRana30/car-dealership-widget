@@ -297,7 +297,7 @@ export function LauncherSection({ draft, onChange }: Props) {
 
 export function PanelSection({ draft, onChange }: Props) {
   const set = (key: keyof typeof draft.panel, val: any) =>
-    onChange({ panel: { [key]: val } as any });
+    onChange({ panel: { ...draft.panel, [key]: val } as any });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -311,13 +311,13 @@ export function PanelSection({ draft, onChange }: Props) {
       </div>
       <div>
         <label style={labelStyle}>Border Radius</label>
-        <select value={draft.theme.radius} onChange={(e) => onChange({ theme: { radius: e.target.value as any } } as any)} style={inputStyle}>
+        <select value={draft.theme.radius} onChange={(e) => onChange({ theme: { ...draft.theme, radius: e.target.value as any } } as any)} style={inputStyle}>
           {['none','sm','md','lg','xl','2xl','full'].map(r => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
       <div>
         <label style={labelStyle}>Shadow</label>
-        <select value={draft.theme.shadow} onChange={(e) => onChange({ theme: { shadow: e.target.value as any } } as any)} style={inputStyle}>
+        <select value={draft.theme.shadow} onChange={(e) => onChange({ theme: { ...draft.theme, shadow: e.target.value as any } } as any)} style={inputStyle}>
           {['none','sm','md','lg','xl','2xl'].map(s => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
@@ -348,7 +348,7 @@ export function PanelSection({ draft, onChange }: Props) {
 
 export function BehaviorSection({ draft, onChange }: Props) {
   const set = (key: keyof typeof draft.behavior, val: any) =>
-    onChange({ behavior: { [key]: val } as any });
+    onChange({ behavior: { ...draft.behavior, [key]: val } as any });
 
   const toggles: [keyof typeof draft.behavior, string][] = [
     ['showTranscript',   'Show Transcript'],
@@ -705,7 +705,7 @@ export function BehaviorSection({ draft, onChange }: Props) {
 
 export function ResponsiveSection({ draft, onChange }: Props) {
   const setR = (key: keyof typeof draft.responsive, val: any) =>
-    onChange({ responsive: { [key]: val } as any });
+    onChange({ responsive: { ...draft.responsive, [key]: val } as any });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
