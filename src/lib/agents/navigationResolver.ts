@@ -126,10 +126,17 @@ export function cleanNavigationQuery(query: string): string {
 /**
  * Detects if query represents a pronoun/anaphoric navigation.
  */
-function isAnaphoricQuery(query: string): boolean {
+export function isAnaphoricQuery(query: string): boolean {
   const norm = normalizeString(query);
-  return /^(?:it|its|its\s+page|this|this\s+page|that|that\s+one|that\s+page|this\s+one|the\s+item|the\s+product|the\s+course|the\s+vehicle|the\s+service|open\s+it|open\s+that|open\s+its\s+page|take\s+me\s+to\s+it|take\s+me\s+to\s+its\s+page|navigate\s+to\s+it|navigate\s+to\s+its\s+page)$/i.test(norm) ||
-         /^(?:open|show|view|navigate\s+to|take\s+me\s+to)\s+(?:it|its|its\s+page|that|this|that\s+one|this\s+one|that\s+course|that\s+product|that\s+vehicle|the\s+details)$/i.test(norm);
+  if (!norm) return false;
+
+  // Exact anaphoric phrases / pronouns
+  const exactAnaphoric = /^(?:it|its|its\s+page|its\s+details|its\s+profile|its\s+link|this|this\s+one|this\s+page|this\s+profile|that|that\s+one|that\s+page|that\s+profile|the\s+above|the\s+above\s+one|the\s+above\s+page|the\s+one\s+i\s+mentioned|the\s+one\s+you\s+mentioned|the\s+mentioned\s+one|the\s+item|the\s+product|the\s+course|the\s+vehicle|the\s+service|the\s+offering|the\s+listing|his\s+profile|her\s+profile|their\s+profile|his\s+page|her\s+page|their\s+page|his\s+link|her\s+link)$/i;
+  if (exactAnaphoric.test(norm)) return true;
+
+  // Conversational command triggers leading into anaphoric targets
+  const commandAnaphoric = /^(?:please\s+)?(?:open|show|view|navigate\s+to|take\s+me\s+to|go\s+to|visit|redirect\s+me\s+to|bring\s+me\s+to|lead\s+me\s+to|can\s+you\s+(?:open|take\s+me\s+to|navigate\s+to))\s+(?:it|its|its\s+page|its\s+details|its\s+profile|its\s+link|this|this\s+one|this\s+page|this\s+profile|that|that\s+one|that\s+page|that\s+profile|the\s+above|the\s+above\s+one|the\s+above\s+page|the\s+one\s+i\s+mentioned|the\s+one\s+you\s+mentioned|the\s+mentioned\s+one|that\s+course|that\s+product|that\s+vehicle|that\s+service|that\s+item|that\s+offering|this\s+course|this\s+product|this\s+vehicle|this\s+service|this\s+item|this\s+offering|the\s+course|the\s+product|the\s+vehicle|the\s+service|the\s+item|the\s+offering|the\s+details|his\s+profile|her\s+profile|their\s+profile|his\s+page|her\s+page|their\s+page)$/i;
+  return commandAnaphoric.test(norm);
 }
 
 /**
@@ -675,6 +682,29 @@ export async function resolveNavigationTarget(
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+  // 0. Security Validation for Raw & Dangerous URLs
+  // ───────────────────────────────────────────────────────────────────────────
+  const trimmedQuery = query.trim();
+
+  // A. Block dangerous pseudo-protocols (javascript:, data:, blob:, vbscript:, file:)
+  if (/^(?:javascript|data|blob|vbscript|file):/i.test(trimmedQuery)) {
+    return {
+      canNavigate: false,
+      confidence: 'invalid_url',
+      failureReason: 'Dangerous URL protocol rejected for security.',
+    };
+  }
+
+  // B. Block protocol-relative external URLs (//evil.com)
+  if (trimmedQuery.startsWith('//')) {
+    return {
+      canNavigate: false,
+      confidence: 'invalid_url',
+      failureReason: 'Protocol-relative external URL rejected for security.',
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
   // 1. Direct UUID or Exact URL check
   // ───────────────────────────────────────────────────────────────────────────
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query)) {
@@ -702,19 +732,60 @@ export async function resolveNavigationTarget(
   }
 
   // If query is directly an absolute URL
-  if (/^https?:\/\//i.test(query)) {
+  if (/^https?:\/\//i.test(trimmedQuery)) {
     try {
-      const parsed = new URL(query);
+      const parsed = new URL(trimmedQuery);
       const targetHost = parsed.hostname.toLowerCase();
+
+      // Block credentials (@) embedded in URL
+      if (parsed.username || parsed.password) {
+        return {
+          canNavigate: false,
+          confidence: 'invalid_url',
+          failureReason: 'URLs with embedded credentials (@) are rejected for security.',
+        };
+      }
+
+      // Block local/private loopback & metadata IP addresses
+      if (
+        targetHost === 'localhost' ||
+        targetHost === '127.0.0.1' ||
+        targetHost === '::1' ||
+        targetHost === '169.254.169.254' ||
+        /^10\./.test(targetHost) ||
+        /^192\.168\./.test(targetHost) ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(targetHost)
+      ) {
+        return {
+          canNavigate: false,
+          confidence: 'invalid_url',
+          failureReason: `Navigation to local or private network address "${targetHost}" is forbidden.`,
+        };
+      }
+
+      const widget = await getWidget(widgetId);
       const destinations = await loadDiscoveredDestinations(widgetId);
       const allowedHosts = new Set<string>();
+
+      // 1. Widget configured allowed domains
+      (widget?.allowedDomains || []).forEach(d => {
+        if (d && typeof d === 'string') {
+          allowedHosts.add(d.toLowerCase().trim().replace(/^https?:\/\//, '').replace(/\/+.*$/, ''));
+        }
+      });
+
+      // 2. Discovered destination hostnames
       destinations.forEach(d => {
         try {
           allowedHosts.add(new URL(d.url).hostname.toLowerCase());
         } catch {}
       });
 
-      if (allowedHosts.size > 0 && !allowedHosts.has(targetHost)) {
+      const isAllowed = Array.from(allowedHosts).some(allowed => {
+        return targetHost === allowed || targetHost.endsWith(`.${allowed}`);
+      });
+
+      if (allowedHosts.size > 0 && !isAllowed) {
         return {
           canNavigate: false,
           confidence: 'invalid_url',
@@ -722,7 +793,7 @@ export async function resolveNavigationTarget(
         };
       }
 
-      const finalUrl = appendResumeParam(query, sessionId);
+      const finalUrl = appendResumeParam(trimmedQuery, sessionId);
       return {
         canNavigate: true,
         targetUrl: finalUrl,
@@ -741,30 +812,33 @@ export async function resolveNavigationTarget(
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 2. Anaphora / Pronoun Navigation ("open it", "open that course")
+  // 2. Anaphora / Pronoun Navigation ("open it", "open its page", "open his profile")
   // ───────────────────────────────────────────────────────────────────────────
   if (isAnaphoricQuery(query)) {
-    // Check pinned currentEntity
-    if (session?.currentEntity && session.currentEntity.sourceUrl) {
-      const finalUrl = appendResumeParam(session.currentEntity.sourceUrl, sessionId);
+    // Check pinned currentEntity / pinnedEntity
+    const candidateEntity = session?.currentEntity || session?.pinnedEntity;
+    if (candidateEntity && candidateEntity.sourceUrl && candidateEntity.sourceUrl.trim()) {
+      const finalUrl = appendResumeParam(candidateEntity.sourceUrl, sessionId);
       return {
         canNavigate: true,
         targetUrl: finalUrl,
         destinationUrl: finalUrl,
-        pageTitle: session.currentEntity.title,
-        resolvedPageTitle: session.currentEntity.title,
-        resolvedEntity: formatResult(session.currentEntity),
+        pageTitle: candidateEntity.title,
+        resolvedPageTitle: candidateEntity.title,
+        resolvedEntity: formatResult(candidateEntity),
         confidence: 'exact',
         source: 'discovered_entity',
         intent: 'navigate',
       };
     }
 
-    // Check lastResults if only 1 item was retrieved
-    if (session?.lastResults && session.lastResults.length === 1) {
-      const singleItem = session.lastResults[0];
-      if (singleItem.sourceUrl) {
-        const finalUrl = appendResumeParam(singleItem.sourceUrl, sessionId);
+    // Check lastEntities / lastResults if only 1 item was retrieved
+    const lastList = session?.lastEntities || session?.lastResults || [];
+    if (lastList.length === 1) {
+      const singleItem = lastList[0];
+      const sourceUrl = singleItem.sourceUrl || singleItem.source_url;
+      if (sourceUrl && sourceUrl.trim()) {
+        const finalUrl = appendResumeParam(sourceUrl, sessionId);
         return {
           canNavigate: true,
           targetUrl: finalUrl,
@@ -780,8 +854,12 @@ export async function resolveNavigationTarget(
     }
 
     // If multiple candidates exist in lastResults, ask for clarification — DO NOT GUESS!
-    if (session?.lastResults && session.lastResults.length > 1) {
-      const options = session.lastResults.slice(0, 4).map(r => ({ id: r.id, title: r.title, url: r.sourceUrl }));
+    if (lastList.length > 1) {
+      const options = lastList.slice(0, 4).map(r => ({
+        id: r.id,
+        title: r.title,
+        url: r.sourceUrl || r.source_url
+      }));
       return {
         canNavigate: false,
         confidence: 'ambiguous',
@@ -793,7 +871,7 @@ export async function resolveNavigationTarget(
     return {
       canNavigate: false,
       confidence: 'not_found',
-      failureReason: 'No specific item was previously selected to open. Please tell me which offering you would like to view.',
+      failureReason: 'No specific item was previously mentioned to open. Please tell me which page or offering you would like to view.',
     };
   }
 
