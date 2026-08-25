@@ -41,61 +41,91 @@ export function isTrackingOrTelemetryUrl(url: string): boolean {
 }
 
 /**
- * Checks if a given object matches an inventory, catalog, or course item shape.
+ * Checks if a given object matches an inventory, catalog, freelancer, course, or service item shape.
  */
-function isInventoryShapedObject(item: any): boolean {
+export function isInventoryShapedObject(item: any): boolean {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
 
   const title =
     item.title ||
     item.name ||
+    item.fullName ||
+    item.full_name ||
     item.courseName ||
     item.course_name ||
-    item.vehicleTitle ||
+    item.gigTitle ||
+    item.gig_title ||
+    item.serviceTitle ||
+    item.service_name ||
     item.productName ||
     item.product_name ||
-    item.item_name ||
+    item.vehicleTitle ||
+    item.propertyTitle ||
+    item.propertyName ||
+    item.doctorName ||
+    item.physicianName ||
+    item.menuItem ||
+    item.dishName ||
+    item.appName ||
+    item.softwareName ||
     item.listingTitle ||
     item.listing_title ||
     item.headline ||
-    item.modelName ||
-    item.model_name ||
+    (item.year && item.make && item.model ? `${item.year} ${item.make} ${item.model}` : '') ||
     '';
 
   if (typeof title !== 'string' || title.trim().length < 2) return false;
 
   const lowerTitle = title.trim().toLowerCase();
-  const uiNoise = ['button', 'close', 'submit', 'menu', 'nav', 'header', 'footer', 'modal', 'card', 'loading', 'default'];
+  const uiNoise = ['button', 'close', 'submit', 'menu', 'nav', 'header', 'footer', 'modal', 'card', 'loading', 'default', 'root', 'page', 'app'];
   if (uiNoise.includes(lowerTitle)) return false;
 
-  // Check for at least one inventory/catalog/course attribute
-  const hasPrice = item.price !== undefined || item.cost !== undefined || item.msrp !== undefined || item.sellingPrice !== undefined || item.amount !== undefined || item.estimatedPrice !== undefined;
-  const hasImage = !!(item.image || item.images || item.imageUrl || item.image_url || item.photos || item.thumbnail);
-  const hasDesc = !!(item.description || item.desc || item.shortDescription || item.short_description || item.summary || item.details);
-  const hasIdentifiers = !!(item.vin || item.sku || item.id || item._id || item.stockNumber || item.stock_number || item.modelCode);
-  const hasSpecs = !!(item.mileage || item.year || item.make || item.model || item.specs || item.attributes || item.category || item.tags || item.level || item.benefits);
+  // Check for domain attributes across all supported models
+  const hasPrice = item.price !== undefined || item.cost !== undefined || item.msrp !== undefined || item.sellingPrice !== undefined || item.amount !== undefined || item.rate !== undefined || item.hourlyRate !== undefined || item.fee !== undefined;
+  const hasImage = !!(item.image || item.images || item.imageUrl || item.image_url || item.photos || item.photoList || item.thumbnail || item.profilePicture || item.avatar);
+  const hasDesc = !!(item.description || item.desc || item.shortDescription || item.short_description || item.summary || item.details || item.bio || item.about);
+  const hasIdentifiers = !!(item.vin || item.sku || item.id || item._id || item.stockNumber || item.stock_number || item.modelCode || item.username || item.handle);
+  const hasReviews = !!(item.rating || item.stars || item.averageRating || item.reviews || item.totalReviews || item.recentReviews || item.reviewCount);
+  const hasSpecs = !!(item.mileage || item.year || item.make || item.model || item.specs || item.attributes || item.category || item.tags || item.level || item.skills || item.subcategories || item.specialty || item.bedrooms || item.ingredients);
 
-  return hasPrice || hasImage || hasDesc || hasIdentifiers || hasSpecs;
+  return hasPrice || hasImage || hasDesc || hasIdentifiers || hasReviews || hasSpecs;
 }
 
 /**
- * Normalizes a raw image field into a clean string array.
+ * Normalizes a raw image field into a clean string array, rejecting logos, icons, and 1x1 tracking pixels.
  */
-function extractImageUrls(raw: any, pageUrl: string): string[] {
+export function extractImageUrls(raw: any, pageUrl: string): string[] {
   const images: string[] = [];
-  const base = new URL(pageUrl);
+  let origin = '';
+  try { origin = new URL(pageUrl).origin; } catch {}
 
   const add = (val: any) => {
     if (typeof val === 'string' && val.trim().length > 5) {
+      const trimmed = val.trim();
+      const lower = trimmed.toLowerCase();
+      // Skip tracking pixels, generic svg icons, favicons, default avatars
+      if (
+        lower.includes('data:image') ||
+        lower.includes('placeholder') ||
+        lower.includes('favicon') ||
+        lower.endsWith('.ico') ||
+        lower.includes('1x1') ||
+        lower.includes('pixel')
+      ) {
+        return;
+      }
       try {
-        const absolute = new URL(val.trim(), base.origin).href;
+        const absolute = origin ? new URL(trimmed, origin).href : trimmed;
         if (!images.includes(absolute)) images.push(absolute);
-      } catch {}
+      } catch {
+        if (trimmed.startsWith('http') && !images.includes(trimmed)) images.push(trimmed);
+      }
     } else if (val && typeof val === 'object') {
       if (typeof val.url === 'string') add(val.url);
       else if (typeof val.src === 'string') add(val.src);
       else if (typeof val.href === 'string') add(val.href);
       else if (typeof val.secure_url === 'string') add(val.secure_url);
+      else if (typeof val.profilePicture === 'string') add(val.profilePicture);
     }
   };
 
@@ -105,22 +135,35 @@ function extractImageUrls(raw: any, pageUrl: string): string[] {
     add(raw);
   }
 
-  return images.filter(img => !img.includes('data:image') && !img.includes('placeholder'));
+  return images;
 }
 
 /**
- * Extracts and maps an inventory or course object into a structured CrawledEntity.
+ * Extracts and maps a domain object into a structured CrawledEntity with rich domain metadata.
  */
-function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: string): CrawledEntity | null {
+export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: string): CrawledEntity | null {
   const title = (
     item.title ||
     item.name ||
+    item.fullName ||
+    item.full_name ||
     item.courseName ||
     item.course_name ||
-    item.vehicleTitle ||
+    item.gigTitle ||
+    item.gig_title ||
+    item.serviceTitle ||
+    item.service_name ||
     item.productName ||
     item.product_name ||
-    item.item_name ||
+    item.vehicleTitle ||
+    item.propertyTitle ||
+    item.propertyName ||
+    item.doctorName ||
+    item.physicianName ||
+    item.menuItem ||
+    item.dishName ||
+    item.appName ||
+    item.softwareName ||
     item.listingTitle ||
     item.listing_title ||
     item.headline ||
@@ -137,17 +180,19 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
     item.short_description ||
     item.summary ||
     item.details ||
+    item.bio ||
+    item.about ||
     ''
   ).toString().trim();
 
-  const rawPrice = item.price ?? item.cost ?? item.msrp ?? item.sellingPrice ?? item.amount ?? item.estimatedPrice;
+  const rawPrice = item.price ?? item.cost ?? item.msrp ?? item.sellingPrice ?? item.amount ?? item.rate ?? item.hourlyRate ?? item.fee;
   let priceStr: string | undefined = undefined;
   if (rawPrice !== undefined && rawPrice !== null && rawPrice !== '') {
     priceStr = typeof rawPrice === 'number' ? `$${rawPrice.toLocaleString()}` : String(rawPrice).trim();
     if (/^\d+(\.\d+)?$/.test(priceStr)) priceStr = `$${priceStr}`;
   }
 
-  const rawImages = item.images || item.image || item.imageUrl || item.image_url || item.photos || item.thumbnail?.url || item.thumbnail?.secure_url || item.thumbnail || item.photoList;
+  const rawImages = item.images || item.image || item.imageUrl || item.image_url || item.photos || item.photoList || item.thumbnail || item.profilePicture || item.avatar;
   const images = extractImageUrls(rawImages, pageUrl);
 
   const vin = item.vin || item.VIN;
@@ -157,10 +202,14 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
   const make = item.make || item.brand;
   const model = item.model;
   const trim = item.trim;
-  const category = item.category || item.department || item.type || item.tags;
-  const level = item.level;
-  const rating = item.rating || item.stars || item.averageRating;
-  const reviews = item.reviews || item.reviewCount;
+  const category = item.category || item.department || item.type || item.tags || (Array.isArray(item.subcategories) ? item.subcategories.join(', ') : item.subcategories);
+  const skills = Array.isArray(item.skills) ? item.skills.join(', ') : item.skills;
+  const level = item.level || item.difficulty;
+  const rating = item.rating || item.stars || item.averageRating || item.star;
+  const reviews = item.reviews || item.totalReviews || item.reviewCount || (Array.isArray(item.recentReviews) ? item.recentReviews.length : undefined);
+  const username = item.username || item.handle;
+  const location = item.location || item.address || item.city || item.country;
+  const availability = item.availability || (item.inStock !== undefined ? (item.inStock ? 'In Stock' : 'Out of Stock') : undefined);
   const itemUrl = item.url || item.link || item.detailUrl || item.detail_url || item.href;
 
   let resolvedUrl = pageUrl;
@@ -168,40 +217,66 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
     const origin = new URL(pageUrl).origin;
     if (typeof itemUrl === 'string' && itemUrl.trim()) {
       resolvedUrl = new URL(itemUrl.trim(), origin).href;
-    } else if (item._id || item.id || item.slug) {
-      const rawId = item._id || item.id || item.slug;
+    } else if (item._id || item.id || item.slug || username) {
+      const rawId = item._id || item.id || item.slug || username;
       const lowerTitle = title.toLowerCase();
-      if (pageUrl.includes('/courses') || pageUrl.includes('/course') || /course|mastery|bootcamp|academy|lesson|tutorial/.test(lowerTitle)) {
+      if (item.fullName || item.username || item.profilePicture || /freelancer|seller|author|instructor|doctor|agent/.test(lowerTitle)) {
+        resolvedUrl = `${origin}/freelancer/${rawId}`;
+      } else if (pageUrl.includes('/courses') || pageUrl.includes('/course') || /course|mastery|bootcamp|academy|lesson|tutorial/.test(lowerTitle)) {
         resolvedUrl = `${origin}/course/${rawId}`;
       } else if (/inventory|vehicle|car|truck|suv/.test(pageUrl) || vin) {
         resolvedUrl = `${origin}/inventory/${rawId}`;
       } else if (pageUrl.includes('/products') || sku) {
         resolvedUrl = `${origin}/products/${item.handle || item.slug || rawId}`;
+      } else if (/gig|service/.test(lowerTitle) || item.gigTitle) {
+        resolvedUrl = `${origin}/service/${rawId}`;
+      } else if (/property|house|apartment|listing/.test(lowerTitle)) {
+        resolvedUrl = `${origin}/property/${rawId}`;
       } else {
-        resolvedUrl = `${origin}/course/${rawId}`;
+        resolvedUrl = `${origin}/item/${rawId}`;
       }
     }
   } catch {}
 
-  // Format rich multi-line content for agent retrieval
+  // Format rich multi-line content for agent retrieval and grounded prompts
   const contentParts: string[] = [title];
+  if (username) contentParts.push(`Username / Handle: @${username}`);
   if (description) contentParts.push(description);
-  if (priceStr) contentParts.push(`Price: ${priceStr}`);
+  if (priceStr) contentParts.push(`Price / Rate: ${priceStr}`);
   if (level) contentParts.push(`Level: ${level}`);
-  if (category) contentParts.push(`Category / Tags: ${category}`);
+  if (category) contentParts.push(`Category: ${category}`);
+  if (skills) contentParts.push(`Skills & Expertise: ${skills}`);
+  if (location) contentParts.push(`Location: ${typeof location === 'object' ? JSON.stringify(location) : location}`);
   if (vin) contentParts.push(`VIN: ${vin}`);
   if (sku) contentParts.push(`SKU: ${sku}`);
   if (mileage) contentParts.push(`Mileage: ${typeof mileage === 'number' ? mileage.toLocaleString() : mileage} miles`);
-  if (year || make || model) contentParts.push(`Specs: ${[year, make, model, trim].filter(Boolean).join(' ')}`);
+  if (year || make || model) contentParts.push(`Vehicle Specs: ${[year, make, model, trim].filter(Boolean).join(' ')}`);
   if (rating) contentParts.push(`Rating: ${rating}★${reviews ? ` (${reviews} reviews)` : ''}`);
+  if (Array.isArray(item.recentReviews) && item.recentReviews.length > 0) {
+    const sampleReviews = item.recentReviews.slice(0, 3).map((r: any) => `"${r.desc || r.comment || r.text || ''}" - ${r.star || r.rating || 5}★`).filter(Boolean).join('; ');
+    if (sampleReviews) contentParts.push(`Recent Reviews: ${sampleReviews}`);
+  }
+
+  // Determine dataType
+  let dataType: CrawledEntity['dataType'] = 'product';
+  const lowerTitle = title.toLowerCase();
+  if (item.fullName || item.username || item.profilePicture || /freelancer|developer|designer|consultant|doctor|physician|agent|instructor/.test(lowerTitle)) {
+    dataType = 'service';
+  } else if (/service|repair|maintenance|inspection|consultation|lesson|course|mastery|bootcamp|academy|gig/.test(lowerTitle)) {
+    dataType = 'service';
+  } else if (/pricing|plan|subscription|tier/.test(lowerTitle)) {
+    dataType = 'pricing';
+  } else if (/faq|question|help/.test(lowerTitle)) {
+    dataType = 'faq';
+  }
 
   // Collect extra metadata properties
   const extraProps: Record<string, any> = {};
   const ignoredKeys = new Set([
-    'title', 'name', 'courseName', 'course_name', 'vehicleTitle', 'productName', 'product_name', 'item_name',
-    'description', 'desc', 'shortDescription', 'short_description', 'summary', 'details',
-    'price', 'cost', 'msrp', 'sellingPrice', 'amount',
-    'images', 'image', 'imageUrl', 'image_url', 'photos', 'thumbnail', 'photoList',
+    'title', 'name', 'fullName', 'full_name', 'courseName', 'course_name', 'vehicleTitle', 'productName', 'product_name', 'item_name',
+    'description', 'desc', 'shortDescription', 'short_description', 'summary', 'details', 'bio', 'about',
+    'price', 'cost', 'msrp', 'sellingPrice', 'amount', 'rate', 'hourlyRate',
+    'images', 'image', 'imageUrl', 'image_url', 'photos', 'photoList', 'thumbnail', 'profilePicture', 'avatar',
     'url', 'link', 'detailUrl', 'detail_url', 'href',
   ]);
 
@@ -209,14 +284,6 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
     if (!ignoredKeys.has(k) && v !== undefined && v !== null && v !== '' && typeof v !== 'function') {
       extraProps[k] = v;
     }
-  }
-
-  let dataType: CrawledEntity['dataType'] = 'product';
-  const lowerTitle = title.toLowerCase();
-  if (/service|repair|maintenance|inspection|oil change|consultation|lesson|course|mastery|bootcamp|academy/.test(lowerTitle)) {
-    dataType = 'service';
-  } else if (/pricing|plan|subscription|tier/.test(lowerTitle)) {
-    dataType = 'pricing';
   }
 
   return {
@@ -233,11 +300,15 @@ function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoint: str
       ...(images.length > 0 ? { images, image: images[0] } : {}),
       ...(level ? { level } : {}),
       ...(category ? { category: String(category) } : {}),
+      ...(skills ? { skills: String(skills) } : {}),
+      ...(username ? { username: String(username) } : {}),
+      ...(location ? { location: String(location) } : {}),
       ...(vin ? { vin } : {}),
       ...(sku ? { sku } : {}),
       ...(mileage ? { mileage } : {}),
       ...(rating ? { rating: Number(rating) } : {}),
       ...(reviews ? { reviews: Number(reviews) } : {}),
+      ...(availability ? { availability } : {}),
       ...extraProps,
     },
   };
@@ -368,8 +439,15 @@ export async function discoverAndFetchPageApis(html: string, pageUrl: string): P
     }
   }
 
+  // Prioritize app/, page, search, gigs, courses, catalog, and main scripts
+  const prioritizedScriptUrls = scriptUrls.sort((a, b) => {
+    const scoreA = (a.includes('/app/') ? 10 : 0) + (a.includes('page') ? 6 : 0) + (a.includes('search') ? 5 : 0) + (a.includes('gig') ? 5 : 0) + (a.includes('course') ? 5 : 0) + (a.includes('main') ? 3 : 0);
+    const scoreB = (b.includes('/app/') ? 10 : 0) + (b.includes('page') ? 6 : 0) + (b.includes('search') ? 5 : 0) + (b.includes('gig') ? 5 : 0) + (b.includes('course') ? 5 : 0) + (b.includes('main') ? 3 : 0);
+    return scoreB - scoreA;
+  });
+
   let discoveredApiBase = '';
-  for (const sUrl of scriptUrls.slice(0, 10)) {
+  for (const sUrl of prioritizedScriptUrls.slice(0, 12)) {
     try {
       const scriptRes = await fetch(sUrl, {
         signal: AbortSignal.timeout(3000),
@@ -389,22 +467,45 @@ export async function discoverAndFetchPageApis(html: string, pageUrl: string): P
         }
       }
 
-      // Look for candidate endpoints like get-courses, get-products, etc.
-      const epMatches = code.match(/(?:url\s*:\s*["']([^"']+)["']|["'](?:get-courses|get-all-courses|all-courses|courses|catalog|inventory|get-products)["'])/gi);
+      // Look for candidate endpoints like get-courses, get-products, users/search, gigs, etc.
+      const epMatches = code.match(/(?:url\s*:\s*["']([^"']+)["']|["'](?:\/api\/|\/users\/|\/gigs|\/courses|\/products|\/services|\/inventory|\/listings|\/properties|\/doctors|\/menu)[a-zA-Z0-9/_-]*["']|["'](?:get-courses|get-all-courses|all-courses|courses|catalog|inventory|get-products|search-freelancers|freelancers|gigs)["'])/gi);
       if (epMatches) {
         for (const ep of epMatches) {
           const clean = ep.replace(/url\s*:\s*["']|["']/gi, '').trim();
-          if (/courses|products|inventory|catalog|items|listings/i.test(clean)) {
-            if (discoveredApiBase) {
+          if (clean.length > 2 && !clean.includes('webpack') && !clean.includes('.js') && !clean.includes('.css')) {
+            if (discoveredApiBase && !clean.startsWith('http')) {
               candidateApiUrls.add(`${discoveredApiBase.replace(/\/+$/, '')}/${clean.replace(/^\/+/, '')}`);
             }
             try {
-              candidateApiUrls.add(new URL(`/api/${clean.replace(/^\/+/, '')}`, base.origin).href);
+              if (clean.startsWith('http')) {
+                candidateApiUrls.add(clean);
+              } else {
+                candidateApiUrls.add(new URL(clean.startsWith('/') ? clean : `/api/${clean}`, base.origin).href);
+              }
             } catch {}
           }
         }
       }
     } catch {}
+  }
+
+  // If a backend base URL was discovered, add standard public endpoints
+  if (discoveredApiBase) {
+    const baseClean = discoveredApiBase.replace(/\/+$/, '');
+    const standardEndpoints = [
+      `${baseClean}/users/search/freelancers`,
+      `${baseClean}/freelancers`,
+      `${baseClean}/gigs`,
+      `${baseClean}/services`,
+      `${baseClean}/courses`,
+      `${baseClean}/products`,
+      `${baseClean}/inventory`,
+      `${baseClean}/categories`,
+      `${baseClean}/listings`,
+    ];
+    for (const sep of standardEndpoints) {
+      candidateApiUrls.add(sep);
+    }
   }
 
   if (candidateApiUrls.size === 0) return [];

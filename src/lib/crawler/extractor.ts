@@ -489,33 +489,49 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
   const entities: CrawledEntity[] = [];
 
   for (const ld of jsonLdList) {
-    const type = (ld['@type'] || '').toLowerCase();
+    if (!ld || typeof ld !== 'object') continue;
+    const type = (ld['@type'] || ld['@Type'] || '').toString().toLowerCase();
 
-    // Product
+    // 1. ItemList / OfferCatalog / CollectionPage unrolling
+    if (type.includes('itemlist') || type.includes('offercatalog') || type.includes('collectionpage')) {
+      const items = ld.itemListElement || ld.itemList || ld.offers || [];
+      if (Array.isArray(items) && items.length > 0) {
+        const unrolled = items.map((it: any) => it.item || it).filter(Boolean);
+        entities.push(...mapJsonLdToEntities(unrolled, pageUrl));
+      }
+      continue;
+    }
+
+    // 2. Product / Ecommerce / Vehicles
     if (type.includes('product')) {
       const offer = ld.offers || ld.offer || {};
+      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
       const entity: CrawledEntity = {
         url: pageUrl,
         title: ld.name || ld.headline || '',
         content: ld.description || ld.name || '',
         dataType: 'product',
-        metadata: { discoveryMethod: 'json-ld' },
+        imageUrls: rawImgs,
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          images: rawImgs,
+          image: rawImgs[0] || undefined,
+          price: offer.price,
+          currency: offer.priceCurrency,
+          availability: simplifyAvailability(offer.availability),
+          rating: ld.aggregateRating?.ratingValue ? parseFloat(ld.aggregateRating.ratingValue) : undefined,
+          reviews: ld.aggregateRating?.reviewCount ? parseInt(ld.aggregateRating.reviewCount) : undefined,
+          brand: ld.brand?.name || ld.brand,
+          sku: ld.sku,
+          category: ld.category,
+        },
       };
-      if (ld.description) entity.metadata.description = ld.description;
-      if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
-      if (offer.price) entity.metadata.price = offer.price;
-      if (offer.priceCurrency) entity.metadata.currency = offer.priceCurrency;
-      if (offer.availability) entity.metadata.availability = simplifyAvailability(offer.availability);
-      if (ld.aggregateRating?.ratingValue) entity.metadata.rating = parseFloat(ld.aggregateRating.ratingValue);
-      if (ld.aggregateRating?.reviewCount) entity.metadata.reviews = parseInt(ld.aggregateRating.reviewCount);
-      if (ld.brand?.name || ld.brand) entity.metadata.brand = ld.brand?.name || ld.brand;
-      if (ld.sku) entity.metadata.sku = ld.sku;
-      if (ld.category) entity.metadata.category = ld.category;
       if (entity.title || entity.content) entities.push(entity);
     }
 
-    // Vehicle / Car / Automotive
-    else if (type.includes('vehicle') || type.includes('car') || type.includes('motorcycle') || type.includes('truck')) {
+    // 3. Vehicle / Automotive
+    else if (type.includes('vehicle') || type.includes('car') || type.includes('motorcycle') || type.includes('truck') || type.includes('bus')) {
       const offer = ld.offers || ld.offer || {};
       const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
       const title = ld.name || `${ld.vehicleModelDate || ld.modelDate || ''} ${ld.brand?.name || ld.brand || ''} ${ld.model || ''}`.trim() || 'Vehicle';
@@ -547,41 +563,170 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
       if (entity.title || entity.content) entities.push(entity);
     }
 
-    // Service
+    // 4. Course / LMS / Educational Material
+    else if (type.includes('course') || type.includes('learningresource') || type.includes('educational')) {
+      const offer = ld.offers || ld.offer || {};
+      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+      const instructor = ld.instructor?.name || ld.instructor || ld.provider?.name || ld.provider || ld.author?.name || ld.author;
+      const entity: CrawledEntity = {
+        url: pageUrl,
+        title: ld.name || ld.headline || 'Course',
+        content: ld.description || ld.name || '',
+        dataType: 'service',
+        imageUrls: rawImgs,
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          images: rawImgs,
+          image: rawImgs[0] || undefined,
+          instructor: typeof instructor === 'string' ? instructor : undefined,
+          level: ld.educationalLevel || ld.courseCode,
+          duration: ld.timeRequired || ld.duration,
+          price: offer.price,
+          currency: offer.priceCurrency,
+          category: ld.about || ld.category || 'Course',
+          rating: ld.aggregateRating?.ratingValue ? parseFloat(ld.aggregateRating.ratingValue) : undefined,
+          reviews: ld.aggregateRating?.reviewCount ? parseInt(ld.aggregateRating.reviewCount) : undefined,
+        },
+      };
+      if (entity.title || entity.content) entities.push(entity);
+    }
+
+    // 5. Real Estate / Property
+    else if (type.includes('realestatelisting') || type.includes('residence') || type.includes('apartment') || type.includes('house') || type.includes('accommodation')) {
+      const offer = ld.offers || ld.offer || {};
+      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+      const entity: CrawledEntity = {
+        url: pageUrl,
+        title: ld.name || ld.headline || 'Property',
+        content: ld.description || ld.name || '',
+        dataType: 'product',
+        imageUrls: rawImgs,
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          images: rawImgs,
+          image: rawImgs[0] || undefined,
+          price: offer.price,
+          currency: offer.priceCurrency,
+          bedrooms: ld.numberOfBedrooms || ld.numberOfRooms,
+          bathrooms: ld.numberOfBathroomsTotal || ld.numberOfFullBathrooms,
+          sqft: ld.floorSize?.value || ld.floorSize,
+          address: typeof ld.address === 'object' ? `${ld.address?.streetAddress || ''}, ${ld.address?.addressLocality || ''}` : ld.address,
+        },
+      };
+      if (entity.title || entity.content) entities.push(entity);
+    }
+
+    // 6. Healthcare / Physician / Clinic
+    else if (type.includes('physician') || type.includes('medical') || type.includes('doctor') || type.includes('clinic')) {
+      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+      const entity: CrawledEntity = {
+        url: pageUrl,
+        title: ld.name || 'Healthcare Provider',
+        content: ld.description || `${ld.name || ''} — ${ld.medicalSpecialty || ld.department || ''}`.trim(),
+        dataType: 'contact',
+        imageUrls: rawImgs,
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          images: rawImgs,
+          image: rawImgs[0] || undefined,
+          specialty: ld.medicalSpecialty || ld.department,
+          phone: ld.telephone,
+          email: ld.email,
+          address: typeof ld.address === 'object' ? `${ld.address?.streetAddress || ''}, ${ld.address?.addressLocality || ''}` : ld.address,
+        },
+      };
+      if (entity.title || entity.content) entities.push(entity);
+    }
+
+    // 7. Menu Item / Restaurant
+    else if (type.includes('menuitem') || type.includes('menu') || type.includes('dish')) {
+      const offer = ld.offers || ld.offer || {};
+      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+      const entity: CrawledEntity = {
+        url: pageUrl,
+        title: ld.name || 'Menu Item',
+        content: ld.description || ld.name || '',
+        dataType: 'product',
+        imageUrls: rawImgs,
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          images: rawImgs,
+          image: rawImgs[0] || undefined,
+          price: offer.price,
+          currency: offer.priceCurrency,
+          nutrition: ld.nutrition,
+          ingredients: Array.isArray(ld.ingredients) ? ld.ingredients.join(', ') : ld.ingredients,
+        },
+      };
+      if (entity.title || entity.content) entities.push(entity);
+    }
+
+    // 8. Person / Profile / Freelancer / Agent
+    else if (type.includes('person') || type.includes('profilepage')) {
+      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+      const entity: CrawledEntity = {
+        url: pageUrl,
+        title: ld.name || 'Profile',
+        content: ld.description || `${ld.name || ''} — ${ld.jobTitle || ld.roleName || ''}`.trim(),
+        dataType: 'service',
+        imageUrls: rawImgs,
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          images: rawImgs,
+          image: rawImgs[0] || undefined,
+          jobTitle: ld.jobTitle,
+          skills: ld.knowsAbout,
+        },
+      };
+      if (entity.title || entity.content) entities.push(entity);
+    }
+
+    // 9. Service / Offer
     else if (type.includes('service') || type.includes('offer')) {
       const entity: CrawledEntity = {
         url: pageUrl,
         title: ld.name || '',
         content: ld.description || ld.name || '',
         dataType: 'service',
-        metadata: { discoveryMethod: 'json-ld' },
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          price: ld.offers?.price,
+          currency: ld.offers?.priceCurrency,
+          category: ld.category,
+        },
       };
-      if (ld.description) entity.metadata.description = ld.description;
       if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
-      if (ld.offers?.price) entity.metadata.price = ld.offers.price;
       if (entity.title || entity.content) entities.push(entity);
     }
 
-    // LocalBusiness / Organization
+    // 10. LocalBusiness / Organization / Store
     else if (type.includes('localbusiness') || type.includes('organization') || type.includes('restaurant') || type.includes('store')) {
       const entity: CrawledEntity = {
         url: pageUrl,
         title: ld.name || '',
         content: ld.description || `${ld.name || ''} — ${ld.address?.streetAddress || ''}`.trim(),
         dataType: 'contact',
-        metadata: { discoveryMethod: 'json-ld' },
+        metadata: {
+          discoveryMethod: 'json-ld',
+          description: ld.description,
+          phone: ld.telephone,
+          email: ld.email,
+          address: typeof ld.address === 'object' ? `${ld.address?.streetAddress || ''}, ${ld.address?.addressLocality || ''}` : ld.address,
+          hours: ld.openingHours || ld.openingHoursSpecification ? JSON.stringify(ld.openingHours || ld.openingHoursSpecification) : undefined,
+          rating: ld.aggregateRating?.ratingValue ? parseFloat(ld.aggregateRating.ratingValue) : undefined,
+        },
       };
-      if (ld.description) entity.metadata.description = ld.description;
       if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
-      if (ld.telephone) entity.metadata.phone = ld.telephone;
-      if (ld.email) entity.metadata.email = ld.email;
-      if (ld.address?.streetAddress) entity.metadata.address = `${ld.address.streetAddress}, ${ld.address.addressLocality || ''} ${ld.address.addressRegion || ''}`.trim();
-      if (ld.openingHours || ld.openingHoursSpecification) entity.metadata.hours = JSON.stringify(ld.openingHours || ld.openingHoursSpecification);
-      if (ld.aggregateRating?.ratingValue) entity.metadata.rating = parseFloat(ld.aggregateRating.ratingValue);
       if (entity.title || entity.content) entities.push(entity);
     }
 
-    // FAQ
+    // 11. FAQPage / Question
     else if (type.includes('faqpage') || type.includes('question')) {
       const questions = ld.mainEntity || (type.includes('question') ? [ld] : []);
       for (const q of (Array.isArray(questions) ? questions : [questions])) {
@@ -595,21 +740,6 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
         };
         if (entity.title || entity.content) entities.push(entity);
       }
-    }
-
-    // Event
-    else if (type.includes('event')) {
-      const entity: CrawledEntity = {
-        url: pageUrl,
-        title: ld.name || '',
-        content: ld.description || ld.name || '',
-        dataType: 'event',
-        metadata: { discoveryMethod: 'json-ld' },
-      };
-      if (ld.description) entity.metadata.description = ld.description;
-      if (ld.image) entity.metadata.images = Array.isArray(ld.image) ? ld.image : [ld.image];
-      if (ld.offers?.price) entity.metadata.price = ld.offers.price;
-      if (entity.title || entity.content) entities.push(entity);
     }
   }
 
@@ -627,71 +757,214 @@ function simplifyAvailability(val: string): string {
   return val.replace(/^https?:\/\/schema\.org\//i, '');
 }
 
-// ─── Inline JSON extractor (window.__DATA__, etc.) ────────────────────────────
+// ─── Embedded Application State Extractor (Tier 2) ───────────────────────────
 
-function extractInlineJson(html: string, pageUrl: string): CrawledEntity[] {
+import { isInventoryShapedObject, mapInventoryObjectToEntity } from './networkExtractor';
+
+/**
+ * Extracts entities from embedded application state:
+ * - Next.js __NEXT_DATA__
+ * - React Server Components Flight stream (self.__next_f)
+ * - Redux / Preloaded state (window.__INITIAL_STATE__, window.__PRELOADED_STATE__)
+ * - Apollo GraphQL cache (window.__APOLLO_STATE__)
+ */
+export function extractEmbeddedAppState(html: string, pageUrl: string): CrawledEntity[] {
   const entities: CrawledEntity[] = [];
-  const patterns = [
-    /window\.__NEXT_DATA__\s*=\s*(\{[\s\S]*?\});\s*(?:window|<\/script>)/,
-    /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/,
-    /window\.__APP_DATA__\s*=\s*(\{[\s\S]*?\})\s*;/,
-    /"products"\s*:\s*(\[[\s\S]{0,5000}\])/,
-    /"items"\s*:\s*(\[[\s\S]{0,5000}\])/,
-    /"listings"\s*:\s*(\[[\s\S]{0,5000}\])/,
-  ];
+  const seenTitles = new Set<string>();
 
-  for (const pattern of patterns) {
+  // 1. React Server Components Flight Streams: self.__next_f.push([1, "..."])
+  const rscMatches = Array.from(html.matchAll(/self\.__next_f\.push\(\[1,\s*"([\s\S]*?)"\]\)/g)).map(m => m[1]);
+  for (const chunk of rscMatches) {
     try {
-      const m = html.match(pattern);
-      if (!m?.[1]) continue;
-      const parsed = JSON.parse(m[1]);
-      const arr = Array.isArray(parsed) ? parsed : findProductArrays(parsed);
-      for (const item of arr.slice(0, 10)) {
-        if (!item || typeof item !== 'object') continue;
-        const title = item.name || item.title || item.productName || '';
-        const desc = item.description || item.shortDescription || '';
-        if (!title && !desc) continue;
-        const entity: CrawledEntity = {
-          url: pageUrl,
-          title,
-          content: desc || title,
-          dataType: guessDataType(item),
-          metadata: { discoveryMethod: 'json-ld' },
-        };
-        if (desc) entity.metadata.description = desc;
-        const imgs = item.images || item.photos || (item.image ? [item.image] : []);
-        if (imgs.length) entity.metadata.images = imgs.slice(0, 3).map((i: any) => typeof i === 'string' ? i : i?.url || '').filter(Boolean);
-        if (item.price !== undefined) entity.metadata.price = item.price;
-        if (item.currency || item.priceCurrency) entity.metadata.currency = item.currency || item.priceCurrency;
-        if (item.availability || item.inStock !== undefined) entity.metadata.availability = item.inStock === false ? 'Out of Stock' : item.availability || 'In Stock';
-        entities.push(entity);
+      const unescaped = chunk.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      // Look for arrays of domain objects
+      const arrayMatches = unescaped.match(/\[\s*\{[^{}]*?(?:title|name|courseName|gigTitle|productName|fullName)\s*:\s*"[^"]+"[\s\S]*?\}\s*\]/g) || [];
+      for (const arrStr of arrayMatches) {
+        try {
+          const parsed = JSON.parse(arrStr);
+          if (Array.isArray(parsed)) {
+            for (const item of parsed) {
+              if (isInventoryShapedObject(item)) {
+                const e = mapInventoryObjectToEntity(item, pageUrl, 'rsc_stream');
+                if (e && e.title && !seenTitles.has(e.title.toLowerCase())) {
+                  seenTitles.add(e.title.toLowerCase());
+                  e.metadata.discoveryMethod = 'embedded_state';
+                  entities.push(e);
+                }
+              }
+            }
+          }
+        } catch {}
       }
     } catch {}
   }
+
+  // 2. Next.js __NEXT_DATA__
+  const nextDataMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (nextDataMatch) {
+    try {
+      const nextData = JSON.parse(nextDataMatch[1]);
+      const productArrays = findDomainArrays(nextData.props || nextData);
+      for (const arr of productArrays) {
+        for (const item of arr) {
+          if (isInventoryShapedObject(item)) {
+            const e = mapInventoryObjectToEntity(item, pageUrl, '__NEXT_DATA__');
+            if (e && e.title && !seenTitles.has(e.title.toLowerCase())) {
+              seenTitles.add(e.title.toLowerCase());
+              e.metadata.discoveryMethod = 'embedded_state';
+              entities.push(e);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Redux / Apollo / Preloaded state objects
+  const statePatterns = [
+    /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/i,
+    /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/i,
+    /window\.__APOLLO_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/i,
+    /window\.__APP_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/i,
+  ];
+
+  for (const pat of statePatterns) {
+    const m = html.match(pat);
+    if (m?.[1]) {
+      try {
+        const stateObj = JSON.parse(m[1]);
+        const arrays = findDomainArrays(stateObj);
+        for (const arr of arrays) {
+          for (const item of arr) {
+            if (isInventoryShapedObject(item)) {
+              const e = mapInventoryObjectToEntity(item, pageUrl, 'embedded_state');
+              if (e && e.title && !seenTitles.has(e.title.toLowerCase())) {
+                seenTitles.add(e.title.toLowerCase());
+                e.metadata.discoveryMethod = 'embedded_state';
+                entities.push(e);
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+
   return entities;
 }
 
-function findProductArrays(obj: any, depth = 0): any[] {
-  if (depth > 3 || typeof obj !== 'object' || obj === null) return [];
-  const keys = ['products', 'items', 'listings', 'vehicles', 'services', 'results', 'data', 'entries'];
-  for (const k of keys) {
-    if (Array.isArray(obj[k]) && obj[k].length > 0) return obj[k];
+function findDomainArrays(obj: any, depth = 0): any[][] {
+  if (depth > 4 || typeof obj !== 'object' || obj === null) return [];
+  const results: any[][] = [];
+  const domainKeys = [
+    'products', 'items', 'listings', 'vehicles', 'services', 'gigs',
+    'courses', 'allCourses', 'freelancers', 'doctors', 'properties',
+    'results', 'records', 'data', 'hits', 'nodes'
+  ];
+
+  for (const k of domainKeys) {
+    if (Array.isArray(obj[k]) && obj[k].length > 0 && typeof obj[k][0] === 'object') {
+      results.push(obj[k]);
+    }
   }
+
   for (const v of Object.values(obj)) {
-    const found = findProductArrays(v, depth + 1);
-    if (found.length) return found;
+    if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+      results.push(...findDomainArrays(v, depth + 1));
+    }
   }
-  return [];
+  return results;
 }
 
-function guessDataType(item: any): CrawledEntity['dataType'] {
-  const keys = Object.keys(item).join(' ').toLowerCase();
-  const vals = JSON.stringify(item).toLowerCase();
-  if (keys.includes('vin') || keys.includes('mileage') || vals.includes('vehicle')) return 'product';
-  if (keys.includes('price') || keys.includes('sku')) return 'product';
-  if (keys.includes('service') || keys.includes('treatment')) return 'service';
-  if (keys.includes('faq') || keys.includes('question')) return 'faq';
-  return 'product';
+// ─── DOM Semantic Card Extractor (Tier 4) ────────────────────────────────────
+
+/**
+ * Extracts structured cards from rendered DOM HTML:
+ * Handles semantic articles, product cards, course cards, freelancer cards, property cards.
+ * Enforces strict anti-hallucination validation: requires real title + (price OR image OR description OR valid link).
+ */
+export function extractDomSemanticCards(html: string, pageUrl: string): CrawledEntity[] {
+  const entities: CrawledEntity[] = [];
+  const seenTitles = new Set<string>();
+  let origin = '';
+  try { origin = new URL(pageUrl).origin; } catch {}
+
+  // Match article, li, or div card containers
+  const cardRegex = /<(?:article|div|li)[^>]*(?:class|id)=["'][^"']*(?:card|item|gig|course|product|listing|service|box|profile)[^"']*["'][^>]*>([\s\S]*?)<\/(?:article|div|li)>/gi;
+  let m;
+
+  while ((m = cardRegex.exec(html)) !== null && entities.length < 25) {
+    const cardHtml = m[1];
+    if (cardHtml.length < 50 || cardHtml.length > 5000) continue;
+
+    // 1. Extract title from heading or title class
+    const titleMatch = cardHtml.match(/<(?:h1|h2|h3|h4|h5|span|div|a)[^>]*(?:class=["'][^"']*(?:title|name|heading)[^"']*["'])[^>]*>([^<]+)<\/(?:h1|h2|h3|h4|h5|span|div|a)>/i) ||
+      cardHtml.match(/<h[2-4][^>]*>([^<]+)<\/h[2-4]>/i);
+    const title = decodeHtmlEntities(titleMatch?.[1]?.trim() || '');
+    if (!title || title.length < 3 || title.length > 100) continue;
+
+    const lowerTitle = title.toLowerCase();
+    const uiNoise = ['button', 'dialog', 'modal', 'card', 'loading', 'default', 'root', 'page', 'home', 'courses', 'about', 'faq', 'contact', 'services', 'freelancers'];
+    if (uiNoise.includes(lowerTitle) || seenTitles.has(lowerTitle)) continue;
+
+    // 2. Extract price
+    const priceMatch = cardHtml.match(/(?:[$€£₹]\s*\d+(?:[\d,.]*\d+)?|\b\d+(?:[\d,.]*\d+)?\s*(?:USD|EUR|GBP|PKR|INR)\b)/i) ||
+      cardHtml.match(/class=["'][^"']*(?:price|cost|rate|fee|amount)[^"']*["'][^>]*>([^<]+)</i);
+    const price = priceMatch ? priceMatch[0].replace(/class=["'][^"']*["'][^>]*>/, '').trim() : undefined;
+
+    // 3. Extract image (src, data-src, srcset)
+    const imgMatch = cardHtml.match(/<img[^>]*(?:src|data-src|data-lazy|data-original)=["']([^"']+)["'][^>]*>/i);
+    const imgSrc = imgMatch?.[1]?.trim();
+    const images: string[] = [];
+    if (imgSrc && !imgSrc.includes('data:image') && !imgSrc.includes('placeholder') && !imgSrc.includes('favicon')) {
+      try {
+        images.push(new URL(imgSrc, origin).href);
+      } catch {
+        if (imgSrc.startsWith('http')) images.push(imgSrc);
+      }
+    }
+
+    // 4. Extract link
+    const linkMatch = cardHtml.match(/<a[^>]*href=["']([^"'#][^"']*)["']/i);
+    let itemUrl = pageUrl;
+    if (linkMatch?.[1]) {
+      try {
+        const resolved = new URL(linkMatch[1].trim(), origin).href;
+        if (resolved.startsWith(origin)) itemUrl = resolved;
+      } catch {}
+    }
+
+    // 5. Extract description
+    const descMatch = cardHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    const description = descMatch ? decodeHtmlEntities(stripTags(descMatch[1]).trim()) : undefined;
+
+    // Anti-hallucination: require at least price OR image OR description OR different detail URL
+    if (!price && images.length === 0 && !description && itemUrl === pageUrl) {
+      continue;
+    }
+
+    seenTitles.add(lowerTitle);
+
+    let content = title;
+    if (description) content += `\n\n${description}`;
+    if (price) content += `\n\nPrice / Rate: ${price}`;
+
+    entities.push({
+      url: itemUrl,
+      title,
+      content,
+      dataType: price ? 'product' : 'service',
+      imageUrls: images,
+      metadata: {
+        discoveryMethod: 'dom',
+        ...(description ? { description } : {}),
+        ...(price ? { price } : {}),
+        ...(images.length > 0 ? { images, image: images[0] } : {}),
+      },
+    });
+  }
+
+  return entities;
 }
 
 // ─── Meta-tag & SPA page extractor ──────────────────────────────────────────
@@ -739,9 +1012,9 @@ export async function extractSpaChunkEntities(html: string, pageUrl: string): Pr
         const code = await res.text();
 
         // 1. Array of objects pattern: [{id:"...",title:"...",...},...]
-        const arrayMatches = code.match(/\[\s*\{[^{}]*?(?:title|name)\s*:\s*["'][^"']+["'][\s\S]*?\}\s*\]/g) || [];
+        const arrayMatches = code.match(/\[\s*\{[^{}]*?(?:title|name|fullName|courseName|gigTitle|productName)\s*:\s*["'][^"']+["'][\s\S]*?\}\s*\]/g) || [];
         for (const arrStr of arrayMatches) {
-          const objRegex = /\{[^{}]*?(?:title|name)\s*:\s*["']([^"']{3,100})["'][^{}]*?\}/g;
+          const objRegex = /\{[^{}]*?(?:title|name|fullName|courseName|gigTitle|productName)\s*:\s*["']([^"']{3,100})["'][^{}]*?\}/g;
           let objMatch;
           while ((objMatch = objRegex.exec(arrStr)) !== null) {
             parseAndPushEntity(objMatch[0], pageUrl, entities, seenTitles);
@@ -749,7 +1022,7 @@ export async function extractSpaChunkEntities(html: string, pageUrl: string): Pr
         }
 
         // 2. Individual object literal pattern: {id:"...",title:"...",description:"...",price:"..."}
-        const singleObjRegex = /\{[^{}]*?(?:title|name)\s*:\s*["']([^"']{3,100})["'][^{}]*?\}/g;
+        const singleObjRegex = /\{[^{}]*?(?:title|name|fullName|courseName|gigTitle|productName)\s*:\s*["']([^"']{3,100})["'][^{}]*?\}/g;
         let singleMatch;
         while ((singleMatch = singleObjRegex.exec(code)) !== null) {
           parseAndPushEntity(singleMatch[0], pageUrl, entities, seenTitles);
@@ -777,7 +1050,7 @@ function parseAndPushEntity(
     return m ? (m[1] ?? m[2] ?? m[3]) : undefined;
   };
 
-  const title = extractField('title') || extractField('name');
+  const title = extractField('title') || extractField('name') || extractField('fullName') || extractField('courseName') || extractField('gigTitle');
   if (!title) return;
 
   const cleanTitle = title.trim();
@@ -796,12 +1069,12 @@ function parseAndPushEntity(
     return;
   }
 
-  const description = extractField('description') || extractField('desc') || extractField('summary') || extractField('short_description') || extractField('details') || '';
-  const price = extractField('price') || extractField('cost') || extractField('amount');
-  const image = extractField('image') || extractField('imageUrl') || extractField('img') || extractField('photo') || extractField('thumbnail');
+  const description = extractField('description') || extractField('desc') || extractField('summary') || extractField('short_description') || extractField('details') || extractField('bio') || '';
+  const price = extractField('price') || extractField('cost') || extractField('amount') || extractField('rate');
+  const image = extractField('image') || extractField('imageUrl') || extractField('img') || extractField('photo') || extractField('thumbnail') || extractField('profilePicture');
   const rating = extractField('rating') || extractField('stars');
   const level = extractField('level') || extractField('difficulty') || extractField('category') || extractField('department');
-  const reviews = extractField('reviews') || extractField('reviewCount');
+  const reviews = extractField('reviews') || extractField('reviewCount') || extractField('totalReviews');
 
   // Require at least description, price, level, image, or rating to be a valid catalog item
   if (!description && !price && !level && !image && !rating) {
@@ -812,7 +1085,7 @@ function parseAndPushEntity(
 
   let formattedContent = `${cleanTitle}`;
   if (description) formattedContent += `\n\n${description}`;
-  if (price) formattedContent += `\n\nPrice: ${price}`;
+  if (price) formattedContent += `\n\nPrice / Rate: ${price}`;
   if (level) formattedContent += `\nLevel: ${level}`;
   if (rating) formattedContent += `\nRating: ${rating}★${reviews ? ` (${reviews} reviews)` : ''}`;
 
@@ -836,94 +1109,137 @@ function parseAndPushEntity(
   });
 }
 
+/**
+ * Universal 5-tier page entity extractor with intelligent merging and provenance tracking.
+ */
 export async function extractPageEntities(html: string, pageUrl: string): Promise<CrawledEntity[]> {
-  const entities: CrawledEntity[] = [];
+  const allDiscovered: CrawledEntity[] = [];
 
-  // 1. JSON-LD (Tier 1 - highest fidelity)
+  // Tier 1: JSON-LD / Schema.org (Highest structural fidelity)
   const jsonLd = extractJsonLd(html);
-  if (jsonLd.length) {
-    entities.push(...mapJsonLdToEntities(jsonLd, pageUrl));
+  if (jsonLd.length > 0) {
+    const jsonLdEntities = mapJsonLdToEntities(jsonLd, pageUrl);
+    allDiscovered.push(...jsonLdEntities);
   }
 
-  // 2. Inline JSON data blobs
-  const inlineEntities = extractInlineJson(html, pageUrl);
-  entities.push(...inlineEntities);
+  // Tier 2: Embedded application state (__NEXT_DATA__, RSC self.__next_f, Redux, Apollo)
+  const appStateEntities = extractEmbeddedAppState(html, pageUrl);
+  allDiscovered.push(...appStateEntities);
 
-  // 3. Dynamic AJAX / API Discovery (Tier 2)
-  const dynamicApiEntities = await discoverAndFetchPageApis(html, pageUrl);
-  if (dynamicApiEntities.length > 0) {
-    entities.push(...dynamicApiEntities);
-  }
+  // Tier 3: Dynamic AJAX / Public API discovery
+  const apiEntities = await discoverAndFetchPageApis(html, pageUrl);
+  allDiscovered.push(...apiEntities);
 
-  // 4. Client-rendered SPA JS chunk extraction (Tier 5 SPA)
+  // Tier 4: Client-rendered SPA JS chunk extraction
   const spaEntities = await extractSpaChunkEntities(html, pageUrl);
-  if (spaEntities.length > 0) {
-    entities.push(...spaEntities);
+  allDiscovered.push(...spaEntities);
+
+  // Tier 5: DOM Semantic Cards (articles, cards, grids, items)
+  const domCards = extractDomSemanticCards(html, pageUrl);
+  allDiscovered.push(...domCards);
+
+  // Intelligent Deduplication & Precedence Merging
+  // Priority: json-ld (1) > embedded_state (2) > api (3) > spa_chunk (4) > dom (5)
+  const priorityMap: Record<string, number> = {
+    'json-ld': 1,
+    'embedded_state': 2,
+    'api': 3,
+    'spa_chunk': 4,
+    'dom': 5,
+    'html_fallback': 6,
+  };
+
+  const entityMap = new Map<string, CrawledEntity>();
+
+  for (const entity of allDiscovered) {
+    if (!entity.title) continue;
+    const key = entity.title.trim().toLowerCase();
+    const existing = entityMap.get(key);
+
+    if (!existing) {
+      entityMap.set(key, entity);
+    } else {
+      const existingPrio = priorityMap[existing.metadata?.discoveryMethod as string] ?? 99;
+      const newPrio = priorityMap[entity.metadata?.discoveryMethod as string] ?? 99;
+
+      if (newPrio < existingPrio) {
+        // Replace with higher-fidelity entity, but merge any extra images/metadata
+        const mergedImages = Array.from(new Set([...(entity.imageUrls || []), ...(existing.imageUrls || [])]));
+        entity.imageUrls = mergedImages;
+        entity.metadata = { ...existing.metadata, ...entity.metadata };
+        entityMap.set(key, entity);
+      } else {
+        // Keep existing higher-fidelity entity, but merge any extra images/metadata
+        const mergedImages = Array.from(new Set([...(existing.imageUrls || []), ...(entity.imageUrls || [])]));
+        existing.imageUrls = mergedImages;
+        existing.metadata = { ...entity.metadata, ...existing.metadata };
+      }
+    }
   }
 
-  // 5. Page-level text entity (Tier 5 Fallback)
-  const h1 = extractTag(html, 'h1');
-  const siteTitle = extractTag(html, 'title') ||
-    extractMeta(html, 'og:title') ||
-    extractMeta(html, 'twitter:title') || '';
-  
-  let title = h1 || siteTitle || new URL(pageUrl).pathname.replace(/^\/+/, '') || new URL(pageUrl).hostname;
-  if (h1 && siteTitle && !h1.toLowerCase().includes(siteTitle.toLowerCase()) && !siteTitle.toLowerCase().includes(h1.toLowerCase())) {
-    title = `${h1} — ${siteTitle}`;
-  }
+  const structuredEntities = Array.from(entityMap.values());
 
-  const description = extractMeta(html, 'description') ||
-    extractMeta(html, 'og:description') ||
-    extractMeta(html, 'twitter:description') || '';
-  const bodyText = extractAllText(html, 8000);
-  let fullContent = [description, bodyText].filter(Boolean).join('\n\n').trim();
+  // Tier 6: Page-level Text Fallback
+  // Always produce a page-level record for informational pages (About, Contact, FAQ, Policies)
+  // or when zero structured items were extracted on the page.
+  const lowerUrl = pageUrl.toLowerCase();
+  const isInformational = /policy|terms|privacy|refund|cookie|compliance|legal|about|faq|contact|support/i.test(lowerUrl);
 
-  // If structured entities were extracted, only append to catalog/home landing pages, not policy/legal/about pages
-  const isExcludedPage = /policy|terms|privacy|refund|cookie|legal|about|faq|contact/i.test(pageUrl);
-  const structuredItems = [...dynamicApiEntities, ...spaEntities];
-  if (structuredItems.length > 0 && !isExcludedPage) {
-    const catalogSummary = structuredItems.map(e => `• ${e.title}: ${e.metadata?.description || ''} ${e.metadata?.price ? `(${e.metadata.price})` : ''}`).join('\n');
-    fullContent += `\n\nCatalog Items / Offerings:\n${catalogSummary}`;
-  }
-
-  const decodedContent = decodeHtmlEntities(fullContent.trim());
-  if (title || decodedContent) {
-    const lowerUrl = pageUrl.toLowerCase();
-    const lower = (pageUrl + ' ' + title + ' ' + decodedContent).toLowerCase();
-    let dataType: CrawledEntity['dataType'] = 'text';
-
-    if (/policy|terms|privacy|refund|cookie|compliance|legal|disclaimer/.test(lowerUrl)) {
-      dataType = 'text';
-    } else if (/faq|frequently-asked|questions|help/.test(lowerUrl)) {
-      dataType = 'faq';
-    } else if (/about|team|mission|contact|support/.test(lowerUrl)) {
-      dataType = 'text';
-    } else if (/course|curriculum|syllabus|lesson|class|tutorial/.test(lowerUrl)) {
-      dataType = 'service';
-    } else if (/pricing|price|tier|subscription/.test(lowerUrl)) {
-      dataType = 'pricing';
-    } else if (/product|item|cart|shop|store|inventory/.test(lowerUrl)) {
-      dataType = 'product';
-    } else if (/faq|frequently asked questions/.test(lower)) {
-      dataType = 'faq';
+  if (structuredEntities.length === 0 || isInformational) {
+    const h1 = extractTag(html, 'h1');
+    const siteTitle = extractTag(html, 'title') ||
+      extractMeta(html, 'og:title') ||
+      extractMeta(html, 'twitter:title') || '';
+    
+    let title = h1 || siteTitle || new URL(pageUrl).pathname.replace(/^\/+/, '') || new URL(pageUrl).hostname;
+    if (h1 && siteTitle && !h1.toLowerCase().includes(siteTitle.toLowerCase()) && !siteTitle.toLowerCase().includes(h1.toLowerCase())) {
+      title = `${h1} — ${siteTitle}`;
     }
 
-    const entity: CrawledEntity = {
-      url: pageUrl,
-      title: decodeHtmlEntities(title.trim()),
-      content: decodedContent || title,
-      dataType,
-      metadata: {
-        discoveryMethod: 'html_fallback',
-      },
-    };
-    if (description) entity.metadata.description = decodeHtmlEntities(description);
-    const images = extractImages(html, pageUrl);
-    if (images.length) entity.metadata.images = images;
-    entities.push(entity);
+    const description = extractMeta(html, 'description') ||
+      extractMeta(html, 'og:description') ||
+      extractMeta(html, 'twitter:description') || '';
+    const bodyText = extractAllText(html, 8000);
+    let fullContent = [description, bodyText].filter(Boolean).join('\n\n').trim();
+
+    // If structured entities exist on this catalog page, append a concise catalog summary
+    if (structuredEntities.length > 0 && !isInformational) {
+      const catalogSummary = structuredEntities.map(e => `• ${e.title}: ${e.metadata?.description || ''} ${e.metadata?.price ? `(${e.metadata.price})` : ''}`).join('\n');
+      fullContent += `\n\nCatalog Items / Offerings:\n${catalogSummary}`;
+    }
+
+    const decodedContent = decodeHtmlEntities(fullContent.trim());
+    if (title || decodedContent) {
+      let dataType: CrawledEntity['dataType'] = 'text';
+
+      if (/policy|terms|privacy|refund|cookie|compliance|legal|disclaimer/.test(lowerUrl)) {
+        dataType = 'text';
+      } else if (/faq|frequently-asked|questions|help/.test(lowerUrl)) {
+        dataType = 'faq';
+      } else if (/about|team|mission|contact|support/.test(lowerUrl)) {
+        dataType = 'text';
+      } else if (/pricing|price|tier|subscription/.test(lowerUrl)) {
+        dataType = 'pricing';
+      }
+
+      const pageEntity: CrawledEntity = {
+        url: pageUrl,
+        title: decodeHtmlEntities(title.trim()),
+        content: decodedContent || title,
+        dataType,
+        metadata: {
+          discoveryMethod: 'html_fallback',
+        },
+      };
+      if (description) pageEntity.metadata.description = decodeHtmlEntities(description);
+      const images = extractImages(html, pageUrl);
+      if (images.length) pageEntity.metadata.images = images;
+
+      structuredEntities.push(pageEntity);
+    }
   }
 
-  return entities;
+  return structuredEntities;
 }
 
 
