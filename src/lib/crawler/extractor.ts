@@ -76,41 +76,96 @@ export async function safeFetch(url: string): Promise<{ html: string; contentTyp
 }
 
 /**
+ * Known tracking query params to strip during URL normalization.
+ */
+const STRIP_QUERY_PARAMS = new Set([
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+  'ref', 'referrer', 'fbclid', 'gclid', 'msclkid', 'mc_cid', 'mc_eid',
+  '_ga', '_gl', 'source', 'campaign', 'affiliate', 'yclid', 'zanpid',
+]);
+
+/**
+ * Returns true if the URL path points to a navigable HTML page (not a static asset).
+ */
+function isNavigablePage(pathname: string): boolean {
+  return !pathname.match(/\.(css|js|mjs|cjs|woff|woff2|ttf|eot|png|jpg|jpeg|gif|svg|ico|webp|avif|mp4|webm|ogg|mp3|pdf|zip|gz|tar|json|xml|map)$/i);
+}
+
+/**
+ * Normalizes a URL for deduplication:
+ * - Removes fragment (#...)
+ * - Strips tracking query params
+ * - Cleans double-slashes from path
+ */
+export function normalizeUrl(rawUrl: string, baseUrl?: string): string | null {
+  try {
+    const resolved = new URL(rawUrl, baseUrl);
+    resolved.hash = '';
+    const toDelete: string[] = [];
+    resolved.searchParams.forEach((_, key) => {
+      if (STRIP_QUERY_PARAMS.has(key.toLowerCase())) toDelete.push(key);
+    });
+    toDelete.forEach(k => resolved.searchParams.delete(k));
+    resolved.pathname = resolved.pathname.replace(/\/\/+/g, '/');
+    return resolved.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Extracts all valid same-domain links from HTML.
+ * Covers: href, data-href, data-url, data-link, action (forms), data-path,
+ * router.push/navigate calls, and Next.js Link patterns.
  */
 export function extractSameDomainLinks(html: string, baseUrl: string): string[] {
   try {
     const base = new URL(baseUrl);
     const links = new Set<string>();
-    links.add(base.href);
 
-    const hrefRegex = /href=["']([^"']+)["']/gi;
-    let match;
-    while ((match = hrefRegex.exec(html)) !== null) {
-      const rawHref = match[1]?.trim();
-      if (
-        !rawHref ||
-        rawHref.startsWith('#') ||
-        rawHref.startsWith('javascript:') ||
-        rawHref.startsWith('mailto:') ||
-        rawHref.startsWith('tel:')
-      ) {
-        continue;
-      }
+    const attrPatterns = [
+      /href\s*=\s*["']([^"'#][^"']*)["']/gi,
+      /data-href\s*=\s*["']([^"']+)["']/gi,
+      /data-url\s*=\s*["']([^"']+)["']/gi,
+      /data-link\s*=\s*["']([^"']+)["']/gi,
+      /data-path\s*=\s*["']([^"']+)["']/gi,
+      /action\s*=\s*["']([^"']+)["']/gi,
+      /\bto\s*=\s*["'](\/?[a-zA-Z0-9/_-][^"']*)["']/gi,
+    ];
 
-      try {
-        const resolved = new URL(rawHref, base.href);
-        if (resolved.hostname.toLowerCase() === base.hostname.toLowerCase()) {
-          const path = resolved.pathname.toLowerCase();
-          // Filter out static asset files
-          if (!path.match(/\.(css|js|woff|woff2|ttf|eot|png|jpg|jpeg|gif|svg|ico|webp|mp4|webm|pdf|json|xml|map)$/)) {
-            resolved.hash = '';
-            links.add(resolved.href);
+    for (const regex of attrPatterns) {
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        const raw = match[1]?.trim();
+        if (!raw || raw.startsWith('javascript:') || raw.startsWith('mailto:') || raw.startsWith('tel:') || raw.startsWith('data:')) continue;
+        const normalized = normalizeUrl(raw, base.href);
+        if (!normalized) continue;
+        try {
+          const parsed = new URL(normalized);
+          if (parsed.hostname.toLowerCase() === base.hostname.toLowerCase() && isNavigablePage(parsed.pathname)) {
+            links.add(normalized);
           }
+        } catch {}
+      }
+    }
+
+    // SPA router push patterns
+    const routerPushRegex = /(?:router\.push|history\.push(?:State)?|navigate|location\.(?:href|assign|replace))\s*[\(=]\s*["'](\/?[a-zA-Z0-9/_?#-][^"']*)["']/gi;
+    let m;
+    while ((m = routerPushRegex.exec(html)) !== null) {
+      const raw = m[1]?.trim();
+      if (!raw) continue;
+      const normalized = normalizeUrl(raw, base.href);
+      if (!normalized) continue;
+      try {
+        const parsed = new URL(normalized);
+        if (parsed.hostname.toLowerCase() === base.hostname.toLowerCase() && isNavigablePage(parsed.pathname)) {
+          links.add(normalized);
         }
       } catch {}
     }
 
+    links.add(normalizeUrl(base.href) || base.href);
     return Array.from(links);
   } catch {
     return [baseUrl];
@@ -119,6 +174,7 @@ export function extractSameDomainLinks(html: string, baseUrl: string): string[] 
 
 /**
  * Parses XML sitemap content to extract candidate URLs.
+ * Also returns nested sub-sitemap XML URLs for recursive fetching.
  */
 export function extractSitemapUrls(xmlText: string, baseUrl: string): string[] {
   try {
@@ -132,10 +188,12 @@ export function extractSitemapUrls(xmlText: string, baseUrl: string): string[] {
       try {
         const parsed = new URL(loc);
         if (parsed.hostname.toLowerCase() === base.hostname.toLowerCase()) {
-          const path = parsed.pathname.toLowerCase();
-          if (!path.match(/\.(css|js|woff|woff2|png|jpg|jpeg|gif|svg|ico|webp|pdf|xml)$/)) {
-            parsed.hash = '';
-            urls.add(parsed.href);
+          if (isNavigablePage(parsed.pathname)) {
+            const normalized = normalizeUrl(loc);
+            if (normalized) urls.add(normalized);
+          } else if (parsed.pathname.endsWith('.xml')) {
+            // Sitemap index sub-sitemaps
+            urls.add(loc);
           }
         }
       } catch {}
@@ -145,6 +203,189 @@ export function extractSitemapUrls(xmlText: string, baseUrl: string): string[] {
     return [];
   }
 }
+
+/**
+ * Fetches and parses all sitemap URLs recursively (handles sitemap index files).
+ * Returns deduplicated list of navigable page URLs.
+ */
+export async function fetchAllSitemapUrls(origin: string, baseUrl: string, maxDepth = 3): Promise<string[]> {
+  const allUrls = new Set<string>();
+  const visited = new Set<string>();
+
+  async function fetchSitemap(sitemapUrl: string, depth: number): Promise<void> {
+    if (depth > maxDepth || visited.has(sitemapUrl)) return;
+    visited.add(sitemapUrl);
+    try {
+      const res = await safeFetch(sitemapUrl);
+      if (!res || res.status !== 200 || !res.html) return;
+      const discovered = extractSitemapUrls(res.html, baseUrl);
+      for (const url of discovered) {
+        if (url.endsWith('.xml') && !visited.has(url)) {
+          await fetchSitemap(url, depth + 1);
+        } else {
+          allUrls.add(url);
+        }
+      }
+    } catch {}
+  }
+
+  const candidates = [
+    `${origin}/sitemap.xml`,
+    `${origin}/sitemap_index.xml`,
+    `${origin}/sitemap-index.xml`,
+    `${origin}/sitemaps/sitemap.xml`,
+  ];
+
+  for (const candidate of candidates) {
+    await fetchSitemap(candidate, 0);
+    if (allUrls.size > 0) break;
+  }
+
+  return Array.from(allUrls);
+}
+
+/**
+ * Fetches robots.txt and extracts Sitemap: directives and non-disallowed path hints.
+ */
+export async function parseRobotsTxt(origin: string): Promise<{ sitemapUrls: string[]; hintPaths: string[] }> {
+  const sitemapUrls: string[] = [];
+  const hintPaths: string[] = [];
+  try {
+    const res = await safeFetch(`${origin}/robots.txt`);
+    if (!res || res.status !== 200 || !res.html) return { sitemapUrls, hintPaths };
+    const lines = res.html.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const sitemapMatch = trimmed.match(/^Sitemap:\s*(.+)$/i);
+      if (sitemapMatch?.[1]) {
+        const url = sitemapMatch[1].trim();
+        if (url.startsWith('http')) sitemapUrls.push(url);
+      }
+      const allowMatch = trimmed.match(/^Allow:\s*(.+)$/i);
+      if (allowMatch?.[1]) {
+        const path = allowMatch[1].trim();
+        if (path && path !== '/' && path.match(/^\/[a-zA-Z0-9/_-]+$/)) {
+          hintPaths.push(path);
+        }
+      }
+    }
+  } catch {}
+  return { sitemapUrls, hintPaths };
+}
+
+/**
+ * Extracts Next.js route information from:
+ * 1. __NEXT_DATA__ JSON embedded in the page
+ * 2. _next/static build manifests
+ * 3. Script src chunk filenames
+ */
+export async function extractNextJsRoutes(html: string, baseUrl: string): Promise<string[]> {
+  const base = new URL(baseUrl);
+  const routes = new Set<string>();
+
+  try {
+    // 1. Parse __NEXT_DATA__
+    const nextDataMatch = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+    if (nextDataMatch) {
+      const nextData = JSON.parse(nextDataMatch[1]);
+      if (nextData.page && nextData.page !== '/_error' && nextData.page !== '/404') {
+        routes.add(nextData.page);
+      }
+      const propsStr = JSON.stringify(nextData.props || {});
+      const routeMatches = propsStr.match(/"(?:href|url|path|route|link)"\s*:\s*"(\/[^"]{1,200})"/gi);
+      if (routeMatches) {
+        for (const rm of routeMatches) {
+          const m = rm.match(/"[^"]+"\s*:\s*"(\/[^"]+)"/);
+          if (m?.[1]) routes.add(m[1].split('?')[0]);
+        }
+      }
+    }
+  } catch {}
+
+  try {
+    // 2. Try fetching build manifest for all routes
+    const buildIdMatch = html.match(/"\/_next\/static\/([^\/]+)\/_buildManifest\.js"/);
+    const buildId = buildIdMatch?.[1];
+    if (buildId) {
+      const manifestRes = await safeFetch(`${base.origin}/_next/static/${buildId}/_ssgManifest.js`);
+      if (manifestRes?.html) {
+        const routeMatches = manifestRes.html.match(/"(\/[^"]{1,200})"/g);
+        if (routeMatches) {
+          for (const rm of routeMatches) {
+            const path = rm.slice(1, -1);
+            if (path.startsWith('/') && !path.includes('/_') && isNavigablePage(path)) {
+              routes.add(path);
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 3. Script chunk filename hints
+  const scriptSrcRegex = /src=["']\/_next\/static\/chunks\/pages\/([^"'?]+)["']/gi;
+  let m;
+  while ((m = scriptSrcRegex.exec(html)) !== null) {
+    const chunkName = m[1].replace(/\.js$/, '').replace(/\[.*?\]/g, ':param');
+    if (chunkName && chunkName !== 'index' && !chunkName.startsWith('_')) {
+      routes.add('/' + chunkName);
+    }
+  }
+
+  // 4. Client bundle inspection for Next.js App Router & SPAs
+  // Scan script tags prioritizing app/, layout, page, router, and main bundles
+  const allScriptMatches = Array.from(html.matchAll(/<script[^>]*src=["']([^"']+\.(?:js|mjs)(?:\?[^"']*)?)["']/gi)).map(sm => sm[1]);
+  const prioritizedScripts = allScriptMatches.sort((a, b) => {
+    const scoreA = (a.includes('/app/') ? 10 : 0) + (a.includes('layout') ? 5 : 0) + (a.includes('page') ? 5 : 0) + (a.includes('router') ? 4 : 0) + (a.includes('main') ? 3 : 0);
+    const scoreB = (b.includes('/app/') ? 10 : 0) + (b.includes('layout') ? 5 : 0) + (b.includes('page') ? 5 : 0) + (b.includes('router') ? 4 : 0) + (b.includes('main') ? 3 : 0);
+    return scoreB - scoreA;
+  }).slice(0, 12);
+
+  if (prioritizedScripts.length > 0) {
+    await Promise.allSettled(
+      prioritizedScripts.map(async (src) => {
+        try {
+          const scriptUrl = src.startsWith('http') ? src : `${base.origin}${src.startsWith('/') ? '' : '/'}${src}`;
+          const res = await safeFetch(scriptUrl);
+          if (!res?.html) return;
+
+          // Look for route path string literals: "/services", "/freelancer", "/courses/...", etc.
+          const pathMatches = res.html.match(/["'](\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*)["']/g);
+          if (pathMatches) {
+            for (const rawMatch of pathMatches) {
+              const p = rawMatch.slice(1, -1);
+              if (
+                p.length >= 2 &&
+                p.length <= 60 &&
+                !p.startsWith('/_') &&
+                !p.startsWith('/static') &&
+                !p.startsWith('/node_modules') &&
+                !p.startsWith('/api') &&
+                !p.includes('webpack') &&
+                isNavigablePage(p) &&
+                // Ensure it looks like a clean application route
+                !/[A-Z0-9]{16,}/.test(p)
+              ) {
+                routes.add(p);
+              }
+            }
+          }
+        } catch {}
+      })
+    );
+  }
+
+  const fullUrls: string[] = [];
+  for (const route of routes) {
+    if (route.startsWith('/')) {
+      const fullUrl = normalizeUrl(`${base.origin}${route}`);
+      if (fullUrl) fullUrls.push(fullUrl);
+    }
+  }
+  return fullUrls;
+}
+
+
 
 // ─── Regex helpers ────────────────────────────────────────────────────────────
 

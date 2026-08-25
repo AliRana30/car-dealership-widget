@@ -25,12 +25,16 @@ import { ingestWooCommerceProducts } from '@/lib/connectors/woocommerce';
 import { CrawledEntity, CrawlResult } from './types';
 import {
   safeFetch,
+  normalizeUrl,
   extractPageEntities,
   extractSpaChunkEntities,
   extractJsonLd,
   mapJsonLdToEntities,
   extractSameDomainLinks,
   extractSitemapUrls,
+  fetchAllSitemapUrls,
+  parseRobotsTxt,
+  extractNextJsRoutes,
 } from './extractor';
 import {
   extractEntitiesFromNetworkResponses,
@@ -111,12 +115,15 @@ export async function crawlWebsite(
 
   const pageCap = scanMode === 'quick' ? QUICK_SCAN_PAGE_CAP : MASTER_SCAN_PAGE_CAP;
 
-  // ── Step 1: Discover URLs via Crawl4AI seeder ──────────────────────────────
+  // ── Step 1: Discover URLs via Universal BFS Frontier ───────────────────────
   let candidateUrls: string[] = [];
+  let crawlDiagnostics: CrawlDiagnostic[] = [];
   try {
-    candidateUrls = await discoverUrlsViaSeeder(base.href, pageCap, scanMode, errors);
+    const frontierRes = await buildCrawlFrontier(base.href, pageCap, scanMode, errors);
+    candidateUrls = frontierRes.urls;
+    crawlDiagnostics = frontierRes.diagnostics;
   } catch (err: any) {
-    errors.push(`Seeder error: ${err.message}`);
+    errors.push(`Frontier error: ${err.message}`);
     // Fall back to at least the homepage
     candidateUrls = [base.href];
   }
@@ -437,13 +444,13 @@ export async function crawlWebsite(
     await persistEntities(websiteId, allEntities);
   }
 
-  // Update known_urls on websites table for future fast-path incremental tracking (A.3)
-  const currentDiscoveredUrls = Array.from(new Set(allEntities.map(e => e.url).filter(Boolean)));
-  if (currentDiscoveredUrls.length > 0) {
+  // Update known_urls on websites table with ALL discovered frontier URLs
+  const allDiscoveredUrls = Array.from(new Set([...candidateUrls, ...allEntities.map(e => e.url)].filter(Boolean)));
+  if (allDiscoveredUrls.length > 0) {
     try {
       await supabase
         .from('websites')
-        .update({ known_urls: currentDiscoveredUrls })
+        .update({ known_urls: allDiscoveredUrls })
         .eq('id', websiteId);
     } catch (err: any) {
       console.warn('[crawler] Could not update known_urls on website:', err.message || err);
@@ -460,50 +467,134 @@ export async function crawlWebsite(
     blockedPages,
     isBlocked,
     entities: allEntities,
+    discoveredUrls: allDiscoveredUrls,
+    diagnostics: crawlDiagnostics,
     errors,
     durationMs: Date.now() - t0,
   };
 }
 
-// ── Seeder: discover URLs via Sitemap + Native Link Extractor ────────────────
+// ── Crawl Diagnostics ────────────────────────────────────────────────────────
+
+export interface CrawlDiagnostic {
+  url: string;
+  status?: number;
+  contentType?: string;
+  discoverySource: 'seed' | 'sitemap' | 'robots_hint' | 'nextjs_route' | 'html_link' | 'crawl4ai_seed' | 'frontier_bfs';
+  depth: number;
+  extractionMethod?: 'crawl4ai' | 'native_html' | 'not_visited';
+  rendered: boolean;
+  crawlStatus: 'queued' | 'visited' | 'skipped' | 'blocked' | 'error';
+  lastSeen?: string;
+  errors?: string[];
+}
+
+// ── BFS Crawl Frontier ───────────────────────────────────────────────────────
 
 /**
- * Multi-layer URL discovery:
- * 1. Checks /sitemap.xml and /sitemap_index.xml (silently falls through on 404)
- * 2. Tries Crawl4AI seed endpoint if available
- * 3. Extracts same-domain links from the homepage HTML
+ * Universal BFS crawl frontier discovery engine.
  *
- * Guaranteed to return candidate URLs without logging false sitemap errors.
+ * Discovers URLs through a multi-layer approach:
+ *  1. robots.txt Sitemap: directives + Allow: paths
+ *  2. Recursive sitemap.xml / sitemap_index.xml fetching
+ *  3. Next.js __NEXT_DATA__ + build manifests + chunk filenames
+ *  4. Crawl4AI seed endpoint (if available)
+ *  5. BFS frontier expansion: fetch each queued URL → extract all links → queue new discoveries
+ *
+ * All URLs are normalized (fragment-stripped, tracking-param-stripped) before deduplication.
+ * Same-origin boundaries are strictly enforced.
+ *
+ * @returns { urls, diagnostics } - discovered URL list and per-URL diagnostics
  */
-async function discoverUrlsViaSeeder(
+async function buildCrawlFrontier(
   startUrl: string,
   pageCap: number,
   scanMode: ScanMode,
   errors: string[]
-): Promise<string[]> {
-  const discoveredUrls = new Set<string>();
+): Promise<{ urls: string[]; diagnostics: CrawlDiagnostic[] }> {
   const parsedStart = new URL(startUrl);
   const origin = parsedStart.origin;
+  const normalizedStart = normalizeUrl(startUrl) || startUrl;
 
-  // Layer 1: Check standard sitemap endpoints
-  try {
-    const sitemapCandidates = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
-    for (const sitemapUrl of sitemapCandidates) {
-      const res = await safeFetch(sitemapUrl);
-      if (res && res.html && res.status === 200 && res.html.includes('<loc>')) {
-        const sitemapUrls = extractSitemapUrls(res.html, startUrl);
-        sitemapUrls.forEach(u => discoveredUrls.add(u));
-        if (discoveredUrls.size > 0) {
-          console.log(`[crawler] Discovered ${discoveredUrls.size} URLs from ${sitemapUrl}`);
-          break;
-        }
-      }
-    }
-  } catch {
-    // Missing sitemaps are normal — silently continue to link discovery
+  const discovered = new Map<string, CrawlDiagnostic>(); // url → diagnostic
+  const frontier: string[] = [];   // BFS queue of URLs to process for link extraction
+  const frontierVisited = new Set<string>(); // URLs we've already extracted links from
+
+  // Helper to add a URL to the discovery map if not already known
+  function addUrl(
+    url: string,
+    source: CrawlDiagnostic['discoverySource'],
+    depth: number
+  ): boolean {
+    const normalized = normalizeUrl(url) || url;
+    if (discovered.has(normalized)) return false;
+    try {
+      const parsed = new URL(normalized);
+      // Same-origin only
+      if (parsed.hostname.toLowerCase() !== parsedStart.hostname.toLowerCase()) return false;
+    } catch { return false; }
+    discovered.set(normalized, {
+      url: normalized,
+      discoverySource: source,
+      depth,
+      rendered: false,
+      crawlStatus: 'queued',
+    });
+    return true;
   }
 
-  // Layer 2: Try Crawl4AI seed endpoint if Crawl4AI is configured
+  // Always include the start URL
+  addUrl(normalizedStart, 'seed', 0);
+  frontier.push(normalizedStart);
+
+  console.log(`[frontier] Starting BFS discovery from ${startUrl} (cap: ${pageCap})`);
+
+  // ── Layer 1: robots.txt ──────────────────────────────────────────────────
+  try {
+    const { sitemapUrls: robotsSitemaps, hintPaths } = await parseRobotsTxt(origin);
+    for (const hint of hintPaths) {
+      addUrl(`${origin}${hint}`, 'robots_hint', 1);
+    }
+    // robots.txt sitemap directives will be parsed in sitemap layer
+    for (const smUrl of robotsSitemaps) {
+      try {
+        const smRes = await safeFetch(smUrl);
+        if (smRes?.html && smRes.status === 200) {
+          const smUrls = extractSitemapUrls(smRes.html, startUrl);
+          for (const u of smUrls) {
+            if (!u.endsWith('.xml')) addUrl(u, 'sitemap', 1);
+          }
+        }
+      } catch {}
+    }
+    console.log(`[frontier] After robots.txt: ${discovered.size} URLs`);
+  } catch {}
+
+  // ── Layer 2: Recursive sitemap discovery ─────────────────────────────────
+  try {
+    const sitemapUrls = await fetchAllSitemapUrls(origin, startUrl, 3);
+    for (const u of sitemapUrls) {
+      addUrl(u, 'sitemap', 1);
+    }
+    console.log(`[frontier] After sitemaps: ${discovered.size} URLs`);
+  } catch {}
+
+  // ── Layer 3: Homepage HTML — Next.js routes + initial links ──────────────
+  let homepageHtml = '';
+  try {
+    const homeData = await safeFetch(startUrl);
+    if (homeData?.html) {
+      homepageHtml = homeData.html;
+      const homeLinks = extractSameDomainLinks(homepageHtml, startUrl);
+      for (const u of homeLinks) addUrl(u, 'html_link', 1);
+
+      const nextJsRoutes = await extractNextJsRoutes(homepageHtml, startUrl);
+      for (const u of nextJsRoutes) addUrl(u, 'nextjs_route', 1);
+    }
+    console.log(`[frontier] After homepage scan: ${discovered.size} URLs`);
+  } catch {}
+
+  // ── Layer 4: Crawl4AI seed endpoint ──────────────────────────────────────
   if (process.env.CRAWL4AI_BASE_URL) {
     try {
       const client = getCrawl4AIClient();
@@ -512,40 +603,86 @@ async function discoverUrlsViaSeeder(
         source: 'sitemap+cc',
         max_urls: pageCap,
         ...(scanMode === 'quick' ? { max_depth: 1 } : {}),
-      }, 4000);
-
+      }, 5000);
       const validUrls = (seedResult.urls || []).filter(
         (u): u is string => typeof u === 'string' && u.startsWith('http')
       );
+      for (const u of validUrls) addUrl(u, 'crawl4ai_seed', 1);
+      console.log(`[frontier] After Crawl4AI seed: ${discovered.size} URLs`);
+    } catch {}
+  }
 
-      validUrls.forEach(u => discoveredUrls.add(u));
-    } catch {
-      // Crawl4AI seed failure is non-fatal — fall through to homepage links
+  // ── Layer 5: BFS frontier expansion ──────────────────────────────────────
+  // Add all discovered URLs to frontier for BFS expansion
+  for (const [url] of discovered) {
+    if (!frontierVisited.has(url) && url !== normalizedStart) {
+      frontier.push(url);
     }
   }
 
-  // Layer 3: Always extract same-domain links from the homepage
-  try {
-    const homeData = await safeFetch(startUrl);
-    if (homeData && homeData.html) {
-      const homeLinks = extractSameDomainLinks(homeData.html, startUrl);
-      homeLinks.forEach(u => discoveredUrls.add(u));
+  // BFS: expand frontier by fetching each URL and extracting links
+  // Stop when we've expanded enough or hit the page cap
+  const BFS_EXPANSION_LIMIT = scanMode === 'quick' ? 5 : Math.min(pageCap, 30);
+  let bfsExpanded = 0;
+
+  while (frontier.length > 0 && discovered.size < pageCap && bfsExpanded < BFS_EXPANSION_LIMIT) {
+    const url = frontier.shift()!;
+    if (frontierVisited.has(url)) continue;
+    frontierVisited.add(url);
+    bfsExpanded++;
+
+    const currentDepth = discovered.get(url)?.depth ?? 0;
+    const maxDepth = scanMode === 'quick' ? 2 : 4;
+    if (currentDepth >= maxDepth) continue;
+
+    try {
+      const pageData = await safeFetch(url);
+      if (!pageData?.html || pageData.status >= 400) continue;
+
+      const diag = discovered.get(url);
+      if (diag) {
+        diag.crawlStatus = 'visited';
+        diag.status = pageData.status;
+        diag.contentType = pageData.contentType;
+        diag.lastSeen = new Date().toISOString();
+        diag.extractionMethod = 'native_html';
+      }
+
+      const newLinks = extractSameDomainLinks(pageData.html, url);
+      const nextJsRoutes = await extractNextJsRoutes(pageData.html, url).catch(() => []);
+
+      let addedNewUrls = 0;
+      for (const newUrl of [...newLinks, ...nextJsRoutes]) {
+        if (addUrl(newUrl, 'frontier_bfs', currentDepth + 1)) {
+          frontier.push(newUrl);
+          addedNewUrls++;
+        }
+      }
+
+      if (addedNewUrls > 0) {
+        console.log(`[frontier] BFS expanded ${url} → +${addedNewUrls} new URLs (total: ${discovered.size})`);
+      }
+    } catch (err: any) {
+      const diag = discovered.get(url);
+      if (diag) {
+        diag.crawlStatus = 'error';
+        diag.errors = [err.message || 'fetch error'];
+      }
     }
-  } catch (err: any) {
-    console.warn(`[crawler] Homepage link discovery warning for ${startUrl}:`, err.message);
   }
 
-  // Always ensure the startUrl itself is included
-  discoveredUrls.add(startUrl);
+  const allUrls = Array.from(discovered.keys());
+  const diagnostics = Array.from(discovered.values());
 
-  const candidateList = Array.from(discoveredUrls);
-  console.log(`[crawler] Discovered ${candidateList.length} candidate URLs for ${startUrl}`);
+  console.log(`[frontier] Discovery complete: ${allUrls.length} total URLs discovered from ${startUrl}`);
 
   if (scanMode === 'quick') {
-    return candidateList.slice(0, Math.min(pageCap, 10));
+    return { urls: allUrls.slice(0, Math.min(pageCap, 10)), diagnostics };
   }
-  return candidateList.slice(0, pageCap);
+  return { urls: allUrls.slice(0, pageCap), diagnostics };
 }
+
+
 
 
 // ── Entity extraction from Crawl4AI result ────────────────────────────────────

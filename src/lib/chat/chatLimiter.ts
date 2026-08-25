@@ -7,8 +7,12 @@
 
 export const DEFAULT_MAX_CHAT_TURNS = 30;
 export const DEFAULT_CHAT_RATE_LIMIT_PER_MINUTE = 15;
-export const DEFAULT_DUPLICATE_REPEAT_THRESHOLD = 2;
+export const DEFAULT_DUPLICATE_REPEAT_THRESHOLD = 3;   // requires 3+ identical msgs before throttling
 export const DEFAULT_MAX_MESSAGE_CHARACTERS = 1000;
+// Window for detecting duplicate messages (60s instead of 120s to reduce cross-reload collisions)
+const DUPLICATE_DETECTION_WINDOW_MS = 60_000;
+// Catalog/listing queries are never throttled as duplicates — users legitimately re-ask them
+const CATALOG_NEVER_THROTTLE_REGEX = /\b(?:courses?|services?|products?|vehicles?|listings?|offers?|plans?|freelancers?|properties?|catalog|inventory|offerings?)\b/i;
 
 export const STATIC_DUPLICATE_THROTTLE_REPLY = "I've already answered that — is there something else I can help with?";
 export const STATIC_RATE_LIMIT_REPLY = "You're sending messages too fast. Please wait a moment before trying again.";
@@ -184,8 +188,11 @@ export function checkDuplicateMessage(
   const now = Date.now();
   const normalizedText = messageText.trim().toLowerCase();
 
-  // If identical text within 2 minutes of previous message
-  if (record.lastMessageText === normalizedText && (now - record.lastMessageTime < 120_000)) {
+  // Catalog/listing queries are never duplicate-throttled — users legitimately re-ask them
+  const isCatalogQuery = CATALOG_NEVER_THROTTLE_REGEX.test(messageText);
+
+  // If identical text within 60s of previous message (and not a catalog query)
+  if (!isCatalogQuery && record.lastMessageText === normalizedText && (now - record.lastMessageTime < DUPLICATE_DETECTION_WINDOW_MS)) {
     record.duplicateCount += 1;
     record.lastMessageTime = now;
 

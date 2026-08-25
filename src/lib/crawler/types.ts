@@ -63,6 +63,8 @@ export interface CrawlResult {
   blockedPages: number;
   isBlocked: boolean;
   entities: CrawledEntity[];
+  discoveredUrls?: string[];
+  diagnostics?: any[];
   errors: string[];
   durationMs: number;
 }
