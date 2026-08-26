@@ -158,7 +158,7 @@ The platform features built-in intelligence adapters tailored to diverse busines
 
 ### Interactive Knowledge Viewer & Media Showcase UI
 - **Dual Tab Presentation**: Separates **Knowledge Records** (structured products, courses, vehicles, services) from **Site Pages** (raw navigation and content pages).
-- **📷 High-Res Photos & Media Showcase**: Visual thumbnail cards with image counters, lightbox hover zoom, and graceful cross-origin / CDN hotlink protection fallback cards (`🔗 Open URL →`).
+- **High-Res Photos & Media Showcase**: Visual thumbnail cards with image counters, lightbox hover zoom, and graceful cross-origin / CDN hotlink protection fallback cards (`Open URL ->`).
 - **Interactive Search & Filter Intelligence**: Live full-text search across titles, descriptions, categories, and prices with dynamic counter badges.
 
 ### High-Dimensional Vector Embeddings & Semantic Search
@@ -361,7 +361,7 @@ Widgetized enforces strict, unavoidable server-side rate, duration, silence, vol
    - Configurable per widget under **Behavior** via `maxDailyCalls` (default: 100/day) and `maxDailyChats` (default: 500/day).
    - Enforced by `src/lib/usage/spendLimiter.ts`: Tracks daily call and chat starts against configurable daily thresholds.
    - When a widget exceeds its daily limit, the circuit breaker automatically trips, disabling all new call and chat starts for that widget for the remainder of the day and returning a clear visitor fallback message (*"This assistant is temporarily unavailable. Please try again later or contact us directly."*).
-   - **Dashboard Indicator**: Prominently flags the widget card with an alert badge (*"⚠️ Circuit Breaker: Daily Spend Cap Reached"*) and displays daily quota counters (`📞 Calls: X/Y • 💬 Chats: A/B`).
+    - **Dashboard Indicator**: Prominently flags the widget card with an alert badge (*"Circuit Breaker: Daily Spend Cap Reached"*) and displays daily quota counters (`Calls: X/Y • Chats: A/B`).
    - **Automatic Rollover**: Auto-resets at UTC midnight date partition boundaries without requiring manual intervention.
    - **Fail-Safe Operation**: Fails open with logged warnings if tracking errors occur, ensuring tracking failures never become an outage.
 5. **Session-Scoped Chat Rate Limiting & Duplicate Throttling**:
