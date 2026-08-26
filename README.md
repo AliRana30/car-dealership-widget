@@ -418,6 +418,35 @@ npx tsx scratch/test-agent-tools.ts
 2. **Distinct Voice vs. Text Chat Architecture**:
    - **Voice Telephony**: Connects via WebRTC to Retell Voice Agent (`agent_de685808e8532318607de0b0c8`) using the ultra-low latency Retell SDK client, dynamically injecting real-time `website_context` into the LLM runtime.
    - **Text Chat**: Handled via `/api/retell/chat` with structured semantic fallback, catalog matching, and instant recommendation card generation.
+
+### Text Chat Pipeline & Grounded Hybrid RAG Architecture
+
+The text chat subsystem operates on a dual-tier execution pipeline designed for deterministic reliability and anti-hallucination. User messages are routed to `/api/retell/chat`, where an in-house hybrid RAG engine (pgvector vector similarity, lexical keywords, and structured metadata) queries verified crawled website records. When Retell is configured, conversational completions are generated using the Retell Chat SDK; otherwise, requests cascade through a robust fallback chain (OpenAI GPT-4o-mini, Google Gemini 1.5 Flash, or Groq Llama 3.3 70B) while guaranteeing zero hallucination through strict grounding checks and returning interactive entity cards.
+
+```mermaid
+graph TD
+    A[Frontend Widget VoiceAgentWidget.tsx] -->|POST /api/retell/chat| B[Chat API Route Handler]
+    
+    B --> C[Custom Retrieval & Grounding Layer]
+    C -->|pgvector + Lexical + Metadata| D[(Supabase website_data)]
+    C --> E{Grounded Context Found?}
+    
+    E -- No --> F[Deterministic Safe Refusal / 0 Hallucination]
+    E -- Yes --> G{Retell Configured?}
+    
+    G -- Yes (Primary) --> H[Retell AI SDK client.chat.createChatCompletion]
+    G -- No (Standalone / Fallback) --> I[Direct LLM Fallback Chain]
+    
+    I --> J[1. OpenAI gpt-4o-mini]
+    I --> K[2. Google Gemini 1.5 Flash]
+    I --> L[3. Groq Llama 3.3 70B]
+    I --> M[4. Deterministic Formatter]
+    
+    H --> N[Structured JSON: Text + Entity Cards + Navigation]
+    I --> N
+    N --> A
+```
+
 3. **Optimized Catalog Ranking & Directory Filtering**:
    - Individual offering items (`/course/:id`, `/product/:id`) with concrete pricing and image banners are prioritized over broad directory pages (e.g. `/courses`), ensuring full catalog coverage including MERN Stack, Backend Mastery, and Leetcode Mastery.
 4. **Strict Intent Boundary Classification**:
@@ -451,9 +480,9 @@ npx tsx scratch/test-agent-tools.ts
    - Dispatches `voice-agent-navigate` and `WIDGET_NAVIGATE` to the host parent window in real time, navigating the host page seamlessly without the voice agent reading aloud raw URLs.
 2. **Real-Time Voice Entity Intelligence Cards**:
    - Spoken inquiries regarding catalog offerings, best-sellers, tuition pricing, or specific courses during live voice telephony trigger real-time entity lookups.
-   - Populates `voiceResults` and expands the 710px side drawer with picture cards, 5★ ratings, prices, and direct links during the voice call.
+   - Populates `voiceResults` and expands the 710px side drawer with picture cards, 5-star ratings, prices, and direct links during the voice call.
 3. **Structured Voice Context & Authoritative Recommendations**:
-   - `getWebsiteContextSummary` injects structured operating guidelines into Retell's dynamic variables with ratings (`[Rating: 5★]`), review counts, and best-seller enrollments.
+   - `getWebsiteContextSummary` injects structured operating guidelines into Retell's dynamic variables with ratings (`[Rating: 5-star]`), review counts, and best-seller enrollments.
    - Instructs the voice AI to enthusiastically recommend top catalog items (e.g. MERN Stack Development Course, Leetcode Mastery) when asked for best/top products, eliminating generic "I don't have sales rankings" disclaimers across all connected websites.
 
 ---
