@@ -886,6 +886,8 @@ export function extractEmbeddedAppState(html: string, pageUrl: string): CrawledE
 
   // 3. Automotive Dealership Specific State Objects & Redux / Apollo Preloaded state
   const statePatterns = [
+    /window\.__vdpJSON\s*=\s*(\{[\s\S]*?\})\s*;/i,
+    /window\.vdpJSON\s*=\s*(\{[\s\S]*?\})\s*;/i,
     /window\.vehicleData\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
     /window\.inventoryData\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
     /window\.digitalData\s*=\s*(\{[\s\S]*?\})\s*;/i,

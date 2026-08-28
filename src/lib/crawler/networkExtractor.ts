@@ -185,33 +185,53 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
     ''
   ).toString().trim();
 
-  const rawPrice = item.price ?? item.cost ?? item.msrp ?? item.sellingPrice ?? item.amount ?? item.rate ?? item.hourlyRate ?? item.fee;
+  const rawPrice = item.price ?? item.cost ?? item.msrp ?? item.sellingPrice ?? item.amount ?? item.rate ?? item.hourlyRate ?? item.fee ?? item.prices?.priceInteger ?? item.prices?.price;
   let priceStr: string | undefined = undefined;
   if (rawPrice !== undefined && rawPrice !== null && rawPrice !== '') {
     priceStr = typeof rawPrice === 'number' ? `$${rawPrice.toLocaleString()}` : String(rawPrice).trim();
     if (/^\d+(\.\d+)?$/.test(priceStr)) priceStr = `$${priceStr}`;
   }
 
-  const rawImages = item.images || item.image || item.imageUrl || item.image_url || item.photos || item.photoList || item.thumbnail || item.profilePicture || item.avatar;
+  const rawImages = item.images || item.image || item.imageUrl || item.image_url || item.photos || item.photoList || item.thumbnail || item.profilePicture || item.avatar || item.fbMetaImage;
   const images = extractImageUrls(rawImages, pageUrl);
 
-  const vin = item.vin || item.VIN;
+  const vin = item.vin || item.VIN || item.niv || item.NIV || (Array.isArray(item.specsVin) ? item.specsVin[0] : undefined);
   const sku = item.sku || item.SKU;
-  const stockNumber = item.stockNumber || item.stock_number || item.stockNo || sku;
-  const mileage = item.mileage || item.miles || item.odometer;
+  const stockNumber = item.stockNumber || item.stock_number || item.stockNo || item.sn || item.popupstocknumber || (Array.isArray(item.specsNoStock) ? item.specsNoStock[0] : undefined) || sku;
+  
+  // Odometer / Mileage extraction (handles km, miles, specsKM)
+  const rawMileage = item.mileage || item.miles || item.km || item.odometer || (Array.isArray(item.specsKM) ? item.specsKM[0] : undefined);
+  let mileage: number | undefined = undefined;
+  if (typeof rawMileage === 'number') {
+    mileage = rawMileage;
+  } else if (typeof rawMileage === 'string') {
+    const num = parseInt(rawMileage.replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(num)) mileage = num;
+  }
+
   const year = item.year;
-  const make = item.make || item.brand;
-  const model = item.model;
-  const trim = item.trim;
+  const make = (typeof item.make === 'object' ? item.make?.basic || item.make?.title || item.make?.modified : item.make) || item.brand;
+  const model = (typeof item.model === 'object' ? item.model?.basic || item.model?.title || item.model?.modified : item.model);
+  const trim = (typeof item.version === 'object' ? item.version?.basic || item.version?.full : item.trim);
   const drivetrain = item.drivetrain || item.driveType || item.driveTrain;
-  const bodyStyle = item.bodyStyle || item.body_style || item.bodyType;
-  const engine = item.engine || item.motor;
-  const transmission = item.transmission;
-  const fuel = item.fuel || item.fuelType;
-  const exteriorColor = item.exteriorColor || item.color;
-  const interiorColor = item.interiorColor;
-  const msrp = item.msrp || item.originalPrice;
-  const features = Array.isArray(item.features) ? item.features : Array.isArray(item.options) ? item.options : undefined;
+  const bodyStyle = item.bodyStyle || item.body_style || item.bodyType || item.vehicleCategory || item.bodytype;
+  
+  // Engine & Transmission (including parsing optionRaw)
+  let engine = item.engine || item.motor;
+  let transmission = item.transmission;
+  if (typeof item.optionRaw === 'string') {
+    const engMatch = item.optionRaw.match(/Engine:\s*([^,]+)/i);
+    if (engMatch && (!engine || engine === 'N.A.')) engine = engMatch[1].trim();
+    const transMatch = item.optionRaw.match(/Transmission:\s*([^,]+)/i);
+    if (transMatch && !transmission) transmission = transMatch[1].trim();
+  }
+  if (engine === 'N.A.') engine = undefined;
+
+  const fuel = item.fuel || item.fuelType || item.fueltype || (Array.isArray(item.specsFuel) ? item.specsFuel[0] : undefined);
+  const exteriorColor = item.color?.exteriorOrig || item.color?.exterior || (Array.isArray(item.specsExtColor) ? item.specsExtColor[0] : undefined) || item.exteriorColor || item.extColor || item.color;
+  const interiorColor = item.color?.interiorOrig || item.color?.interior || item.interiorColor || item.intColor;
+  const msrp = item.msrp || item.originalPrice || item.prices?.originalPriceWithoutCustomFees;
+  const features = Array.isArray(item.features) ? item.features : Array.isArray(item.options) ? item.options : (typeof item.optionRaw === 'string' ? item.optionRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined);
 
   const itemUrl = item.url || item.link || item.detailUrl || item.detail_url || item.href;
   const conditionRaw = String(item.condition || '').toLowerCase();
