@@ -7,7 +7,7 @@
  *   SMTP_SECURE     - "true" for port 465, "false" for 587
  *   SMTP_USER       - your Gmail address (or SMTP username)
  *   SMTP_PASS       - Gmail App Password (NOT your login password)
- *   SMTP_FROM_NAME  - Display name, e.g. "MyFrontDesk"
+ *   SMTP_FROM_NAME  - Display name, e.g. "AutoMate"
  *   SMTP_FROM_EMAIL - From address (optional, defaults to SMTP_USER)
  */
 
@@ -30,7 +30,7 @@ function getTransporter() {
 }
 
 function getFrom(): string {
-  const name = process.env.SMTP_FROM_NAME || 'MyFrontDesk';
+  const name = process.env.SMTP_FROM_NAME || 'AutoMate';
   const email = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || '';
   return `"${name}" <${email}>`;
 }
@@ -73,7 +73,7 @@ export async function sendVerificationOtp(email: string, code: string) {
     <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.08);">
       <div style="background:linear-gradient(135deg,#2F8FE0,#1D6FB8);padding:32px 32px 28px;text-align:center;">
         <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.02em;">Verify your email</h1>
-        <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">MyFrontDesk Account Setup</p>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">AutoMate Account Setup</p>
       </div>
       <div style="padding:36px 32px;">
         <p style="margin:0 0 28px;color:#374151;font-size:15px;line-height:1.6;">
@@ -83,14 +83,14 @@ export async function sendVerificationOtp(email: string, code: string) {
           <span style="font-size:44px;font-weight:800;letter-spacing:14px;color:#1D4ED8;font-family:monospace;">${code}</span>
         </div>
         <p style="margin:0;color:#9CA3AF;font-size:12px;line-height:1.5;">
-          If you didn't create a MyFrontDesk account, you can safely ignore this email.
+          If you didn't create an AutoMate account, you can safely ignore this email.
         </p>
       </div>
     </div>
   </div>
 </body>
 </html>`;
-  await sendEmail({ to: email, subject: `${code} — Your MyFrontDesk verification code`, html });
+  await sendEmail({ to: email, subject: `${code} — Your AutoMate verification code`, html });
 }
 
 export async function sendPasswordResetEmail(email: string, resetLink: string) {
@@ -102,7 +102,7 @@ export async function sendPasswordResetEmail(email: string, resetLink: string) {
     <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.08);">
       <div style="background:linear-gradient(135deg,#2F8FE0,#1D6FB8);padding:32px 32px 28px;text-align:center;">
         <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.02em;">Reset your password</h1>
-        <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">MyFrontDesk</p>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">AutoMate</p>
       </div>
       <div style="padding:36px 32px;">
         <p style="margin:0 0 28px;color:#374151;font-size:15px;line-height:1.6;">
@@ -124,5 +124,5 @@ export async function sendPasswordResetEmail(email: string, resetLink: string) {
   </div>
 </body>
 </html>`;
-  await sendEmail({ to: email, subject: 'Reset your MyFrontDesk password', html });
+  await sendEmail({ to: email, subject: 'Reset your AutoMate password', html });
 }

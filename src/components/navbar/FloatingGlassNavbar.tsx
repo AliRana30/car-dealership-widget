@@ -284,16 +284,14 @@ export default function FloatingGlassNavbar() {
 
       {/* ── Main Floating Glassmorphism Navbar Container ────────────────── */}
       <div ref={dropdownRef} className="origin-glass-pill">
-        {/* Brand Logo & Title (Clean image logo directly next to text, no circle background, no AI badge) */}
+        {/* Brand Logo */}
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
           <img
-            src="/logo.png"
-            alt="Widgetized Logo"
+            src="/automate.png"
+            alt="AutoMate"
             className="origin-brand-logo"
+            style={{ height: '32px', width: 'auto', maxHeight: '36px', objectFit: 'contain' }}
           />
-          <span className="origin-brand-title">
-            Widgetized
-          </span>
         </Link>
 
         {/* Center Desktop Navigation Links */}

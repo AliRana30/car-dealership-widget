@@ -787,7 +787,7 @@ const VoiceAgentWidget = forwardRef<VoiceAgentWidgetRef, VoiceAgentWidgetProps>(
       // 3. Reset chat to initial welcome message
       const initialMsg = {
         role: 'agent' as const,
-        content: mergedConfig.branding.welcomeMessage || "Hi! I'm your AI front desk receptionist. How can I help you today?",
+        content: mergedConfig.branding.welcomeMessage || "Hi! I'm your AutoMate dealership assistant. How can I help you today?",
       };
       setChatMessages([initialMsg]);
       setTranscript([]);

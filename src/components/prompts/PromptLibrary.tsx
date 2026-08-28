@@ -129,7 +129,7 @@ export default function PromptLibrary({ isEmbedded = false }: PromptLibraryProps
             </Link>
             <span style={{ color: '#CBD5E1' }}>/</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <img src="/logo.png" alt="Logo" style={{ width: '26px', height: '26px', objectFit: 'contain' }} />
+              <img src="/automate.png" alt="AutoMate Logo" style={{ height: '26px', width: 'auto', objectFit: 'contain' }} />
               <span style={{ fontWeight: 700, fontSize: '16px', color: '#0F172A' }}>Prompt Library</span>
               <span style={{ background: '#EFF6FF', color: '#2563EB', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '12px', border: '1px solid #BFDBFE' }}>
                 10 Industry Agents

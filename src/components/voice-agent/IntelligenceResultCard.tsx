@@ -9,8 +9,27 @@ export interface WebsiteDataResult {
   imageUrls?: string[];
   images?: string[];
   price?: string | number;
+  msrp?: string | number;
+  originalPrice?: string | number;
   currency?: string;
   availability?: string;
+  condition?: 'new' | 'used' | 'cpo' | 'certified';
+  vin?: string;
+  stockNumber?: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  trim?: string;
+  bodyStyle?: string;
+  mileage?: number | string;
+  drivetrain?: string;
+  transmission?: string;
+  engine?: string;
+  fuel?: string;
+  exteriorColor?: string;
+  interiorColor?: string;
+  features?: string[];
+  vdpUrl?: string;
   rating?: number | string;
   reviews?: number | string;
   attributes?: Record<string, string | number | boolean>;
@@ -29,14 +48,23 @@ const METADATA_LABEL_MAP: Record<string, string> = {
   duration: 'Duration',
   mileage: 'Mileage',
   vin: 'VIN',
+  stockNumber: 'Stock #',
+  stock_number: 'Stock #',
   year: 'Year',
   make: 'Make',
   model: 'Model',
   trim: 'Trim',
+  bodyStyle: 'Body Style',
+  body_style: 'Body Style',
+  drivetrain: 'Drivetrain',
   color: 'Color',
+  exteriorColor: 'Exterior Color',
+  interiorColor: 'Interior Color',
   transmission: 'Transmission',
   fuelType: 'Fuel Type',
+  fuel: 'Fuel Type',
   engine: 'Engine',
+  msrp: 'MSRP',
   sku: 'SKU',
   brand: 'Brand',
   vendor: 'Vendor',

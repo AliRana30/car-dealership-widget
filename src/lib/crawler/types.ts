@@ -1,5 +1,7 @@
 // ─── Crawler Types ────────────────────────────────────────────────────────────
 
+export * from '@/lib/vehicles/types';
+
 export interface Entity {
   id: string;
   widgetId: string;
@@ -7,7 +9,7 @@ export interface Entity {
   shortDescription?: string;
   imageUrls: string[];
   sourceUrl?: string;
-  entityType: string;          // informational label, e.g. "vehicle" | "service" | "product" — never a UI branch condition
+  entityType: string;          // "vehicle" | "product" | "service" | "text"
   metadata: Record<string, unknown>;
   dataType: 'crawl' | 'shopify' | 'woocommerce' | 'feed' | 'manual';
   categoryPath?: string[];
@@ -26,7 +28,7 @@ export interface CrawledEntity {
   url: string;
   title?: string;
   content: string;
-  dataType: 'product' | 'service' | 'text' | 'faq' | 'contact' | 'pricing' | 'event';
+  dataType: 'product' | 'service' | 'text' | 'faq' | 'contact' | 'pricing' | 'event' | 'vehicle';
   imageUrls?: string[];
   contentHash?: string;
   lastCheckedAt?: string;
@@ -35,8 +37,32 @@ export interface CrawledEntity {
     images?: string[];
     image?: string;
     price?: string | number;
+    msrp?: string | number;
     currency?: string;
     availability?: string;
+    condition?: 'new' | 'used' | 'cpo' | 'certified';
+    vin?: string;
+    stockNumber?: string;
+    stock_number?: string;
+    year?: number | string;
+    make?: string;
+    model?: string;
+    trim?: string;
+    bodyStyle?: string;
+    body_style?: string;
+    mileage?: number | string;
+    drivetrain?: string;
+    transmission?: string;
+    engine?: string;
+    fuel?: string;
+    fuelType?: string;
+    color?: string;
+    exteriorColor?: string;
+    interiorColor?: string;
+    features?: string[];
+    options?: string[];
+    vdpUrl?: string;
+    vdp_url?: string;
     rating?: number;
     reviews?: number;
     attributes?: Record<string, string | number | boolean>;
@@ -85,5 +111,6 @@ export interface CrawlJobStatus {
   startedAt: string;
   completedAt?: string;
 }
+
 
 

@@ -28,6 +28,8 @@ import {
   normalizeUrl,
   extractPageEntities,
   extractSpaChunkEntities,
+  extractEmbeddedAppState,
+  extractDomSemanticCards,
   extractJsonLd,
   mapJsonLdToEntities,
   extractSameDomainLinks,
@@ -49,6 +51,13 @@ import {
 } from './completeness';
 import { createClient } from '@supabase/supabase-js';
 import { saveWebsiteDataBatch, WebsiteDataRow } from '@/config/widgetsDb';
+import {
+  normalizeVehicleRecord,
+  saveVehiclesBatch,
+  reconcileSoldVehicles,
+  computeVehicleContentHash,
+  type NormalizedVehicleRecord,
+} from '@/lib/vehicles/types';
 import crypto from 'crypto';
 
 export function computeContentHash(raw: string): string {
@@ -653,6 +662,40 @@ async function buildCrawlFrontier(
     console.log(`[frontier] After homepage scan: ${discovered.size} URLs`);
   } catch {}
 
+  // ── Layer 3b: Automotive Dual Inventory Discovery (NEW + USED verification) ─
+  const automotiveInventoryProbes = [
+    // NEW inventory listing endpoints across Dealer.com, DealerOn, DealerInspire, CDK, etc.
+    '/new-vehicles/',
+    '/new-inventory/',
+    '/new-cars/',
+    '/inventory/new/',
+    '/searchnew.aspx',
+    '/new-inventory/index.htm',
+    '/new/',
+    // USED & CPO inventory listing endpoints
+    '/used-vehicles/',
+    '/used-inventory/',
+    '/used-cars/',
+    '/pre-owned/',
+    '/pre-owned-vehicles/',
+    '/inventory/used/',
+    '/searchused.aspx',
+    '/used-inventory/index.htm',
+    '/used/',
+    '/cpo/',
+    '/certified-pre-owned/',
+    '/certified/',
+    // Master inventory & vehicle index
+    '/all-inventory/',
+    '/inventory/',
+    '/vehicles/',
+    '/vehicle-inventory/',
+  ];
+
+  for (const probe of automotiveInventoryProbes) {
+    addUrl(`${origin}${probe}`, 'html_link', 1);
+  }
+
   // ── Layer 4: Crawl4AI seed endpoint ──────────────────────────────────────
   if (process.env.CRAWL4AI_BASE_URL) {
     try {
@@ -749,7 +792,7 @@ async function buildCrawlFrontier(
 async function extractEntitiesFromCrawlResult(
   result: import('@/lib/crawl4ai/client').CrawlResult
 ): Promise<CrawledEntity[]> {
-  // ── TIER 1: Explicit JSON-LD (Highest Preference) ──────────────────────────
+  // ── TIER 1: Explicit JSON-LD / Schema.org (Highest Preference) ─────────────
   if (result.html) {
     try {
       const jsonLd = extractJsonLd(result.html);
@@ -765,7 +808,20 @@ async function extractEntitiesFromCrawlResult(
     } catch {}
   }
 
-  // ── TIER 2: Observed Network API JSON (XHR / Fetch Responses) ───────────────
+  // ── TIER 2: Embedded Vehicle JSON & Application State (Window DataLayer / State) ─
+  if (result.html) {
+    try {
+      const embeddedEntities = extractEmbeddedAppState(result.html, result.url);
+      if (embeddedEntities.length > 0) {
+        embeddedEntities.forEach(e => {
+          e.metadata = { ...e.metadata, discoveryMethod: 'embedded_state' };
+        });
+        return embeddedEntities;
+      }
+    } catch {}
+  }
+
+  // ── TIER 3: Observed Network API JSON & Discovered REST Endpoints ──────────
   const rawNetworkResponses = [
     ...(Array.isArray(result.network_responses) ? result.network_responses : []),
     ...(Array.isArray(result.xhr_responses) ? result.xhr_responses : []),
@@ -790,7 +846,20 @@ async function extractEntitiesFromCrawlResult(
     return apiEntities;
   }
 
-  // ── TIER 3 & 4: Structured Output from Crawl4AI (CSS Selector or LLM) ────────
+  // ── TIER 4: Generic HTML / DOM Semantic Card Extraction ────────────────────
+  if (result.html) {
+    try {
+      const domCards = extractDomSemanticCards(result.html, result.url);
+      if (domCards.length > 0) {
+        domCards.forEach(e => {
+          e.metadata = { ...e.metadata, discoveryMethod: 'dom' };
+        });
+        return domCards;
+      }
+    } catch {}
+  }
+
+  // ── TIER 5: Crawl4AI / Intelligent LLM Extraction Fallback ──────────────────
   if (result.extracted_content) {
     try {
       let parsed = result.extracted_content;
@@ -1120,7 +1189,56 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
     uniqueRows.push(r);
   }
 
-  // Batch insert/upsert in chunks of 50 via centralized embedding path
+  // 1. Persist to PostgreSQL 'vehicles' table for all automotive records
+  for (const widgetId of widgetIds) {
+    const vehicleRecords: NormalizedVehicleRecord[] = [];
+    const observedVinsAndIds = new Set<string>();
+
+    for (const e of entities) {
+      const isVehicle =
+        e.dataType === 'vehicle' ||
+        e.metadata?.entity_type === 'vehicle' ||
+        e.metadata?.vin ||
+        e.metadata?.make ||
+        e.metadata?.model ||
+        e.metadata?.year ||
+        e.metadata?.stockNumber ||
+        e.metadata?.stock_number ||
+        /car|truck|suv|vehicle|wrangler|cherokee|ram|dodge|durango|chrysler|ford|toyota|honda/i.test(e.title || '');
+
+      if (isVehicle) {
+        const normVeh = normalizeVehicleRecord(e, widgetId, e.url);
+        vehicleRecords.push(normVeh);
+        if (normVeh.vin) observedVinsAndIds.add(normVeh.vin.toUpperCase().trim());
+        if (normVeh.stockNumber) observedVinsAndIds.add(normVeh.stockNumber.toUpperCase().trim());
+        if (normVeh.id) observedVinsAndIds.add(normVeh.id);
+        if (normVeh.vdpUrl) observedVinsAndIds.add(normVeh.vdpUrl.toLowerCase().trim());
+      }
+    }
+
+    if (vehicleRecords.length > 0) {
+      try {
+        const saveRes = await saveVehiclesBatch(vehicleRecords);
+        console.log(`[crawler:vehicles] Saved to 'vehicles' table for ${widgetId}: ${saveRes.inserted} inserted, ${saveRes.updated} updated, ${saveRes.unchanged} unchanged`);
+      } catch (vehErr: any) {
+        console.error(`[crawler:vehicles] Failed saving to 'vehicles' table:`, vehErr.message || vehErr);
+      }
+    }
+
+    // Reconcile sold / removed vehicles for this dealer
+    if (observedVinsAndIds.size > 0) {
+      try {
+        const recRes = await reconcileSoldVehicles(widgetId, observedVinsAndIds);
+        if (recRes.markedSold > 0) {
+          console.log(`[crawler:reconciliation] Marked ${recRes.markedSold} missing vehicles as sold/unlisted for widget ${widgetId}`);
+        }
+      } catch (recErr: any) {
+        console.warn(`[crawler:reconciliation] Warning reconciling sold vehicles:`, recErr.message);
+      }
+    }
+  }
+
+  // 2. Batch insert/upsert in chunks of 50 via centralized embedding path for 'website_data'
   for (let i = 0; i < uniqueRows.length; i += 50) {
     const chunk = uniqueRows.slice(i, i + 50);
     try {

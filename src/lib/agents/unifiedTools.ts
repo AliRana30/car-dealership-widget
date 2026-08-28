@@ -51,11 +51,29 @@ export interface StructuredEntity {
   description: string;
   shortDescription?: string;
   price?: string | number;
+  msrp?: string | number;
   originalPrice?: string | number;
   original_price?: string | number;
   currency?: string;
   rating?: number | string;
   availability?: string;
+  condition?: 'new' | 'used' | 'cpo' | 'certified';
+  vin?: string;
+  stockNumber?: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  trim?: string;
+  bodyStyle?: string;
+  mileage?: number | string;
+  drivetrain?: string;
+  transmission?: string;
+  engine?: string;
+  fuel?: string;
+  exteriorColor?: string;
+  interiorColor?: string;
+  features?: string[];
+  vdpUrl?: string;
   imageUrls: string[];
   images: string[];
   image_urls?: string[];
@@ -253,6 +271,26 @@ export function formatResult(r: any): StructuredEntity {
     matchType: r.matchType,
     metadata,
   };
+
+  const metaObj = r.metadata || {};
+  if (r.condition || metaObj.condition) item.condition = r.condition || metaObj.condition;
+  if (r.vin || metaObj.vin) item.vin = r.vin || metaObj.vin;
+  if (r.stockNumber || metaObj.stockNumber || metaObj.stock_number || metaObj.sku) item.stockNumber = r.stockNumber || metaObj.stockNumber || metaObj.stock_number || metaObj.sku;
+  if (r.year || metaObj.year) item.year = r.year || metaObj.year;
+  if (r.make || metaObj.make) item.make = r.make || metaObj.make;
+  if (r.model || metaObj.model) item.model = r.model || metaObj.model;
+  if (r.trim || metaObj.trim) item.trim = r.trim || metaObj.trim;
+  if (r.bodyStyle || metaObj.bodyStyle || metaObj.body_style) item.bodyStyle = r.bodyStyle || metaObj.bodyStyle || metaObj.body_style;
+  if (r.mileage !== undefined || metaObj.mileage !== undefined) item.mileage = r.mileage ?? metaObj.mileage;
+  if (r.drivetrain || metaObj.drivetrain) item.drivetrain = r.drivetrain || metaObj.drivetrain;
+  if (r.transmission || metaObj.transmission) item.transmission = r.transmission || metaObj.transmission;
+  if (r.engine || metaObj.engine) item.engine = r.engine || metaObj.engine;
+  if (r.fuel || metaObj.fuel || metaObj.fuelType) item.fuel = r.fuel || metaObj.fuel || metaObj.fuelType;
+  if (r.exteriorColor || metaObj.exteriorColor || metaObj.color) item.exteriorColor = r.exteriorColor || metaObj.exteriorColor || metaObj.color;
+  if (r.interiorColor || metaObj.interiorColor) item.interiorColor = r.interiorColor || metaObj.interiorColor;
+  if (r.features || metaObj.features) item.features = Array.isArray(r.features) ? r.features : (Array.isArray(metaObj.features) ? metaObj.features : undefined);
+  if (r.vdpUrl || metaObj.vdpUrl || metaObj.vdp_url) item.vdpUrl = r.vdpUrl || metaObj.vdpUrl || metaObj.vdp_url || sourceUrl;
+  if (r.msrp !== undefined || metaObj.msrp !== undefined) item.msrp = r.msrp ?? metaObj.msrp;
 
   if (price !== undefined) item.price = price;
   if (originalPrice !== undefined) {

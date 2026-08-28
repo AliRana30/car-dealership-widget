@@ -49,10 +49,28 @@ export interface RerankedResult {
   imageUrls: string[];
   images: string[];
   price?: string | number;
+  msrp?: string | number;
   currency?: string;
+  availability?: string;
+  condition?: 'new' | 'used' | 'cpo' | 'certified';
+  vin?: string;
+  stockNumber?: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  trim?: string;
+  bodyStyle?: string;
+  mileage?: number | string;
+  drivetrain?: string;
+  transmission?: string;
+  engine?: string;
+  fuel?: string;
+  exteriorColor?: string;
+  interiorColor?: string;
+  features?: string[];
+  vdpUrl?: string;
   rating?: number;
   reviews?: number;
-  availability?: string;
   category?: string;
   level?: string;
   attributes?: Record<string, any>;
@@ -637,7 +655,71 @@ export function rerankCandidates(
       }
     }
 
-    // E. Attributes Matching
+    // E. Vehicle Condition Matching (NEW vs USED vs CPO)
+    if (structuredQuery.condition) {
+      const rowCond = String(meta.condition || '').toLowerCase();
+      const isNew = rowCond === 'new' || (row.source_url && row.source_url.includes('/new-vehicles'));
+      const isUsed = rowCond === 'used' || (row.source_url && row.source_url.includes('/used-vehicles'));
+      const isCpo = rowCond === 'cpo' || rowCond === 'certified';
+
+      if (structuredQuery.condition === 'new') {
+        if (isNew) {
+          score += 90;
+          matchReasons.push('Condition match: NEW vehicle (+90)');
+        } else {
+          score -= 400;
+          matchReasons.push('Condition mismatch: expected NEW, vehicle is USED (-400)');
+        }
+      } else if (structuredQuery.condition === 'used') {
+        if (isUsed || isCpo) {
+          score += 90;
+          matchReasons.push('Condition match: USED vehicle (+90)');
+        } else if (isNew) {
+          score -= 400;
+          matchReasons.push('Condition mismatch: expected USED, vehicle is NEW (-400)');
+        }
+      } else if (structuredQuery.condition === 'cpo') {
+        if (isCpo) {
+          score += 100;
+          matchReasons.push('Condition match: Certified Pre-Owned (+100)');
+        }
+      }
+    }
+
+    // F. Mileage Bounds (for USED vehicles)
+    if (structuredQuery.maxMileage !== undefined) {
+      const itemMileage = parsePriceNumber(meta.mileage ?? meta.odometer);
+      if (itemMileage !== null && itemMileage <= structuredQuery.maxMileage) {
+        score += 80;
+        matchReasons.push(`Mileage ${itemMileage} mi <= maxMileage ${structuredQuery.maxMileage} mi (+80)`);
+      } else if (itemMileage !== null && itemMileage > structuredQuery.maxMileage) {
+        score -= 500;
+        matchReasons.push(`Mileage ${itemMileage} mi exceeds maxMileage ${structuredQuery.maxMileage} mi (-500)`);
+      }
+    }
+
+    // G. Year Bounds
+    const itemYear = parsePriceNumber(meta.year ?? meta.modelYear);
+    if (structuredQuery.minYear !== undefined && itemYear !== null) {
+      if (itemYear >= structuredQuery.minYear) {
+        score += 70;
+        matchReasons.push(`Year ${itemYear} >= minYear ${structuredQuery.minYear} (+70)`);
+      } else {
+        score -= 400;
+        matchReasons.push(`Year ${itemYear} < minYear ${structuredQuery.minYear} (-400)`);
+      }
+    }
+    if (structuredQuery.maxYear !== undefined && itemYear !== null) {
+      if (itemYear <= structuredQuery.maxYear) {
+        score += 70;
+        matchReasons.push(`Year ${itemYear} <= maxYear ${structuredQuery.maxYear} (+70)`);
+      } else {
+        score -= 400;
+        matchReasons.push(`Year ${itemYear} > maxYear ${structuredQuery.maxYear} (-400)`);
+      }
+    }
+
+    // H. Attributes Matching
     if (Object.keys(structuredQuery.attributes).length > 0) {
       for (const [k, v] of Object.entries(structuredQuery.attributes)) {
         const valLower = String(v).toLowerCase();
@@ -856,10 +938,28 @@ export function rerankCandidates(
       imageUrls: collectedImages,
       images: collectedImages,
       price: priceVal,
+      msrp: meta.msrp ?? meta.originalPrice ?? meta.original_price,
       currency: meta.currency,
       rating: ratingVal,
       reviews: reviewsVal,
       availability: meta.availability,
+      condition: meta.condition,
+      vin: meta.vin,
+      stockNumber: meta.stockNumber || meta.stock_number || meta.sku,
+      year: meta.year,
+      make: meta.make,
+      model: meta.model,
+      trim: meta.trim,
+      bodyStyle: meta.bodyStyle || meta.body_style,
+      mileage: meta.mileage,
+      drivetrain: meta.drivetrain,
+      transmission: meta.transmission,
+      engine: meta.engine,
+      fuel: meta.fuel || meta.fuelType,
+      exteriorColor: meta.exteriorColor || meta.color,
+      interiorColor: meta.interiorColor,
+      features: Array.isArray(meta.features) ? meta.features : Array.isArray(meta.options) ? meta.options : undefined,
+      vdpUrl: meta.vdpUrl || meta.vdp_url || row.source_url,
       category: meta.category,
       level: meta.level,
       attributes: meta.attributes || meta.specs,

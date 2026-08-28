@@ -700,10 +700,10 @@ export default function HomePage() {
         <section style={{ maxWidth: '960px', margin: '0 auto', padding: '48px 32px 96px' }}>
           <div style={{ textAlign: 'center', padding: '64px 36px', borderRadius: '28px', background: '#0E1B2A', color: '#FFFDF8', boxShadow: '0 24px 64px -12px rgba(14,27,42,0.35)' }}>
             <h2 style={{ fontSize: 'clamp(28px, 3.6vw, 42px)', fontWeight: 800, letterSpacing: '-0.02em', margin: '0 0 16px' }}>
-              Be one of the first practices on Widgetized
+              Be one of the first dealerships on AutoMate
             </h2>
             <p style={{ fontSize: '17px', color: 'rgba(255,255,255,0.72)', maxWidth: '520px', margin: '0 auto 36px' }}>
-              Start answering every call and booking every appointment automatically.
+              Start answering every caller and retrieving every vehicle automatically.
             </p>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
               <Link
@@ -743,14 +743,11 @@ export default function HomePage() {
         <footer style={{ borderTop: '1px solid rgba(14,27,42,0.1)', background: 'rgba(233,242,251,0.6)', padding: '48px 32px 36px' }}>
           <div style={{ maxWidth: '1240px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '32px', marginBottom: '32px' }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#2F8FE0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                  <SvgIcon paths={PATHS.widget} size={16} color="#FFFDF8" />
-                </div>
-                <span style={{ fontSize: '18px', fontWeight: 700, color: '#0E1B2A' }}>Widgetized</span>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                <img src="/automate.png" alt="AutoMate Logo" style={{ height: '36px', width: 'auto', maxHeight: '40px', objectFit: 'contain' }} />
               </div>
               <p style={{ fontSize: '13.5px', color: 'rgba(14,27,42,0.7)', lineHeight: 1.6, maxWidth: '280px', margin: 0 }}>
-                The complete autonomous AI voice, text, and knowledge front-desk platform for modern businesses.
+                The complete autonomous AI voice, text, and inventory intelligence platform for automotive dealerships.
               </p>
             </div>
 
@@ -779,10 +776,10 @@ export default function HomePage() {
 
           <div style={{ maxWidth: '1240px', margin: '0 auto', paddingTop: '24px', borderTop: '1px solid rgba(14,27,42,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
             <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
-              © 2026 Widgetized. All rights reserved.
+              © 2026 AutoMate. All rights reserved.
             </span>
             <span style={{ fontSize: '13px', color: 'rgba(14,27,42,0.6)' }}>
-              Autonomous AI Front Desk Platform
+              Autonomous AI Dealership Intelligence Platform
             </span>
           </div>
         </footer>

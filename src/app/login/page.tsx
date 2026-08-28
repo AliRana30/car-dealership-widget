@@ -115,10 +115,10 @@ export default function LoginPage() {
         {/* Brand Header */}
         <div style={styles.header}>
           <div style={styles.logoWrapper}>
-            <img src="/logo.png" alt="MyFrontDesk Logo" style={styles.logo} />
+            <img src="/automate.png" alt="AutoMate Logo" style={styles.logo} />
           </div>
           <h1 style={styles.title} className="title">Welcome Back</h1>
-          <p style={styles.subtitle}>Sign in to manage your AI Voice Desk Agent</p>
+          <p style={styles.subtitle}>Sign in to manage your AutoMate Dealership Agent</p>
         </div>
 
         <form onSubmit={handleSubmit} style={styles.form}>
@@ -207,7 +207,7 @@ export default function LoginPage() {
 
         {/* Redirect Footer */}
         <div style={styles.footer}>
-          <span>New to MyFrontDesk? </span>
+          <span>New to AutoMate? </span>
           <Link href="/signup" style={styles.link}>Create an account</Link>
         </div>
       </div>
@@ -277,9 +277,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '0.5rem',
   },
   logo: {
-    width: '32px',
-    height: '32px',
+    height: '42px',
+    width: 'auto',
+    maxWidth: '180px',
     objectFit: 'contain',
+    borderRadius: '6px',
   },
   brandName: {
     fontSize: '1.25rem',

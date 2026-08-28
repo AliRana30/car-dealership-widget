@@ -21,11 +21,11 @@ export const defaultVoiceWidgetConfig: VoiceWidgetConfig = {
 
 
   branding: {
-    companyName: 'MyFrontDesk',
-    assistantName: 'AI Front Desk Agent',
+    companyName: 'AutoMate',
+    assistantName: 'AutoMate Dealership Assistant',
     title: 'Talk to our AI Agent',
-    subtitle: 'Experience the virtual front desk receptionist live in your browser.',
-    welcomeMessage: 'Hi! I\'m your AI front desk receptionist. How can I help you today?',
+    subtitle: 'Experience the virtual dealership assistant live in your browser.',
+    welcomeMessage: 'Hi! I\'m your AutoMate dealership assistant. How can I help you find a vehicle today?',
     startLabel: 'Start Conversation',
     connectingLabel: 'Connecting...',
     connectedLabel: "You're connected",

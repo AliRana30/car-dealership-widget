@@ -115,7 +115,7 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
   }
 
   const searchId = idOrWidgetId.trim().toLowerCase();
-  const normalizedSearchId = searchId === 'myfrontdesk' ? 'front-desk' : searchId;
+  const normalizedSearchId = searchId === 'myfrontdesk' || searchId === 'automate' ? 'front-desk' : searchId;
   const cacheKey = `${normalizedSearchId}:${userId || 'public'}`;
 
   // 1. Check in-memory LRU cache (<0.1ms)
@@ -135,8 +135,8 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
       let query = supabase.from('widgets').select('*');
       if (isUuid) {
         query = query.or(`id.eq.${normalizedSearchId},website_id.eq.${normalizedSearchId}`);
-      } else if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk') {
-        query = query.or('widget_id.eq.front-desk,widget_id.eq.default').order('updated_at', { ascending: false });
+      } else if (normalizedSearchId === 'default' || normalizedSearchId === 'front-desk' || normalizedSearchId === 'automate') {
+        query = query.or('widget_id.eq.front-desk,widget_id.eq.default,widget_id.eq.automate').order('updated_at', { ascending: false });
       } else {
         query = query.eq('widget_id', normalizedSearchId);
       }
@@ -146,6 +146,10 @@ export async function getWidget(idOrWidgetId: string, userId?: string): Promise<
       }
 
       const { data: widgetRows, error } = await query.limit(1);
+
+      if (error) {
+        console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] Widget query error for '${idOrWidgetId}':`, error);
+      }
 
       if (error || !widgetRows || widgetRows.length === 0) {
         console.warn(`[widgetsDb:SCOPE_ENFORCEMENT] Widget not found for '${idOrWidgetId}'. Failing closed.`);
@@ -779,8 +783,26 @@ export interface WebsiteDataRecord {
   images?: string[];
   imageUrls?: string[];
   price?: string | number;
+  msrp?: string | number;
   currency?: string;
   availability?: string;
+  condition?: 'new' | 'used' | 'cpo' | 'certified';
+  vin?: string;
+  stockNumber?: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  trim?: string;
+  bodyStyle?: string;
+  mileage?: number | string;
+  drivetrain?: string;
+  transmission?: string;
+  engine?: string;
+  fuel?: string;
+  exteriorColor?: string;
+  interiorColor?: string;
+  features?: string[];
+  vdpUrl?: string;
   rating?: number | string;
   reviews?: number | string;
   attributes?: Record<string, string | number | boolean>;
@@ -909,8 +931,26 @@ export async function searchWebsiteDataVector(
         images: collectedImages,
         imageUrls: collectedImages,
         price: priceVal,
+        msrp: meta.msrp ?? meta.originalPrice ?? meta.original_price,
         currency: meta.currency,
         availability: meta.availability,
+        condition: meta.condition,
+        vin: meta.vin,
+        stockNumber: meta.stockNumber || meta.stock_number || meta.sku,
+        year: meta.year,
+        make: meta.make,
+        model: meta.model,
+        trim: meta.trim,
+        bodyStyle: meta.bodyStyle || meta.body_style,
+        mileage: meta.mileage,
+        drivetrain: meta.drivetrain,
+        transmission: meta.transmission,
+        engine: meta.engine,
+        fuel: meta.fuel || meta.fuelType,
+        exteriorColor: meta.exteriorColor || meta.color,
+        interiorColor: meta.interiorColor,
+        features: Array.isArray(meta.features) ? meta.features : Array.isArray(meta.options) ? meta.options : undefined,
+        vdpUrl: meta.vdpUrl || meta.vdp_url || row.source_url,
         rating: ratingVal,
         reviews: reviewsVal,
         attributes: meta.attributes || meta.specs,

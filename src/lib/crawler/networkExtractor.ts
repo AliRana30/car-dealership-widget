@@ -197,11 +197,30 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
 
   const vin = item.vin || item.VIN;
   const sku = item.sku || item.SKU;
+  const stockNumber = item.stockNumber || item.stock_number || item.stockNo || sku;
   const mileage = item.mileage || item.miles || item.odometer;
   const year = item.year;
   const make = item.make || item.brand;
   const model = item.model;
   const trim = item.trim;
+  const drivetrain = item.drivetrain || item.driveType || item.driveTrain;
+  const bodyStyle = item.bodyStyle || item.body_style || item.bodyType;
+  const engine = item.engine || item.motor;
+  const transmission = item.transmission;
+  const fuel = item.fuel || item.fuelType;
+  const exteriorColor = item.exteriorColor || item.color;
+  const interiorColor = item.interiorColor;
+  const msrp = item.msrp || item.originalPrice;
+  const features = Array.isArray(item.features) ? item.features : Array.isArray(item.options) ? item.options : undefined;
+
+  const itemUrl = item.url || item.link || item.detailUrl || item.detail_url || item.href;
+  const conditionRaw = String(item.condition || '').toLowerCase();
+  const condition = conditionRaw.includes('new') || pageUrl.includes('/new-vehicles') || (itemUrl && String(itemUrl).includes('/new-vehicles'))
+    ? 'new'
+    : conditionRaw.includes('cpo') || conditionRaw.includes('certified')
+    ? 'cpo'
+    : 'used';
+
   const category = item.category || item.department || item.type || item.tags || (Array.isArray(item.subcategories) ? item.subcategories.join(', ') : item.subcategories);
   const skills = Array.isArray(item.skills) ? item.skills.join(', ') : item.skills;
   const level = item.level || item.difficulty;
@@ -210,7 +229,6 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
   const username = item.username || item.handle;
   const location = item.location || item.address || item.city || item.country;
   const availability = item.availability || (item.inStock !== undefined ? (item.inStock ? 'In Stock' : 'Out of Stock') : undefined);
-  const itemUrl = item.url || item.link || item.detailUrl || item.detail_url || item.href;
 
   let resolvedUrl = pageUrl;
   try {
@@ -241,16 +259,27 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
   // Format rich multi-line content for agent retrieval and grounded prompts
   const contentParts: string[] = [title];
   if (username) contentParts.push(`Username / Handle: @${username}`);
+  if (condition) contentParts.push(`Condition: ${condition.toUpperCase()}`);
   if (description) contentParts.push(description);
   if (priceStr) contentParts.push(`Price / Rate: ${priceStr}`);
+  if (msrp) contentParts.push(`MSRP: $${Number(msrp).toLocaleString()}`);
   if (level) contentParts.push(`Level: ${level}`);
   if (category) contentParts.push(`Category: ${category}`);
   if (skills) contentParts.push(`Skills & Expertise: ${skills}`);
   if (location) contentParts.push(`Location: ${typeof location === 'object' ? JSON.stringify(location) : location}`);
   if (vin) contentParts.push(`VIN: ${vin}`);
-  if (sku) contentParts.push(`SKU: ${sku}`);
-  if (mileage) contentParts.push(`Mileage: ${typeof mileage === 'number' ? mileage.toLocaleString() : mileage} miles`);
+  if (stockNumber) contentParts.push(`Stock #: ${stockNumber}`);
+  if (mileage !== undefined && mileage !== null) {
+    contentParts.push(`Mileage: ${typeof mileage === 'number' ? mileage.toLocaleString() : mileage} miles`);
+  }
   if (year || make || model) contentParts.push(`Vehicle Specs: ${[year, make, model, trim].filter(Boolean).join(' ')}`);
+  if (drivetrain) contentParts.push(`Drivetrain: ${drivetrain}`);
+  if (transmission) contentParts.push(`Transmission: ${transmission}`);
+  if (engine) contentParts.push(`Engine: ${engine}`);
+  if (fuel) contentParts.push(`Fuel Type: ${fuel}`);
+  if (exteriorColor) contentParts.push(`Exterior Color: ${exteriorColor}`);
+  if (interiorColor) contentParts.push(`Interior Color: ${interiorColor}`);
+  if (features && features.length > 0) contentParts.push(`Features: ${features.join(', ')}`);
   if (rating) contentParts.push(`Rating: ${rating}★${reviews ? ` (${reviews} reviews)` : ''}`);
   if (Array.isArray(item.recentReviews) && item.recentReviews.length > 0) {
     const sampleReviews = item.recentReviews.slice(0, 3).map((r: any) => `"${r.desc || r.comment || r.text || ''}" - ${r.star || r.rating || 5}★`).filter(Boolean).join('; ');
@@ -295,7 +324,28 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
     metadata: {
       discoveryMethod: 'api',
       apiEndpoint,
+      condition,
+      vin,
+      stockNumber,
+      stock_number: stockNumber,
+      year,
+      make,
+      model,
+      trim,
+      drivetrain,
+      bodyStyle,
+      body_style: bodyStyle,
+      transmission,
+      engine,
+      fuel,
+      fuelType: fuel,
+      color: exteriorColor,
+      exteriorColor,
+      interiorColor,
+      features,
+      vdpUrl: resolvedUrl,
       ...(priceStr ? { price: priceStr } : {}),
+      ...(msrp ? { msrp } : {}),
       ...(description ? { description } : {}),
       ...(images.length > 0 ? { images, image: images[0] } : {}),
       ...(level ? { level } : {}),
@@ -303,9 +353,8 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
       ...(skills ? { skills: String(skills) } : {}),
       ...(username ? { username: String(username) } : {}),
       ...(location ? { location: String(location) } : {}),
-      ...(vin ? { vin } : {}),
       ...(sku ? { sku } : {}),
-      ...(mileage ? { mileage } : {}),
+      ...(mileage !== undefined && mileage !== null ? { mileage } : {}),
       ...(rating ? { rating: Number(rating) } : {}),
       ...(reviews ? { reviews: Number(reviews) } : {}),
       ...(availability ? { availability } : {}),

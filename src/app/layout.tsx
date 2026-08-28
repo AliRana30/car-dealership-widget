@@ -12,12 +12,12 @@ const figtree = Figtree({
 });
 
 export const metadata: Metadata = {
-  title: "Widgetized - Autonomous AI Voice & Text Front Desk",
-  description: "An intelligent voice & text agent for your business — answers calls, navigates pages, and books appointments 24/7.",
+  title: "AutoMate - Autonomous AI Dealership Voice & Inventory Intelligence",
+  description: "An intelligent AI voice & text agent for automotive dealerships — retrieves new & used inventory, answers vehicle inquiries, navigates VDPs, and guides shoppers 24/7.",
   icons: {
-    icon: "/logo.png",
-    shortcut: "/logo.png",
-    apple: "/logo.png",
+    icon: "/automate.png",
+    shortcut: "/automate.png",
+    apple: "/automate.png",
   },
 };
 

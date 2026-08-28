@@ -233,12 +233,16 @@ export async function fetchAllSitemapUrls(origin: string, baseUrl: string, maxDe
     `${origin}/sitemap.xml`,
     `${origin}/sitemap_index.xml`,
     `${origin}/sitemap-index.xml`,
+    `${origin}/vehicles_sitemap.xml`,
+    `${origin}/sitemap-inventory.xml`,
+    `${origin}/sitemap_inventory.xml`,
+    `${origin}/sitemap-vehicles.xml`,
+    `${origin}/inventory-sitemap.xml`,
     `${origin}/sitemaps/sitemap.xml`,
   ];
 
   for (const candidate of candidates) {
     await fetchSitemap(candidate, 0);
-    if (allUrls.size > 0) break;
   }
 
   return Array.from(allUrls);
@@ -492,49 +496,96 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
     if (!ld || typeof ld !== 'object') continue;
     const type = (ld['@type'] || ld['@Type'] || '').toString().toLowerCase();
 
-    // 1. ItemList / OfferCatalog / CollectionPage unrolling
-    if (type.includes('itemlist') || type.includes('offercatalog') || type.includes('collectionpage')) {
-      const items = ld.itemListElement || ld.itemList || ld.offers || [];
+    // 1. ItemList / OfferCatalog / CollectionPage / AutoDealer unrolling
+    if (
+      type.includes('itemlist') ||
+      type.includes('offercatalog') ||
+      type.includes('collectionpage') ||
+      type.includes('autodealer') ||
+      type.includes('automotivedealer') ||
+      type.includes('carrepair')
+    ) {
+      const items = ld.itemListElement || ld.itemList || ld.offers || ld.hasOfferCatalog?.itemListElement || ld.makesOffer || ld.itemOffered || [];
       if (Array.isArray(items) && items.length > 0) {
         const unrolled = items.map((it: any) => it.item || it).filter(Boolean);
         entities.push(...mapJsonLdToEntities(unrolled, pageUrl));
       }
-      continue;
+      if (type.includes('autodealer') || type.includes('automotivedealer')) {
+        // Fall through to parse dealership contact info if present
+      } else {
+        continue;
+      }
     }
 
     // 2. Product / Ecommerce / Vehicles
     if (type.includes('product')) {
-      const offer = ld.offers || ld.offer || {};
-      const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
-      const entity: CrawledEntity = {
-        url: pageUrl,
-        title: ld.name || ld.headline || '',
-        content: ld.description || ld.name || '',
-        dataType: 'product',
-        imageUrls: rawImgs,
-        metadata: {
-          discoveryMethod: 'json-ld',
-          description: ld.description,
-          images: rawImgs,
-          image: rawImgs[0] || undefined,
-          price: offer.price,
-          currency: offer.priceCurrency,
-          availability: simplifyAvailability(offer.availability),
-          rating: ld.aggregateRating?.ratingValue ? parseFloat(ld.aggregateRating.ratingValue) : undefined,
-          reviews: ld.aggregateRating?.reviewCount ? parseInt(ld.aggregateRating.reviewCount) : undefined,
-          brand: ld.brand?.name || ld.brand,
-          sku: ld.sku,
-          category: ld.category,
-        },
-      };
-      if (entity.title || entity.content) entities.push(entity);
+      // Check if product is actually a vehicle (has VIN, modelDate, engine, or mileage)
+      const isVehicleProduct =
+        Boolean(ld.vehicleIdentificationNumber || ld.vin || ld.modelDate || ld.vehicleModelDate || ld.vehicleEngine || ld.mileageFromOdometer || ld.bodyType);
+
+      if (isVehicleProduct) {
+        // Route to vehicle parsing below
+      } else {
+        const offer = ld.offers || ld.offer || {};
+        const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
+        const entity: CrawledEntity = {
+          url: pageUrl,
+          title: ld.name || ld.headline || '',
+          content: ld.description || ld.name || '',
+          dataType: 'product',
+          imageUrls: rawImgs,
+          metadata: {
+            discoveryMethod: 'json-ld',
+            description: ld.description,
+            images: rawImgs,
+            image: rawImgs[0] || undefined,
+            price: offer.price,
+            currency: offer.priceCurrency,
+            availability: simplifyAvailability(offer.availability),
+            rating: ld.aggregateRating?.ratingValue ? parseFloat(ld.aggregateRating.ratingValue) : undefined,
+            reviews: ld.aggregateRating?.reviewCount ? parseInt(ld.aggregateRating.reviewCount) : undefined,
+            brand: ld.brand?.name || ld.brand,
+            sku: ld.sku,
+            category: ld.category,
+          },
+        };
+        if (entity.title || entity.content) entities.push(entity);
+        continue;
+      }
     }
 
-    // 3. Vehicle / Automotive
-    else if (type.includes('vehicle') || type.includes('car') || type.includes('motorcycle') || type.includes('truck') || type.includes('bus')) {
+    // 3. Vehicle / Automotive / Car / Motorcycle / Truck
+    if (
+      type.includes('vehicle') ||
+      type.includes('car') ||
+      type.includes('motorcycle') ||
+      type.includes('truck') ||
+      type.includes('bus') ||
+      type.includes('product')
+    ) {
       const offer = ld.offers || ld.offer || {};
       const rawImgs = Array.isArray(ld.image) ? ld.image : ld.image ? [ld.image] : [];
       const title = ld.name || `${ld.vehicleModelDate || ld.modelDate || ''} ${ld.brand?.name || ld.brand || ''} ${ld.model || ''}`.trim() || 'Vehicle';
+      
+      const conditionStr = String(ld.itemCondition || offer.itemCondition || '').toLowerCase();
+      const condition = conditionStr.includes('new') || pageUrl.includes('/new-vehicles') || pageUrl.includes('/new-inventory')
+        ? 'new'
+        : conditionStr.includes('cpo') || conditionStr.includes('certified')
+        ? 'cpo'
+        : 'used';
+
+      const drivetrain = ld.driveWheelConfiguration || ld.driveType || ld.drivetrain;
+      const bodyStyle = ld.bodyType || ld.vehicleConfiguration;
+      const msrp = ld.msrp || offer.priceSpecification?.price || offer.highPrice;
+      const engine = ld.vehicleEngine?.name || ld.engine?.name || ld.engine;
+      const stockNumber = ld.sku || ld.stockNumber || ld.stock_number;
+      const features: string[] = [];
+      if (Array.isArray(ld.amenityFeature)) {
+        features.push(...ld.amenityFeature.map((f: any) => String(f.name || f)).filter(Boolean));
+      } else if (Array.isArray(ld.features)) {
+        features.push(...ld.features.map(String).filter(Boolean));
+      }
+
       const entity: CrawledEntity = {
         url: pageUrl,
         title,
@@ -546,17 +597,30 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
           description: ld.description,
           images: rawImgs,
           image: rawImgs[0] || undefined,
+          condition,
           vin: ld.vehicleIdentificationNumber || ld.vin,
+          stockNumber,
+          stock_number: stockNumber,
           mileage: ld.mileageFromOdometer?.value || ld.mileageFromOdometer,
           year: ld.vehicleModelDate || ld.modelDate,
           make: ld.brand?.name || ld.brand,
           model: ld.model,
           trim: ld.vehicleConfiguration || ld.trim,
+          bodyStyle,
+          body_style: bodyStyle,
+          drivetrain,
           color: ld.color,
+          exteriorColor: ld.color || ld.exteriorColor,
+          interiorColor: ld.interiorColor,
+          engine,
           fuelType: ld.fuelType,
+          fuel: ld.fuelType,
           transmission: ld.vehicleTransmission,
           price: offer.price,
-          currency: offer.priceCurrency || 'USD',
+          msrp,
+          features: features.length > 0 ? features : undefined,
+          vdpUrl: pageUrl,
+          currency: offer.priceCurrency || (pageUrl.includes('.ca') ? 'CAD' : 'USD'),
           availability: simplifyAvailability(offer.availability),
         },
       };
@@ -820,8 +884,16 @@ export function extractEmbeddedAppState(html: string, pageUrl: string): CrawledE
     } catch {}
   }
 
-  // 3. Redux / Apollo / Preloaded state objects
+  // 3. Automotive Dealership Specific State Objects & Redux / Apollo Preloaded state
   const statePatterns = [
+    /window\.vehicleData\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
+    /window\.inventoryData\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
+    /window\.digitalData\s*=\s*(\{[\s\S]*?\})\s*;/i,
+    /window\.dealerInspireInventory\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
+    /window\.__DEALERON_INVENTORY__\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
+    /window\.vehicles\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
+    /window\.inventory\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*;/i,
+    /window\.DDC\s*=\s*window\.DDC\s*\|\|\s*\{\};\s*window\.DDC\.dataLayer\s*=\s*(\{[\s\S]*?\})\s*;/i,
     /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/i,
     /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/i,
     /window\.__APOLLO_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/i,
@@ -833,7 +905,7 @@ export function extractEmbeddedAppState(html: string, pageUrl: string): CrawledE
     if (m?.[1]) {
       try {
         const stateObj = JSON.parse(m[1]);
-        const arrays = findDomainArrays(stateObj);
+        const arrays = Array.isArray(stateObj) ? [stateObj] : findDomainArrays(stateObj);
         for (const arr of arrays) {
           for (const item of arr) {
             if (isInventoryShapedObject(item)) {
@@ -850,14 +922,38 @@ export function extractEmbeddedAppState(html: string, pageUrl: string): CrawledE
     }
   }
 
+  // 4. Generic <script type="application/json"> blocks
+  const jsonScriptRegex = /<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let jsMatch;
+  while ((jsMatch = jsonScriptRegex.exec(html)) !== null) {
+    try {
+      const parsed = JSON.parse(jsMatch[1]);
+      const arrays = Array.isArray(parsed) ? [parsed] : findDomainArrays(parsed);
+      for (const arr of arrays) {
+        for (const item of arr) {
+          if (isInventoryShapedObject(item)) {
+            const e = mapInventoryObjectToEntity(item, pageUrl, 'application/json');
+            if (e && e.title && !seenTitles.has(e.title.toLowerCase())) {
+              seenTitles.add(e.title.toLowerCase());
+              e.metadata.discoveryMethod = 'embedded_state';
+              entities.push(e);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
   return entities;
 }
 
 function findDomainArrays(obj: any, depth = 0): any[][] {
-  if (depth > 4 || typeof obj !== 'object' || obj === null) return [];
+  if (depth > 5 || typeof obj !== 'object' || obj === null) return [];
   const results: any[][] = [];
   const domainKeys = [
-    'products', 'items', 'listings', 'vehicles', 'services', 'gigs',
+    'products', 'items', 'listings', 'vehicles', 'vehiclesList', 'vehicleList',
+    'inventory', 'allVehicles', 'usedVehicles', 'newVehicles', 'vdp', 'cars',
+    'trucks', 'searchResults', 'inventoryItems', 'services', 'gigs',
     'courses', 'allCourses', 'freelancers', 'doctors', 'properties',
     'results', 'records', 'data', 'hits', 'nodes'
   ];
@@ -880,7 +976,7 @@ function findDomainArrays(obj: any, depth = 0): any[][] {
 
 /**
  * Extracts structured cards from rendered DOM HTML:
- * Handles semantic articles, product cards, course cards, freelancer cards, property cards.
+ * Handles semantic articles, product cards, automotive vehicle cards, course cards, freelancer cards, property cards.
  * Enforces strict anti-hallucination validation: requires real title + (price OR image OR description OR valid link).
  */
 export function extractDomSemanticCards(html: string, pageUrl: string): CrawledEntity[] {
@@ -890,26 +986,26 @@ export function extractDomSemanticCards(html: string, pageUrl: string): CrawledE
   try { origin = new URL(pageUrl).origin; } catch {}
 
   // Match article, li, or div card containers
-  const cardRegex = /<(?:article|div|li)[^>]*(?:class|id)=["'][^"']*(?:card|item|gig|course|product|listing|service|box|profile)[^"']*["'][^>]*>([\s\S]*?)<\/(?:article|div|li)>/gi;
+  const cardRegex = /<(?:article|div|li)[^>]*(?:class|id|data-type|data-vehicle)=["'][^"']*(?:card|item|gig|course|product|listing|service|box|profile|vehicle|inventory|srp-vehicle|vdp)[^"']*["'][^>]*>([\s\S]*?)<\/(?:article|div|li)>/gi;
   let m;
 
-  while ((m = cardRegex.exec(html)) !== null && entities.length < 25) {
+  while ((m = cardRegex.exec(html)) !== null && entities.length < 50) {
     const cardHtml = m[1];
-    if (cardHtml.length < 50 || cardHtml.length > 5000) continue;
+    if (cardHtml.length < 50 || cardHtml.length > 8000) continue;
 
     // 1. Extract title from heading or title class
-    const titleMatch = cardHtml.match(/<(?:h1|h2|h3|h4|h5|span|div|a)[^>]*(?:class=["'][^"']*(?:title|name|heading)[^"']*["'])[^>]*>([^<]+)<\/(?:h1|h2|h3|h4|h5|span|div|a)>/i) ||
+    const titleMatch = cardHtml.match(/<(?:h1|h2|h3|h4|h5|span|div|a)[^>]*(?:class=["'][^"']*(?:title|name|heading|vehicle-title)[^"']*["'])[^>]*>([^<]+)<\/(?:h1|h2|h3|h4|h5|span|div|a)>/i) ||
       cardHtml.match(/<h[2-4][^>]*>([^<]+)<\/h[2-4]>/i);
     const title = decodeHtmlEntities(titleMatch?.[1]?.trim() || '');
-    if (!title || title.length < 3 || title.length > 100) continue;
+    if (!title || title.length < 3 || title.length > 120) continue;
 
     const lowerTitle = title.toLowerCase();
     const uiNoise = ['button', 'dialog', 'modal', 'card', 'loading', 'default', 'root', 'page', 'home', 'courses', 'about', 'faq', 'contact', 'services', 'freelancers'];
     if (uiNoise.includes(lowerTitle) || seenTitles.has(lowerTitle)) continue;
 
     // 2. Extract price
-    const priceMatch = cardHtml.match(/(?:[$€£₹]\s*\d+(?:[\d,.]*\d+)?|\b\d+(?:[\d,.]*\d+)?\s*(?:USD|EUR|GBP|PKR|INR)\b)/i) ||
-      cardHtml.match(/class=["'][^"']*(?:price|cost|rate|fee|amount)[^"']*["'][^>]*>([^<]+)</i);
+    const priceMatch = cardHtml.match(/(?:[$€£₹]\s*\d+(?:[\d,.]*\d+)?|\b\d+(?:[\d,.]*\d+)?\s*(?:USD|EUR|GBP|CAD)\b)/i) ||
+      cardHtml.match(/class=["'][^"']*(?:price|cost|rate|fee|amount|selling-price|retail-price|msrp)[^"']*["'][^>]*>([^<]+)</i);
     const price = priceMatch ? priceMatch[0].replace(/class=["'][^"']*["'][^>]*>/, '').trim() : undefined;
 
     // 3. Extract image (src, data-src, srcset)
@@ -934,12 +1030,40 @@ export function extractDomSemanticCards(html: string, pageUrl: string): CrawledE
       } catch {}
     }
 
-    // 5. Extract description
+    // 5. Extract description & specifications
     const descMatch = cardHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
     const description = descMatch ? decodeHtmlEntities(stripTags(descMatch[1]).trim()) : undefined;
 
-    // Anti-hallucination: require at least price OR image OR description OR different detail URL
-    if (!price && images.length === 0 && !description && itemUrl === pageUrl) {
+    // 6. Automotive Specific Extractions (VIN, Stock#, Mileage, Drivetrain, Fuel, Condition)
+    const vinMatch = cardHtml.match(/\b(?:data-vin=["']|VIN:?\s*)([A-HJ-NPR-Z0-9]{17})\b/i);
+    const vin = vinMatch ? vinMatch[1].toUpperCase() : undefined;
+
+    const stockMatch = cardHtml.match(/\b(?:data-stock=["']|Stock\s*(?:#|No|Number)?:\s*)([A-Za-z0-9-_]+)\b/i);
+    const stockNumber = stockMatch ? stockMatch[1].trim() : undefined;
+
+    const mileageMatch = cardHtml.match(/\b(?:data-mileage=["'](\d+)|(\d{1,3}(?:,\d{3})*)\s*(?:miles|mi|km|odometer))\b/i);
+    const mileageStr = mileageMatch ? (mileageMatch[1] || mileageMatch[2])?.replace(/,/g, '') : undefined;
+    const mileage = mileageStr ? parseInt(mileageStr, 10) : undefined;
+
+    const isVehicle = Boolean(
+      vin ||
+      stockNumber ||
+      mileage !== undefined ||
+      /wrangler|cherokee|ram\s*1500|f-150|silverado|camry|corolla|rav4|tahoe|explorer|civic|accord|vehicle|truck|suv|sedan/i.test(title) ||
+      pageUrl.includes('/new-vehicles') ||
+      pageUrl.includes('/used-vehicles') ||
+      pageUrl.includes('/inventory')
+    );
+
+    const conditionRaw = `${cardHtml} ${title} ${pageUrl} ${itemUrl}`.toLowerCase();
+    const condition = conditionRaw.includes('cpo') || conditionRaw.includes('certified')
+      ? 'cpo'
+      : conditionRaw.includes('new-vehicles') || conditionRaw.includes('/new-inventory') || /\bnew\b/i.test(conditionRaw)
+      ? 'new'
+      : 'used';
+
+    // Anti-hallucination: require at least price OR image OR description OR different detail URL OR VIN
+    if (!price && images.length === 0 && !description && !vin && itemUrl === pageUrl) {
       continue;
     }
 
@@ -948,19 +1072,29 @@ export function extractDomSemanticCards(html: string, pageUrl: string): CrawledE
     let content = title;
     if (description) content += `\n\n${description}`;
     if (price) content += `\n\nPrice / Rate: ${price}`;
+    if (vin) content += `\nVIN: ${vin}`;
+    if (stockNumber) content += `\nStock #: ${stockNumber}`;
+    if (mileage) content += `\nMileage: ${mileage.toLocaleString()} mi`;
+
+    const metadata: Record<string, any> = {
+      discoveryMethod: 'dom',
+      ...(description ? { description } : {}),
+      ...(price ? { price } : {}),
+      ...(images.length > 0 ? { images, image: images[0] } : {}),
+      ...(vin ? { vin } : {}),
+      ...(stockNumber ? { stockNumber, stock_number: stockNumber } : {}),
+      ...(mileage !== undefined ? { mileage } : {}),
+      ...(isVehicle ? { condition, entity_type: 'vehicle' } : {}),
+      ...(itemUrl !== pageUrl ? { vdpUrl: itemUrl } : {}),
+    };
 
     entities.push({
       url: itemUrl,
       title,
       content,
-      dataType: price ? 'product' : 'service',
+      dataType: isVehicle || price ? 'product' : 'service',
       imageUrls: images,
-      metadata: {
-        discoveryMethod: 'dom',
-        ...(description ? { description } : {}),
-        ...(price ? { price } : {}),
-        ...(images.length > 0 ? { images, image: images[0] } : {}),
-      },
+      metadata,
     });
   }
 

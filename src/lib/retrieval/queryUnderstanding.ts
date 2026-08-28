@@ -26,8 +26,12 @@ export interface StructuredQueryIntent {
   entityType?: 'course' | 'vehicle' | 'product' | 'service' | 'property' | 'plan';
   exactEntityName?: string;
   category?: string;
+  condition?: 'new' | 'used' | 'cpo';
   minPrice?: number;
   maxPrice?: number;
+  maxMileage?: number;
+  minYear?: number;
+  maxYear?: number;
   currency?: string;
   onSale?: boolean; // true = discounted/sale only, false = regular price/no discount
   minRating?: number; // e.g. 4.0
@@ -249,6 +253,50 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
   else if (/\b(?:intermediate|mid-level)\b/i.test(lower)) attributes.level = 'intermediate';
   else if (/\b(?:advanced|mastery|expert|pro)\b/i.test(lower)) attributes.level = 'advanced';
 
+  // Condition Extraction (NEW vs USED vs CPO)
+  let condition: StructuredQueryIntent['condition'];
+  if (/\b(?:cpo|certified pre-owned|certified used|certified)\b/i.test(lower)) {
+    condition = 'cpo';
+  } else if (/\b(?:brand new|new vehicles?|new cars?|new inventory|new models?|new)\b/i.test(lower) && !/\bwhat(?:'s| is) new\b/i.test(lower)) {
+    condition = 'new';
+  } else if (/\b(?:pre-owned|used vehicles?|used cars?|used inventory|second hand|used)\b/i.test(lower)) {
+    condition = 'used';
+  }
+
+  // Mileage Bounds (for USED inventory)
+  let maxMileage: number | undefined;
+  const mileageMatch = lower.match(/(?:under|below|less than|max(?:imum)?|<=?)\s*([0-9,]+k?)\s*(?:miles|mi|kms?|kilometers?)/i) ||
+    lower.match(/([0-9,]+k?)\s*(?:miles|mi)\s*(?:or less|max|maximum)/i);
+  if (mileageMatch) {
+    const m = parseNumericPrice(mileageMatch[1]);
+    if (m !== null) maxMileage = m;
+  } else if (/\blow mileage\b/i.test(lower)) {
+    maxMileage = 40000;
+  }
+
+  // Year Bounds
+  let minYear: number | undefined;
+  let maxYear: number | undefined;
+  const yearMatch = lower.match(/\b(20[1-3][0-9])\b/);
+  if (yearMatch) {
+    const y = parseInt(yearMatch[1], 10);
+    if (/\b(?:newer than|after|from)\s*20[1-3][0-9]\b/i.test(lower) || /\b20[1-3][0-9]\s*(?:or newer|\+)\b/i.test(lower)) {
+      minYear = y;
+    } else if (/\b(?:older than|before)\s*20[1-3][0-9]\b/i.test(lower)) {
+      maxYear = y;
+    } else {
+      attributes.year = y;
+    }
+  }
+
+  // Body Style
+  if (/\b(?:suv|crossover)\b/i.test(lower)) attributes.bodyStyle = 'SUV';
+  else if (/\b(?:truck|pickup|crew cab|quad cab)\b/i.test(lower)) attributes.bodyStyle = 'Truck';
+  else if (/\b(?:sedan)\b/i.test(lower)) attributes.bodyStyle = 'Sedan';
+  else if (/\b(?:coupe)\b/i.test(lower)) attributes.bodyStyle = 'Coupe';
+  else if (/\b(?:van|minivan)\b/i.test(lower)) attributes.bodyStyle = 'Van';
+  else if (/\b(?:convertible)\b/i.test(lower)) attributes.bodyStyle = 'Convertible';
+
   // Delivery / Format
   if (/\b(?:online|remote|self-paced|e-learning)\b/i.test(lower)) attributes.format = 'online';
   else if (/\b(?:in-person|on-campus|classroom)\b/i.test(lower)) attributes.format = 'in-person';
@@ -301,7 +349,7 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
     intent = 'contact';
   } else if (isNavigation) {
     intent = 'navigation';
-  } else if (entityType || maxPrice !== undefined || minPrice !== undefined || sortBy || onSale !== undefined || inStock !== undefined) {
+  } else if (entityType || maxPrice !== undefined || minPrice !== undefined || condition || maxMileage !== undefined || sortBy || onSale !== undefined || inStock !== undefined) {
     intent = 'catalog';
   } else if (/\b(?:show|list|display|find|give\s+me|all|every|browse|explore|catalog|inventory|offerings?)\b/i.test(lower)) {
     intent = 'catalog';
@@ -312,8 +360,12 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
     normalizedQuery: normQuery,
     entityType,
     category: entityType,
+    condition,
     minPrice,
     maxPrice,
+    maxMileage,
+    minYear,
+    maxYear,
     currency,
     onSale,
     minRating,

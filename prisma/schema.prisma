@@ -1,0 +1,306 @@
+// Prisma Schema for Automotive Dealership Widget & Website Intelligence Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("SUPABASE_DATABASE_URL")
+}
+
+enum EntityType {
+  vehicle
+  product
+  service
+  course
+  text
+  faq
+  contact
+  pricing
+  event
+}
+
+enum VehicleCondition {
+  new
+  used
+  cpo
+  certified
+}
+
+enum AvailabilityStatus {
+  in_stock
+  out_of_stock
+  pending
+  reserved
+}
+
+enum FreshnessStatus {
+  fresh
+  recent
+  stale_or_unlisted
+}
+
+enum WidgetStatus {
+  active
+  inactive
+  paused
+}
+
+enum VoiceProvider {
+  retell
+  vapi
+}
+
+enum SyncFrequency {
+  off
+  weekly
+  daily
+  twice_daily
+  three_times_daily
+}
+
+enum CrawlJobStatusEnum {
+  pending
+  running
+  completed
+  failed
+  blocked
+}
+
+model Organization {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  websites  Website[]
+  widgets   Widget[]
+
+  @@map("organizations")
+}
+
+model Website {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String       @map("organization_id") @db.Uuid
+  name              String
+  allowedDomains    String[]     @default([]) @map("allowed_domains")
+  cssSelectorSchema Json?        @map("css_selector_schema")
+  detectedPlatform  String       @default("unknown") @map("detected_platform")
+  syncFrequency     String       @default("off") @map("sync_frequency")
+  knownUrls         Json         @default("[]") @map("known_urls")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  widgets           Widget[]
+  crawlJobs         CrawlJob[]
+  widgetSecrets     WidgetSecret[]
+
+  @@index([organizationId])
+  @@map("websites")
+}
+
+model WidgetSecret {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  websiteId       String?   @map("website_id") @db.Uuid
+  secretType      String?   @default("voice_provider") @map("secret_type")
+  retellApiKey    String?   @map("retell_api_key")
+  vapiApiKey      String?   @map("vapi_api_key")
+  consumerKey     String?   @map("consumer_key")
+  consumerSecret  String?   @map("consumer_secret")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  website         Website?  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  agents          Agent[]
+
+  @@map("widget_secrets")
+}
+
+model Agent {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider           String
+  externalAgentId    String        @map("external_agent_id")
+  name               String
+  credentialSecretId String?       @map("credential_secret_id") @db.Uuid
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  credentialSecret   WidgetSecret? @relation(fields: [credentialSecretId], references: [id], onDelete: SetNull)
+  widgets            Widget[]
+
+  @@map("agents")
+}
+
+model Widget {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  widgetId            String                @unique @map("widget_id")
+  organizationId      String                @default("00000000-0000-0000-0000-000000000000") @map("organization_id") @db.Uuid
+  websiteId           String                @default("00000000-0000-0000-0000-000000000000") @map("website_id") @db.Uuid
+  agentId             String?               @map("agent_id") @db.Uuid
+  userId              String?               @map("user_id") @db.Uuid
+  name                String
+  status              String                @default("active")
+  allowedDomains      String[]              @default([]) @map("allowed_domains")
+  config              Json                  @default("{}")
+  createdAt           DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  website             Website               @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  agent               Agent?                @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  configuration       WidgetConfiguration?
+  websiteData         WebsiteData[]
+  vehicles            Vehicle[]
+
+  @@index([widgetId])
+  @@index([organizationId])
+  @@index([websiteId])
+  @@index([agentId])
+  @@map("widgets")
+}
+
+model WidgetConfiguration {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  widgetId    String   @unique @map("widget_id") @db.Uuid
+  branding    Json     @default("{}")
+  theme       Json     @default("{}")
+  typography  Json     @default("{}")
+  launcher    Json     @default("{}")
+  panel       Json     @default("{}")
+  call        Json     @default("{}")
+  chat        Json     @default("{}")
+  behavior    Json     @default("{}")
+  responsive  Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  widget      Widget   @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+
+  @@index([widgetId])
+  @@map("widget_configurations")
+}
+
+model WebsiteData {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  widgetId         String    @map("widget_id") @db.Uuid
+  sourceUrl        String?   @map("source_url")
+  title            String
+  content          String
+  entityType       String    @default("text") @map("entity_type")
+  metadata         Json      @default("{}")
+  shortDescription String?   @map("short_description")
+  imageUrls        Json      @default("[]") @map("image_urls")
+  dataType         String    @default("crawl") @map("data_type")
+  categoryPath     String[]  @default([]) @map("category_path")
+  contentHash      String?   @map("content_hash")
+  lastCheckedAt    DateTime  @default(now()) @map("last_checked_at") @db.Timestamptz
+  firstSeen        DateTime  @default(now()) @map("first_seen") @db.Timestamptz
+  lastSeen         DateTime  @default(now()) @map("last_seen") @db.Timestamptz
+  stillListed      Boolean   @default(true) @map("still_listed")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  widget           Widget    @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+
+  @@index([widgetId])
+  @@index([lastSeen(sort: Desc)])
+  @@index([stillListed])
+  @@index([entityType])
+  @@index([widgetId, stillListed, entityType])
+  @@map("website_data")
+}
+
+/// Normalized vehicle record for NEW and USED dealership inventory.
+/// Preserves available specifications, pricing, odometer, condition, photos and VDP navigation links.
+model Vehicle {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  widgetId         String    @map("widget_id") @db.Uuid
+  vin              String?
+  stockNumber      String?   @map("stock_number")
+  condition        String    @default("used") // "new" | "used" | "cpo" | "certified"
+  year             Int?
+  make             String?
+  model            String?
+  trim             String?
+  bodyStyle        String?   @map("body_style") // "SUV" | "Truck" | "Sedan" | "Coupe" | "Van" | "Convertible"
+  price            Decimal?  @db.Decimal(12, 2)
+  msrp             Decimal?  @db.Decimal(12, 2)
+  currency         String    @default("USD")
+  mileage          Int?      // Odometer reading (miles / km)
+  drivetrain       String?   // "4x4" | "AWD" | "FWD" | "RWD" | "4WD"
+  transmission     String?   // "Automatic" | "Manual" | "8-Speed Automatic"
+  engine           String?   // e.g. "3.6L Pentastar V6", "2.0L Turbo PHEV"
+  fuel             String?   // "Gasoline" | "Hybrid" | "Plug-in Hybrid" | "Electric" | "Diesel"
+  exteriorColor    String?   @map("exterior_color")
+  interiorColor    String?   @map("interior_color")
+  features         String[]  @default([])
+  description      String?
+  shortDescription String?   @map("short_description")
+  images           String[]  @default([])
+  vdpUrl           String?   @map("vdp_url")
+  sourceUrl        String?   @map("source_url")
+  provenance       String    @default("crawl") // "crawl" | "api" | "feed" | "manual"
+  discoveryMethod  String?   @map("discovery_method")
+  firstSeen        DateTime  @default(now()) @map("first_seen") @db.Timestamptz
+  lastCheckedAt    DateTime  @default(now()) @map("last_checked_at") @db.Timestamptz
+  lastSeen         DateTime  @default(now()) @map("last_seen") @db.Timestamptz
+  stillListed      Boolean   @default(true) @map("still_listed")
+  availability     String    @default("in_stock") // "in_stock" | "out_of_stock" | "pending" | "reserved"
+  metadata         Json      @default("{}")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  widget           Widget    @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+
+  // Composite constraints and search optimization indexes
+  @@unique([widgetId, vin])
+  @@index([widgetId])
+  @@index([widgetId, condition])
+  @@index([widgetId, make, model])
+  @@index([widgetId, price])
+  @@index([widgetId, year])
+  @@index([widgetId, mileage])
+  @@index([widgetId, stillListed])
+  @@index([widgetId, condition, stillListed])
+  @@map("vehicles")
+}
+
+model CrawlJob {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  websiteId     String    @map("website_id") @db.Uuid
+  startUrl      String    @map("start_url")
+  status        String    @default("pending")
+  scanMode      String?   @default("master") @map("scan_mode")
+  pagesVisited  Int       @default(0) @map("pages_visited")
+  entitiesFound Int       @default(0) @map("entities_found")
+  blockedPages  Int       @default(0) @map("blocked_pages")
+  errorMessage  String?   @map("error_message")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz
+
+  website       Website   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@map("crawl_jobs")
+}
+
+model User {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String?
+  role         String    @default("owner")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("users")
+}
+
+model OtpToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String
+  code      String
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([email])
+  @@map("otp_tokens")
+}

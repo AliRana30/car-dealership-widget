@@ -761,9 +761,8 @@ export default function DashboardPage() {
       }}>
         {/* Left branding */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', color: '#111827' }}>
-            <img src="/logo.png" alt="Widgetized Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
-            <span style={{ fontSize: '17px', fontWeight: 700, letterSpacing: '-0.01em' }}>Widgetized</span>
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+            <img src="/automate.png" alt="AutoMate Logo" style={{ height: '36px', width: 'auto', maxHeight: '40px', objectFit: 'contain' }} />
           </Link>
         </div>
 
@@ -860,9 +859,8 @@ export default function DashboardPage() {
           >
             {/* Drawer Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #F1F5F9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <img src="/logo.png" alt="Widgetized Logo" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
-                <span style={{ fontSize: '16px', fontWeight: 700, color: '#111827', letterSpacing: '-0.01em' }}>Widgetized</span>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <img src="/automate.png" alt="AutoMate Logo" style={{ height: '34px', width: 'auto', maxHeight: '38px', objectFit: 'contain' }} />
               </div>
               <button
                 onClick={() => setMobileMenuOpen(false)}

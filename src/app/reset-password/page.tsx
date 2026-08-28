@@ -96,8 +96,7 @@ function ResetPasswordForm() {
       {/* Brand Header */}
       <div style={styles.header}>
         <div style={styles.logoWrapper}>
-          <img src="/logo.png" alt="MyFrontDesk Logo" style={styles.logo} />
-          <span style={styles.brandName}>MyFrontDesk</span>
+          <img src="/automate.png" alt="AutoMate Logo" style={styles.logo} />
         </div>
         <h1 style={styles.title} className="title">New Password</h1>
         <p style={styles.subtitle}>
@@ -326,9 +325,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '0.5rem',
   },
   logo: {
-    width: '32px',
-    height: '32px',
+    height: '42px',
+    width: 'auto',
+    maxWidth: '180px',
     objectFit: 'contain',
+    borderRadius: '6px',
   },
   brandName: {
     fontSize: '1.25rem',
