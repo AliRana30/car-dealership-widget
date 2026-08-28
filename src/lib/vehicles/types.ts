@@ -40,6 +40,8 @@ export interface NormalizedVehicleRecord {
   fuel?: string;                             // Fuel / power type (e.g. 'Gasoline', 'Hybrid', 'Plug-in Hybrid', 'Electric', 'Diesel')
   exteriorColor?: string;                    // Exterior paint color (e.g. 'Diamond Black Crystal Pearl')
   interiorColor?: string;                    // Interior upholstery color/material (e.g. 'Black Capri Leather')
+  passengers?: number;                       // Seating capacity (e.g. 5, 7, 8)
+  doors?: number;                            // Number of doors (e.g. 2, 4, 5)
   features: string[];                        // Equipment list / options / package highlights
   description?: string;                      // Full descriptive text / window sticker highlights
   shortDescription?: string;                 // Concise summary text
@@ -206,6 +208,11 @@ export function normalizeVehicleRecord(
   const exteriorColor = meta.exteriorColor || meta.color ? String(meta.exteriorColor || meta.color).trim() : undefined;
   const interiorColor = meta.interiorColor ? String(meta.interiorColor).trim() : undefined;
 
+  // Passengers & Doors (from vdpJSON seats/doors or explicit fields)
+  const passengers = meta.passengers != null ? parseInt(String(meta.passengers), 10) || undefined
+    : meta.seats != null ? parseInt(String(meta.seats), 10) || undefined : undefined;
+  const doors = meta.doors != null ? parseInt(String(meta.doors), 10) || undefined : undefined;
+
   // Features list
   const features: string[] = [];
   if (Array.isArray(meta.features)) {
@@ -266,6 +273,8 @@ export function normalizeVehicleRecord(
     fuel,
     exteriorColor,
     interiorColor,
+    passengers: passengers && passengers > 0 ? passengers : undefined,
+    doors: doors && doors > 0 ? doors : undefined,
     features,
     description: raw.content || meta.description || undefined,
     shortDescription: raw.short_description || raw.shortDescription || meta.shortDescription || undefined,
@@ -628,6 +637,8 @@ export async function saveVehiclesBatch(
           fuel: veh.fuel || null,
           exterior_color: veh.exteriorColor || null,
           interior_color: veh.interiorColor || null,
+          passengers: veh.passengers !== undefined && veh.passengers !== null ? Number(veh.passengers) : null,
+          doors: veh.doors !== undefined && veh.doors !== null ? Number(veh.doors) : null,
           features: Array.isArray(veh.features) ? veh.features : [],
           description: veh.description || null,
           short_description: veh.shortDescription || null,

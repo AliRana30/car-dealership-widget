@@ -231,6 +231,8 @@ model Vehicle {
   fuel             String?   // "Gasoline" | "Hybrid" | "Plug-in Hybrid" | "Electric" | "Diesel"
   exteriorColor    String?   @map("exterior_color")
   interiorColor    String?   @map("interior_color")
+  passengers       Int?      // Seating capacity (e.g. 5, 7, 8)
+  doors            Int?      // Number of doors (e.g. 2, 4, 5)
   features         String[]  @default([])
   description      String?
   shortDescription String?   @map("short_description")
