@@ -166,8 +166,15 @@ export function normalizeVehicleRecord(
 ): NormalizedVehicleRecord {
   const meta = (raw.metadata || {}) as Record<string, any>;
   const nowIso = new Date().toISOString();
+  const yearVal = parseNumericValue(raw.year ?? meta.year ?? meta.modelYear ?? meta.vehicleModelDate ?? meta.modelDate);
+  const makeVal = raw.make ? String(raw.make).trim() : (meta.make ? String(meta.make).trim() : (meta.brand?.name ? String(meta.brand.name).trim() : (meta.brand ? String(meta.brand).trim() : undefined)));
+  const modelVal = raw.model ? String(raw.model).trim() : (meta.model ? String(meta.model).trim() : undefined);
+  const trimVal = raw.trim ? String(raw.trim).trim() : (meta.trim ? String(meta.trim).trim() : (meta.vehicleConfiguration ? String(meta.vehicleConfiguration).trim() : undefined));
 
-  const title = String(raw.title || meta.title || meta.vehicleTitle || meta.name || 'Vehicle').trim();
+  const computedTitle = [yearVal, makeVal, modelVal, trimVal].filter(Boolean).join(' ');
+  const title = (raw.title && raw.title !== 'Untitled' && raw.title !== 'Vehicle')
+    ? String(raw.title).trim()
+    : (computedTitle || meta.title || meta.vehicleTitle || meta.name || 'Vehicle').trim();
   const sourceUrl = raw.source_url || raw.sourceUrl || raw.url || fallbackUrl || undefined;
   const vdpUrl = meta.vdpUrl || meta.vdp_url || meta.detailUrl || meta.detail_url || sourceUrl;
 
@@ -892,6 +899,9 @@ export async function getVehiclesForWidget(
     }
     if (filters?.model) {
       query = query.ilike('model', `%${filters.model}%`);
+    }
+    if (filters?.bodyStyle) {
+      query = query.ilike('body_style', `%${filters.bodyStyle}%`);
     }
     if (filters?.minYear) {
       query = query.gte('year', filters.minYear);

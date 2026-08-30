@@ -25,6 +25,10 @@ export interface StructuredQueryIntent {
   normalizedQuery: string;
   entityType?: 'course' | 'vehicle' | 'product' | 'service' | 'property' | 'plan';
   exactEntityName?: string;
+  make?: string;
+  model?: string;
+  bodyStyle?: string;
+  year?: number;
   category?: string;
   condition?: 'new' | 'used' | 'cpo';
   minPrice?: number;
@@ -277,6 +281,7 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
   // Year Bounds
   let minYear: number | undefined;
   let maxYear: number | undefined;
+  let exactYear: number | undefined;
   const yearMatch = lower.match(/\b(20[1-3][0-9])\b/);
   if (yearMatch) {
     const y = parseInt(yearMatch[1], 10);
@@ -285,17 +290,222 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
     } else if (/\b(?:older than|before)\s*20[1-3][0-9]\b/i.test(lower)) {
       maxYear = y;
     } else {
+      exactYear = y;
       attributes.year = y;
     }
   }
 
-  // Body Style
-  if (/\b(?:suv|crossover)\b/i.test(lower)) attributes.bodyStyle = 'SUV';
-  else if (/\b(?:truck|pickup|crew cab|quad cab)\b/i.test(lower)) attributes.bodyStyle = 'Truck';
-  else if (/\b(?:sedan)\b/i.test(lower)) attributes.bodyStyle = 'Sedan';
-  else if (/\b(?:coupe)\b/i.test(lower)) attributes.bodyStyle = 'Coupe';
-  else if (/\b(?:van|minivan)\b/i.test(lower)) attributes.bodyStyle = 'Van';
-  else if (/\b(?:convertible)\b/i.test(lower)) attributes.bodyStyle = 'Convertible';
+  // Body Style Normalization (SUV, Truck, Sedan, Coupe, Van, Convertible, Hatchback, Wagon)
+  let structuredBodyStyle: string | undefined;
+  if (/\b(?:suvs?|sport utility(?: vehicle)?|crossovers?|cuvs?)\b/i.test(lower)) {
+    structuredBodyStyle = 'SUV';
+    attributes.bodyStyle = 'SUV';
+    entityType = 'vehicle';
+  } else if (/\b(?:trucks?|pickups?|pickup trucks?|crew cab|quad cab|regular cab)\b/i.test(lower)) {
+    structuredBodyStyle = 'Truck';
+    attributes.bodyStyle = 'Truck';
+    entityType = 'vehicle';
+  } else if (/\b(?:sedans?|saloons?|4-door(?: car)?|four[- ]door)\b/i.test(lower)) {
+    structuredBodyStyle = 'Sedan';
+    attributes.bodyStyle = 'Sedan';
+    entityType = 'vehicle';
+  } else if (/\b(?:coupes?|2-door(?: car)?|two[- ]door)\b/i.test(lower)) {
+    structuredBodyStyle = 'Coupe';
+    attributes.bodyStyle = 'Coupe';
+    entityType = 'vehicle';
+  } else if (/\b(?:vans?|minivans?)\b/i.test(lower)) {
+    structuredBodyStyle = 'Van';
+    attributes.bodyStyle = 'Van';
+    entityType = 'vehicle';
+  } else if (/\b(?:convertibles?|cabriolets?|roadsters?|soft top)\b/i.test(lower)) {
+    structuredBodyStyle = 'Convertible';
+    attributes.bodyStyle = 'Convertible';
+    entityType = 'vehicle';
+  } else if (/\b(?:hatchbacks?|5-door)\b/i.test(lower)) {
+    structuredBodyStyle = 'Hatchback';
+    attributes.bodyStyle = 'Hatchback';
+    entityType = 'vehicle';
+  } else if (/\b(?:wagons?|station wagon)\b/i.test(lower)) {
+    structuredBodyStyle = 'Wagon';
+    attributes.bodyStyle = 'Wagon';
+    entityType = 'vehicle';
+  }
+
+  // Make & Model Structured Extraction
+  const KNOWN_MAKES: Record<string, string> = {
+    'jeep': 'Jeep',
+    'ram': 'Ram',
+    'dodge': 'Dodge',
+    'chrysler': 'Chrysler',
+    'ford': 'Ford',
+    'chevrolet': 'Chevrolet',
+    'chevy': 'Chevrolet',
+    'gmc': 'GMC',
+    'toyota': 'Toyota',
+    'honda': 'Honda',
+    'hyundai': 'Hyundai',
+    'kia': 'Kia',
+    'nissan': 'Nissan',
+    'subaru': 'Subaru',
+    'mazda': 'Mazda',
+    'volkswagen': 'Volkswagen',
+    'vw': 'Volkswagen',
+    'bmw': 'BMW',
+    'mercedes': 'Mercedes-Benz',
+    'mercedes-benz': 'Mercedes-Benz',
+    'audi': 'Audi',
+    'lexus': 'Lexus',
+    'acura': 'Acura',
+    'volvo': 'Volvo',
+    'porsche': 'Porsche',
+    'tesla': 'Tesla',
+    'genesis': 'Genesis',
+    'buick': 'Buick',
+    'cadillac': 'Cadillac',
+    'lincoln': 'Lincoln',
+    'infiniti': 'Infiniti',
+    'mitsubishi': 'Mitsubishi',
+  };
+
+  const KNOWN_MODELS: Record<string, { model: string; make?: string }> = {
+    'grand cherokee': { model: 'Grand Cherokee', make: 'Jeep' },
+    'cherokee': { model: 'Cherokee', make: 'Jeep' },
+    'wrangler': { model: 'Wrangler', make: 'Jeep' },
+    'compass': { model: 'Compass', make: 'Jeep' },
+    'gladiator': { model: 'Gladiator', make: 'Jeep' },
+    'renegade': { model: 'Renegade', make: 'Jeep' },
+    'grand wagoneer': { model: 'Grand Wagoneer', make: 'Jeep' },
+    'wagoneer': { model: 'Wagoneer', make: 'Jeep' },
+    '1500': { model: '1500', make: 'Ram' },
+    '2500': { model: '2500', make: 'Ram' },
+    '3500': { model: '3500', make: 'Ram' },
+    'promaster': { model: 'ProMaster', make: 'Ram' },
+    'durango': { model: 'Durango', make: 'Dodge' },
+    'charger': { model: 'Charger', make: 'Dodge' },
+    'challenger': { model: 'Challenger', make: 'Dodge' },
+    'hornet': { model: 'Hornet', make: 'Dodge' },
+    'pacifica': { model: 'Pacifica', make: 'Chrysler' },
+    'grand caravan': { model: 'Grand Caravan', make: 'Chrysler' },
+    'voyager': { model: 'Voyager', make: 'Chrysler' },
+    '300': { model: '300', make: 'Chrysler' },
+    'f-150': { model: 'F-150', make: 'Ford' },
+    'f150': { model: 'F-150', make: 'Ford' },
+    'mustang mach-e': { model: 'Mustang Mach-E', make: 'Ford' },
+    'mach-e': { model: 'Mustang Mach-E', make: 'Ford' },
+    'mustang': { model: 'Mustang', make: 'Ford' },
+    'explorer': { model: 'Explorer', make: 'Ford' },
+    'escape': { model: 'Escape', make: 'Ford' },
+    'edge': { model: 'Edge', make: 'Ford' },
+    'expedition': { model: 'Expedition', make: 'Ford' },
+    'bronco sport': { model: 'Bronco Sport', make: 'Ford' },
+    'bronco': { model: 'Bronco', make: 'Ford' },
+    'ranger': { model: 'Ranger', make: 'Ford' },
+    'maverick': { model: 'Maverick', make: 'Ford' },
+    'silverado': { model: 'Silverado', make: 'Chevrolet' },
+    'equinox': { model: 'Equinox', make: 'Chevrolet' },
+    'tahoe': { model: 'Tahoe', make: 'Chevrolet' },
+    'suburban': { model: 'Suburban', make: 'Chevrolet' },
+    'colorado': { model: 'Colorado', make: 'Chevrolet' },
+    'traverse': { model: 'Traverse', make: 'Chevrolet' },
+    'blazer': { model: 'Blazer', make: 'Chevrolet' },
+    'corvette': { model: 'Corvette', make: 'Chevrolet' },
+    'camaro': { model: 'Camaro', make: 'Chevrolet' },
+    'sierra': { model: 'Sierra', make: 'GMC' },
+    'yukon': { model: 'Yukon', make: 'GMC' },
+    'canyon': { model: 'Canyon', make: 'GMC' },
+    'terrain': { model: 'Terrain', make: 'GMC' },
+    'acadia': { model: 'Acadia', make: 'GMC' },
+    'rav4': { model: 'RAV4', make: 'Toyota' },
+    'camry': { model: 'Camry', make: 'Toyota' },
+    'corolla': { model: 'Corolla', make: 'Toyota' },
+    'highlander': { model: 'Highlander', make: 'Toyota' },
+    'tacoma': { model: 'Tacoma', make: 'Toyota' },
+    'tundra': { model: 'Tundra', make: 'Toyota' },
+    '4runner': { model: '4Runner', make: 'Toyota' },
+    'sienna': { model: 'Sienna', make: 'Toyota' },
+    'prius': { model: 'Prius', make: 'Toyota' },
+    'cr-v': { model: 'CR-V', make: 'Honda' },
+    'crv': { model: 'CR-V', make: 'Honda' },
+    'civic': { model: 'Civic', make: 'Honda' },
+    'accord': { model: 'Accord', make: 'Honda' },
+    'pilot': { model: 'Pilot', make: 'Honda' },
+    'hr-v': { model: 'HR-V', make: 'Honda' },
+    'hrv': { model: 'HR-V', make: 'Honda' },
+    'ridgeline': { model: 'Ridgeline', make: 'Honda' },
+    'passport': { model: 'Passport', make: 'Honda' },
+    'odyssey': { model: 'Odyssey', make: 'Honda' },
+    'elantra': { model: 'Elantra', make: 'Hyundai' },
+    'sonata': { model: 'Sonata', make: 'Hyundai' },
+    'tucson': { model: 'Tucson', make: 'Hyundai' },
+    'santa fe': { model: 'Santa Fe', make: 'Hyundai' },
+    'palisade': { model: 'Palisade', make: 'Hyundai' },
+    'kona': { model: 'Kona', make: 'Hyundai' },
+    'ioniq 5': { model: 'Ioniq 5', make: 'Hyundai' },
+    'ioniq 6': { model: 'Ioniq 6', make: 'Hyundai' },
+    'venue': { model: 'Venue', make: 'Hyundai' },
+    'santa cruz': { model: 'Santa Cruz', make: 'Hyundai' },
+    'sportage': { model: 'Sportage', make: 'Kia' },
+    'telluride': { model: 'Telluride', make: 'Kia' },
+    'sorento': { model: 'Sorento', make: 'Kia' },
+    'forte': { model: 'Forte', make: 'Kia' },
+    'k5': { model: 'K5', make: 'Kia' },
+    'soul': { model: 'Soul', make: 'Kia' },
+    'seltos': { model: 'Seltos', make: 'Kia' },
+    'carnival': { model: 'Carnival', make: 'Kia' },
+    'ev6': { model: 'EV6', make: 'Kia' },
+    'ev9': { model: 'EV9', make: 'Kia' },
+    'rogue': { model: 'Rogue', make: 'Nissan' },
+    'altima': { model: 'Altima', make: 'Nissan' },
+    'sentra': { model: 'Sentra', make: 'Nissan' },
+    'pathfinder': { model: 'Pathfinder', make: 'Nissan' },
+    'frontier': { model: 'Frontier', make: 'Nissan' },
+    'murano': { model: 'Murano', make: 'Nissan' },
+    'armada': { model: 'Armada', make: 'Nissan' },
+    'outback': { model: 'Outback', make: 'Subaru' },
+    'forester': { model: 'Forester', make: 'Subaru' },
+    'crosstrek': { model: 'Crosstrek', make: 'Subaru' },
+    'ascent': { model: 'Ascent', make: 'Subaru' },
+    'impreza': { model: 'Impreza', make: 'Subaru' },
+    'wrx': { model: 'WRX', make: 'Subaru' },
+    'cx-5': { model: 'CX-5', make: 'Mazda' },
+    'cx-50': { model: 'CX-50', make: 'Mazda' },
+    'cx-90': { model: 'CX-90', make: 'Mazda' },
+    'cx-30': { model: 'CX-30', make: 'Mazda' },
+    'mazda3': { model: 'Mazda3', make: 'Mazda' },
+    'mazda6': { model: 'Mazda6', make: 'Mazda' },
+  };
+
+  let structuredMake: string | undefined;
+  let structuredModel: string | undefined;
+
+  // 1. Check for make
+  for (const [makeKey, canonicalMake] of Object.entries(KNOWN_MAKES)) {
+    const makeRegex = new RegExp(`\\b${makeKey}\\b`, 'i');
+    if (makeRegex.test(lower)) {
+      structuredMake = canonicalMake;
+      attributes.make = canonicalMake;
+      entityType = 'vehicle';
+      break;
+    }
+  }
+
+  // 2. Check for model (longest model names checked first)
+  const sortedModelKeys = Object.keys(KNOWN_MODELS).sort((a, b) => b.length - a.length);
+  for (const modelKey of sortedModelKeys) {
+    const escapedModel = modelKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const modelRegex = new RegExp(`\\b${escapedModel}\\b`, 'i');
+    if (modelRegex.test(lower)) {
+      const match = KNOWN_MODELS[modelKey];
+      structuredModel = match.model;
+      attributes.model = match.model;
+      if (!structuredMake && match.make) {
+        structuredMake = match.make;
+        attributes.make = match.make;
+      }
+      entityType = 'vehicle';
+      break;
+    }
+  }
 
   // Delivery / Format
   if (/\b(?:online|remote|self-paced|e-learning)\b/i.test(lower)) attributes.format = 'online';
@@ -351,7 +561,7 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
     intent = 'navigation';
   } else if (entityType || maxPrice !== undefined || minPrice !== undefined || condition || maxMileage !== undefined || sortBy || onSale !== undefined || inStock !== undefined) {
     intent = 'catalog';
-  } else if (/\b(?:show|list|display|find|give\s+me|all|every|browse|explore|catalog|inventory|offerings?)\b/i.test(lower)) {
+  } else if (/\b(?:show|list|display|find|give\s+me|all|every|browse|explore|catalog|inventory|offerings?|what (?:do )?you have|what have you got|what(?:'s| is) in stock)\b/i.test(lower)) {
     intent = 'catalog';
   }
 
@@ -359,6 +569,10 @@ export function understandQuery(rawQuery: string): StructuredQueryIntent {
     rawQuery: cleanQuery,
     normalizedQuery: normQuery,
     entityType,
+    make: structuredMake,
+    model: structuredModel,
+    bodyStyle: structuredBodyStyle,
+    year: exactYear,
     category: entityType,
     condition,
     minPrice,

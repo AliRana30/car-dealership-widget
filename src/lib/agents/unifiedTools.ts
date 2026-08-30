@@ -25,8 +25,10 @@
  *   get_details / details → get_entity
  */
 
-import { hybridRetrieve, HybridRetrievalOptions, StageTimings } from '@/lib/retrieval/hybridRag';
+import { hybridRetrieve, HybridRetrievalOptions, StageTimings, type HybridSearchResult, type HybridRetrievalOutput } from '@/lib/retrieval/hybridRag';
 import { validateGrounding, GroundingMetadata } from '@/lib/retrieval/grounding';
+import { understandQuery, type StructuredQueryIntent } from '@/lib/retrieval/queryUnderstanding';
+import { getVehiclesForWidget, type VehicleSearchFilters, type NormalizedVehicleRecord } from '@/lib/vehicles/types';
 import { getWidget } from '@/config/widgetsDb';
 import { broadcastToSession } from '@/lib/realtime/session';
 import { calculateFreshness, appendResumeParam, getEntityDetails } from './tools';
@@ -416,7 +418,239 @@ async function runHybridRetrieval(
   businessName: string,
   options: HybridRetrievalOptions = {}
 ): Promise<UnifiedToolResult & { _rawValidation: ReturnType<typeof validateGrounding> }> {
-  const hybridOutput = await hybridRetrieve(widgetId, query, options);
+  const structuredQuery = understandQuery(query);
+  const t0 = performance.now();
+
+  // Check if query has structured vehicle filters
+  const hasVehicleConstraints =
+    structuredQuery.entityType === 'vehicle' &&
+    Boolean(
+      structuredQuery.make ||
+      structuredQuery.model ||
+      structuredQuery.bodyStyle ||
+      structuredQuery.condition ||
+      structuredQuery.year ||
+      structuredQuery.minYear ||
+      structuredQuery.maxYear ||
+      structuredQuery.minPrice ||
+      structuredQuery.maxPrice ||
+      structuredQuery.maxMileage
+    );
+
+  let hybridOutput: HybridRetrievalOutput;
+
+  if (hasVehicleConstraints) {
+    const sqlFilters: VehicleSearchFilters = {
+      condition: structuredQuery.condition,
+      make: structuredQuery.make,
+      model: structuredQuery.model,
+      bodyStyle: structuredQuery.bodyStyle,
+      minYear: structuredQuery.minYear ?? structuredQuery.year,
+      maxYear: structuredQuery.maxYear ?? structuredQuery.year,
+      minPrice: structuredQuery.minPrice,
+      maxPrice: structuredQuery.maxPrice,
+      maxMileage: structuredQuery.maxMileage,
+      limit: options.limit || 5,
+    };
+
+    const vehicleRows = await getVehiclesForWidget(widgetId, sqlFilters);
+
+    if (vehicleRows.length > 0) {
+      const structuredResults: HybridSearchResult[] = vehicleRows.map((veh) => {
+        const computedTitle = [veh.year, veh.make, veh.model, veh.trim].filter(Boolean).join(' ');
+        const title = (veh.title && veh.title !== 'Untitled' && veh.title !== 'Vehicle')
+          ? veh.title
+          : (computedTitle || 'Vehicle');
+
+        return {
+          id: veh.id,
+          widgetId: veh.widgetId,
+          title,
+          description: veh.description || veh.shortDescription || title,
+          shortDescription: veh.shortDescription || veh.description || title,
+          content: veh.description || veh.shortDescription || title,
+          entityType: 'vehicle',
+          sourceUrl: veh.vdpUrl || veh.sourceUrl,
+          vdpUrl: veh.vdpUrl,
+          imageUrls: veh.imageUrls || [],
+          images: veh.images || veh.imageUrls || [],
+          price: veh.price,
+          msrp: veh.msrp,
+          currency: veh.currency,
+          availability: veh.availability,
+          condition: veh.condition,
+          vin: veh.vin,
+          stockNumber: veh.stockNumber,
+          year: veh.year,
+          make: veh.make,
+          model: veh.model,
+          trim: veh.trim,
+          bodyStyle: veh.bodyStyle,
+          mileage: veh.mileage,
+          drivetrain: veh.drivetrain,
+          transmission: veh.transmission,
+          engine: veh.engine,
+          fuel: veh.fuel,
+          exteriorColor: veh.exteriorColor,
+          interiorColor: veh.interiorColor,
+          features: veh.features,
+          metadata: veh.metadata || {},
+          firstSeen: veh.createdAt || new Date().toISOString(),
+          lastSeen: new Date().toISOString(),
+          stillListed: veh.stillListed ?? true,
+          freshnessStatus: veh.freshnessStatus || 'fresh',
+          score: 1200,
+          matchType: 'exact',
+          matchReasons: ['Structured SQL vehicle database filter match'],
+          isExact: true,
+        };
+      });
+
+      const contextSummary = structuredResults
+        .map(r => {
+          const lines = [
+            `• Title: ${r.title}`,
+            `  Type: Vehicle`,
+            r.condition ? `  Condition: ${r.condition.toUpperCase()}` : '',
+            r.price != null ? `  Price: $${r.price.toLocaleString()} ${r.currency || 'CAD'}` : '  Price: Call for price',
+            r.year ? `  Year: ${r.year}` : '',
+            r.make ? `  Make: ${r.make}` : '',
+            r.model ? `  Model: ${r.model}` : '',
+            r.trim ? `  Trim: ${r.trim}` : '',
+            r.bodyStyle ? `  Body Style: ${r.bodyStyle}` : '',
+            r.mileage != null ? `  Mileage: ${r.mileage.toLocaleString()} km` : '',
+            r.drivetrain ? `  Drivetrain: ${r.drivetrain}` : '',
+            r.transmission ? `  Transmission: ${r.transmission}` : '',
+            r.engine ? `  Engine: ${r.engine}` : '',
+            r.fuel ? `  Fuel: ${r.fuel}` : '',
+            r.vin ? `  VIN: ${r.vin}` : '',
+            r.stockNumber ? `  Stock #: ${r.stockNumber}` : '',
+            r.sourceUrl ? `  VDP Link: ${r.sourceUrl}` : '',
+            r.availability ? `  Availability: ${r.availability}` : '',
+          ].filter(Boolean);
+          return lines.join('\n');
+        })
+        .join('\n\n');
+
+      const totalRetrievalMs = Math.round((performance.now() - t0) * 100) / 100;
+      hybridOutput = {
+        query,
+        normalizedQuery: structuredQuery.normalizedQuery,
+        intent: 'catalog',
+        results: structuredResults,
+        count: structuredResults.length,
+        contextSummary,
+        structuredQuery,
+        timings: {
+          queryUnderstandingMs: 0,
+          widgetLookupMs: 0,
+          dbFetchMs: totalRetrievalMs,
+          parallelRetrievalMs: totalRetrievalMs,
+          rerankingMs: 0,
+          contextSummaryMs: 0,
+          totalRetrievalMs,
+          cacheHit: 'none',
+        },
+      };
+    } else {
+      // Zero SQL rows returned for explicit vehicle constraints (e.g. 2024 Jeep Wrangler)
+      // DO NOT fall back to generic RAG — prevent hallucination & false-positive backfill
+      const totalRetrievalMs = Math.round((performance.now() - t0) * 100) / 100;
+      hybridOutput = {
+        query,
+        normalizedQuery: structuredQuery.normalizedQuery,
+        intent: 'catalog',
+        results: [],
+        count: 0,
+        contextSummary: '',
+        structuredQuery,
+        timings: {
+          queryUnderstandingMs: 0,
+          widgetLookupMs: 0,
+          dbFetchMs: totalRetrievalMs,
+          parallelRetrievalMs: totalRetrievalMs,
+          rerankingMs: 0,
+          contextSummaryMs: 0,
+          totalRetrievalMs,
+          cacheHit: 'none',
+        },
+      };
+    }
+  } else {
+    // Broad browsing or informational query
+    hybridOutput = await hybridRetrieve(widgetId, query, options);
+
+    // If a broad catalog browsing query returned 0 rows from website_data, check active vehicles table
+    if (hybridOutput.results.length === 0 && (structuredQuery.intent === 'catalog' || structuredQuery.intent === 'general') && !structuredQuery.isInformational) {
+      const broadVehicles = await getVehiclesForWidget(widgetId, { limit: options.limit || 5 });
+      if (broadVehicles.length > 0) {
+        const structuredResults: HybridSearchResult[] = broadVehicles.map((veh) => {
+          const computedTitle = [veh.year, veh.make, veh.model, veh.trim].filter(Boolean).join(' ');
+          const title = (veh.title && veh.title !== 'Untitled' && veh.title !== 'Vehicle')
+            ? veh.title
+            : (computedTitle || 'Vehicle');
+
+          return {
+            id: veh.id,
+            widgetId: veh.widgetId,
+            title,
+            description: veh.description || veh.shortDescription || title,
+            shortDescription: veh.shortDescription || veh.description || title,
+            content: veh.description || veh.shortDescription || title,
+            entityType: 'vehicle',
+            sourceUrl: veh.vdpUrl || veh.sourceUrl,
+            vdpUrl: veh.vdpUrl,
+            imageUrls: veh.imageUrls || [],
+            images: veh.images || veh.imageUrls || [],
+          price: veh.price,
+          msrp: veh.msrp,
+          currency: veh.currency,
+          availability: veh.availability,
+          condition: veh.condition,
+          vin: veh.vin,
+          stockNumber: veh.stockNumber,
+          year: veh.year,
+          make: veh.make,
+          model: veh.model,
+          trim: veh.trim,
+          bodyStyle: veh.bodyStyle,
+          mileage: veh.mileage,
+          drivetrain: veh.drivetrain,
+          transmission: veh.transmission,
+          engine: veh.engine,
+          fuel: veh.fuel,
+          exteriorColor: veh.exteriorColor,
+          interiorColor: veh.interiorColor,
+          features: veh.features,
+          metadata: veh.metadata || {},
+          firstSeen: veh.createdAt || new Date().toISOString(),
+          lastSeen: new Date().toISOString(),
+          stillListed: veh.stillListed ?? true,
+          freshnessStatus: veh.freshnessStatus || 'fresh',
+          score: 800,
+          matchType: 'broad_catalog',
+          matchReasons: ['General catalog browsing from vehicle database'],
+          isExact: false,
+        };
+      });
+
+        const contextSummary = structuredResults
+          .map(r => `• ${r.title} (${r.condition ? r.condition.toUpperCase() : 'VEHICLE'} - $${r.price ? Number(r.price).toLocaleString() : 'Call for price'})`)
+          .join('\n');
+
+        hybridOutput = {
+          query,
+          normalizedQuery: structuredQuery.normalizedQuery,
+          intent: 'catalog',
+          results: structuredResults,
+          count: structuredResults.length,
+          contextSummary,
+          structuredQuery,
+        };
+      }
+    }
+  }
+
   const validation = validateGrounding(query, hybridOutput, businessName);
 
   const results = validation.structuredResults.map(formatResult);
