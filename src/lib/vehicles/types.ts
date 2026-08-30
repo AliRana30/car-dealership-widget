@@ -173,47 +173,65 @@ export function normalizeVehicleRecord(
 
   // Extract images
   const rawImages: string[] = [];
-  if (Array.isArray(raw.image_urls)) rawImages.push(...raw.image_urls);
-  if (Array.isArray(raw.imageUrls)) rawImages.push(...raw.imageUrls);
-  if (Array.isArray(raw.images)) rawImages.push(...raw.images);
-  if (Array.isArray(meta.images)) rawImages.push(...meta.images);
-  if (Array.isArray(meta.imageUrls)) rawImages.push(...meta.imageUrls);
-  if (typeof meta.image === 'string' && meta.image.startsWith('http')) rawImages.push(meta.image);
-  if (typeof raw.image === 'string' && raw.image.startsWith('http')) rawImages.push(raw.image);
+  if (Array.isArray(raw.images) && raw.images.length > 0) {
+    rawImages.push(...raw.images);
+  } else if (Array.isArray(raw.imageUrls) && raw.imageUrls.length > 0) {
+    rawImages.push(...raw.imageUrls);
+  } else if (Array.isArray(raw.image_urls) && raw.image_urls.length > 0) {
+    rawImages.push(...raw.image_urls);
+  } else if (Array.isArray(meta.images) && meta.images.length > 0) {
+    rawImages.push(...meta.images);
+  } else if (Array.isArray(meta.imageUrls) && meta.imageUrls.length > 0) {
+    rawImages.push(...meta.imageUrls);
+  } else if (typeof meta.image === 'string' && meta.image.startsWith('http')) {
+    rawImages.push(meta.image);
+  } else if (typeof raw.image === 'string' && raw.image.startsWith('http')) {
+    rawImages.push(raw.image);
+  }
 
   const cleanImages = Array.from(
-    new Set(rawImages.filter((u) => typeof u === 'string' && u.startsWith('http')))
+    new Set(rawImages.filter((u) => typeof u === 'string' && u.startsWith('http')).map((u) => {
+      try {
+        return encodeURI(decodeURI(u.trim()));
+      } catch {
+        return u.trim().replace(/\s+/g, '%20');
+      }
+    }))
   );
 
   // Year, Make, Model, Trim
-  const year = parseNumericValue(meta.year ?? meta.modelYear ?? meta.vehicleModelDate ?? meta.modelDate);
-  const make = meta.make ? String(meta.make).trim() : (meta.brand?.name ? String(meta.brand.name).trim() : (meta.brand ? String(meta.brand).trim() : undefined));
-  const model = meta.model ? String(meta.model).trim() : undefined;
-  const trim = meta.trim ? String(meta.trim).trim() : (meta.vehicleConfiguration ? String(meta.vehicleConfiguration).trim() : undefined);
+  const year = parseNumericValue(raw.year ?? meta.year ?? meta.modelYear ?? meta.vehicleModelDate ?? meta.modelDate);
+  const make = raw.make ? String(raw.make).trim() : (meta.make ? String(meta.make).trim() : (meta.brand?.name ? String(meta.brand.name).trim() : (meta.brand ? String(meta.brand).trim() : undefined)));
+  const model = raw.model ? String(raw.model).trim() : (meta.model ? String(meta.model).trim() : undefined);
+  const trim = raw.trim ? String(raw.trim).trim() : (meta.trim ? String(meta.trim).trim() : (meta.vehicleConfiguration ? String(meta.vehicleConfiguration).trim() : undefined));
 
   // VIN & Stock Number (Never fabricate)
-  const vin = meta.vin || meta.vehicleIdentificationNumber || meta.VIN ? String(meta.vin || meta.vehicleIdentificationNumber || meta.VIN).trim().toUpperCase() : undefined;
-  const stockNumber = meta.stockNumber || meta.stock_number || meta.stockNo || meta.sku ? String(meta.stockNumber || meta.stock_number || meta.stockNo || meta.sku).trim() : undefined;
+  const vin = raw.vin || meta.vin || meta.vehicleIdentificationNumber || meta.VIN
+    ? String(raw.vin || meta.vin || meta.vehicleIdentificationNumber || meta.VIN).trim().toUpperCase()
+    : undefined;
+  const stockNumber = raw.stockNumber || raw.stock_number || meta.stockNumber || meta.stock_number || meta.stockNo || meta.sku
+    ? String(raw.stockNumber || raw.stock_number || meta.stockNumber || meta.stock_number || meta.stockNo || meta.sku).trim()
+    : undefined;
 
   // Pricing (Never fabricate)
-  const price = parseNumericValue(meta.price ?? meta.sellingPrice ?? meta.cost ?? raw.price);
-  const msrp = parseNumericValue(meta.msrp ?? meta.originalPrice ?? meta.original_price ?? meta.stickerPrice);
-  const currency = meta.currency ? String(meta.currency).toUpperCase() : (sourceUrl?.includes('.ca') ? 'CAD' : 'USD');
+  const price = parseNumericValue(raw.price ?? meta.price ?? meta.sellingPrice ?? meta.cost);
+  const msrp = parseNumericValue(raw.msrp ?? meta.msrp ?? meta.originalPrice ?? meta.original_price ?? meta.stickerPrice);
+  const currency = raw.currency || meta.currency || meta.priceCurrency || 'USD';
 
-  // Mileage (Never fabricate)
-  const mileage = parseNumericValue(meta.mileage ?? meta.mileageFromOdometer?.value ?? meta.mileageFromOdometer ?? meta.odometer);
+  // Mileage / Odometer (Never fabricate)
+  const mileage = parseNumericValue(raw.mileage ?? meta.mileage ?? meta.miles ?? meta.km ?? meta.odometer);
 
   // Condition
   const condition = parseVehicleCondition(meta.condition || meta.itemCondition, sourceUrl, title);
 
   // Specifications
-  const drivetrain = parseDrivetrain(meta.drivetrain || meta.driveWheelConfiguration || meta.driveType, title, raw.content || meta.description);
-  const bodyStyle = parseBodyStyle(meta.bodyStyle || meta.body_style || meta.bodyType, title, raw.content || meta.description);
-  const transmission = meta.transmission || meta.vehicleTransmission ? String(meta.transmission || meta.vehicleTransmission).trim() : undefined;
-  const engine = meta.engine || meta.vehicleEngine?.name || meta.engineSpecification ? String(meta.engine || meta.vehicleEngine?.name || meta.engineSpecification).trim() : undefined;
-  const fuel = parseFuelType(meta.fuel || meta.fuelType, title, raw.content || meta.description);
-  const exteriorColor = meta.exteriorColor || meta.color ? String(meta.exteriorColor || meta.color).trim() : undefined;
-  const interiorColor = meta.interiorColor ? String(meta.interiorColor).trim() : undefined;
+  const drivetrain = parseDrivetrain(raw.drivetrain || meta.drivetrain || meta.driveWheelConfiguration, title, raw.content || meta.description);
+  const transmission = raw.transmission || meta.transmission || (meta.vehicleTransmission ? String(meta.vehicleTransmission).trim() : undefined);
+  const engine = raw.engine || meta.engine || meta.vehicleEngine ? String(raw.engine || meta.engine || meta.vehicleEngine).trim() : undefined;
+  const fuel = parseFuelType(raw.fuel || meta.fuel || meta.fuelType, title, raw.content || meta.description);
+  const bodyStyle = parseBodyStyle(raw.bodyStyle || raw.body_style || meta.bodyStyle || meta.bodyType || meta.category, title, raw.content || meta.description);
+  const exteriorColor = raw.exteriorColor || raw.exterior_color || meta.exteriorColor || meta.color ? String(raw.exteriorColor || raw.exterior_color || meta.exteriorColor || meta.color).trim() : undefined;
+  const interiorColor = raw.interiorColor || raw.interior_color || meta.interiorColor ? String(raw.interiorColor || raw.interior_color || meta.interiorColor).trim() : undefined;
 
   // Passengers & Doors
   const passengers = meta.passengers != null ? parseInt(String(meta.passengers), 10) || undefined

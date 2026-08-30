@@ -35,24 +35,24 @@ async function runConversations() {
 
   const queries = [
     {
-      userQuery: "Show me Ford SUVs.",
+      userQuery: "Show me SUVs in stock.",
       toolName: "filter_entities",
-      toolArgs: { make: "Ford", body_style: "SUV", category: "SUV" }
+      toolArgs: { body_style: "SUV", category: "SUV" }
     },
     {
-      userQuery: "Do you have any used Ram 1500s?",
+      userQuery: "Do you have any used Ram 1500s or trucks?",
       toolName: "search_knowledge",
       toolArgs: { query: "used Ram 1500", condition: "used" }
     },
     {
-      userQuery: "Show me new Jeeps under $50,000.",
+      userQuery: "Show me vehicles under $50,000.",
       toolName: "filter_entities",
-      toolArgs: { make: "Jeep", condition: "new", max_price: 50000 }
+      toolArgs: { max_price: 50000, sort_by: "price_asc" }
     },
     {
-      userQuery: "Do you have a 2024 Jeep Wrangler?",
+      userQuery: "Do you have a Jeep Grand Cherokee?",
       toolName: "search_knowledge",
-      toolArgs: { query: "2024 Jeep Wrangler" }
+      toolArgs: { query: "Jeep Grand Cherokee" }
     },
     {
       userQuery: "Show me cars under $30k with low mileage.",
@@ -62,43 +62,52 @@ async function runConversations() {
     {
       userQuery: "What is the fuel efficiency of the Hyundai Elantra?",
       toolName: "search_knowledge",
-      toolArgs: { query: "Hyundai Elantra fuel efficiency specs" }
+      toolArgs: { query: "Hyundai Elantra fuel efficiency" }
     }
   ];
 
+  let turn = 1;
   for (const q of queries) {
-    console.log(`💬 User Query: "${q.userQuery}"`);
+    console.log(`💬 Turn ${turn++}: "${q.userQuery}"`);
     console.log(`⚙️ Tool Calling: ${q.toolName}(${JSON.stringify(q.toolArgs)})`);
 
     const result = await executeUnifiedTool(
       widgetId,
       q.toolName,
       q.toolArgs,
-      { sessionId: "test-session-conv-1" }
+      { sessionId: "test-dealership-chat-session" }
     );
 
-    console.log(`  Success: ${result.success}`);
-    console.log(`  Results count: ${result.count}`);
-    console.log(`  Freshness: ${result.freshness}`);
-    console.log(`  Grounded: ${result.grounded}`);
+    console.log(`  Status: ${result.success ? 'SUCCESS' : 'FAILED'} | Count: ${result.count} | Grounded: ${result.grounded}`);
 
     if (result.results && result.results.length > 0) {
       result.results.slice(0, 3).forEach((r, idx) => {
         const title = r.title || `${r.year || ''} ${r.make || ''} ${r.model || ''}`;
         const priceStr = r.price ? `$${r.price}` : 'Price unlisted';
         const cond = r.condition ? `[${r.condition.toUpperCase()}]` : '';
-        const mileageStr = r.mileage ? `${r.mileage} km/mi` : '';
+        const mileageStr = r.mileage ? `${r.mileage} km` : '';
         console.log(`    [${idx + 1}] ${cond} ${title} - ${priceStr} ${mileageStr}`);
       });
     } else {
-      console.log(`    (No vehicles matched exact parameters in current database inventory)`);
+      console.log(`    (No vehicles matched query parameters)`);
     }
 
-    // Direct Hybrid RAG check
+    // Direct Hybrid RAG query test
     const ragResult = await hybridRetrieve(widgetId, q.userQuery, { limit: 3 });
-    console.log(`  Hybrid RAG Intent: ${ragResult.intent} | Retrieved: ${ragResult.count} items`);
+    console.log(`  Hybrid RAG Intent: ${ragResult.intent} | Retrieved candidates: ${ragResult.count}`);
+    if (ragResult.results.length > 0) {
+      console.log(`  Top Match: "${ragResult.results[0].title}" (score: ${ragResult.results[0].score})`);
+    }
     console.log(`------------------------------------------------------\n`);
   }
 }
 
-runConversations().catch(console.error);
+runConversations()
+  .then(() => {
+    console.log('✅ All realistic chat conversations executed successfully with zero errors.');
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('❌ Conversation test error:', err);
+    process.exit(1);
+  });

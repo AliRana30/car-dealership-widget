@@ -11,6 +11,15 @@
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import { Pool } from 'pg';
+
+let _userPool: Pool | null = null;
+function getUserPool(): Pool {
+  if (!_userPool) {
+    _userPool = new Pool({ connectionString: process.env.SUPABASE_DATABASE_URL });
+  }
+  return _userPool;
+}
 
 const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_EXPIRY_HOURS = 1;
@@ -231,68 +240,70 @@ export function validatePassword(password: string): string[] {
 // ── OTP verification ─────────────────────────────────────────────────────────
 
 export async function generateOtp(email: string): Promise<string> {
-  const supabase = getSupabase();
   const normalizedEmail = email.toLowerCase().trim();
+  const pool = getUserPool();
 
-  // Delete any existing codes for this email
-  await supabase
-    .from('app_verification_codes')
-    .delete()
-    .eq('email', normalizedEmail);
+  try {
+    // Delete any existing codes for this email
+    await pool.query(`DELETE FROM app_verification_codes WHERE email = $1`, [normalizedEmail]);
 
-  // Generate 4-digit code (e.g. 1000 - 9999)
-  const code = Math.floor(1000 + Math.random() * 9000).toString();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+    // Generate 4-digit code (e.g. 1000 - 9999)
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-  const { error } = await supabase
-    .from('app_verification_codes')
-    .insert({
-      email: normalizedEmail,
-      code,
-      expires_at: expiresAt,
-    });
+    await pool.query(
+      `INSERT INTO app_verification_codes (email, code, expires_at) VALUES ($1, $2, $3)`,
+      [normalizedEmail, code, expiresAt]
+    );
 
-  if (error) {
-    console.error('[users] generateOtp failed:', error.message);
-    throw new Error('Failed to generate verification code.');
+    return code;
+  } catch (err: any) {
+    console.error('[users] generateOtp failed via pg pool:', err.message);
+    // Fallback to Supabase client if pool fails
+    const supabase = getSupabase();
+    await supabase.from('app_verification_codes').delete().eq('email', normalizedEmail);
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    const { error } = await supabase.from('app_verification_codes').insert({ email: normalizedEmail, code, expires_at: expiresAt });
+    if (error) throw new Error(`Failed to generate verification code: ${error.message}`);
+    return code;
   }
-
-  return code;
 }
 
 export async function verifyOtp(email: string, code: string): Promise<boolean> {
-  const supabase = getSupabase();
   const normalizedEmail = email.toLowerCase().trim();
   const normalizedCode = code.trim();
+  const pool = getUserPool();
 
-  const { data, error } = await supabase
-    .from('app_verification_codes')
-    .select('id, expires_at')
-    .eq('email', normalizedEmail)
-    .eq('code', normalizedCode)
-    .maybeSingle();
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, expires_at FROM app_verification_codes WHERE email = $1 AND code = $2 LIMIT 1`,
+      [normalizedEmail, normalizedCode]
+    );
 
-  if (error || !data) {
-    return false;
-  }
+    if (rows.length === 0) return false;
 
-  const isExpired = new Date(data.expires_at) < new Date();
-  if (isExpired) {
-    // Delete expired code
-    await supabase
+    const row = rows[0];
+    const isExpired = new Date(row.expires_at) < new Date();
+    
+    // Always delete the code row so it cannot be re-used
+    await pool.query(`DELETE FROM app_verification_codes WHERE id = $1`, [row.id]);
+
+    return !isExpired;
+  } catch (err: any) {
+    console.error('[users] verifyOtp failed via pg pool:', err.message);
+    const supabase = getSupabase();
+    const { data } = await supabase
       .from('app_verification_codes')
-      .delete()
-      .eq('id', data.id);
-    return false;
+      .select('id, expires_at')
+      .eq('email', normalizedEmail)
+      .eq('code', normalizedCode)
+      .maybeSingle();
+
+    if (!data) return false;
+    await supabase.from('app_verification_codes').delete().eq('id', data.id);
+    return new Date(data.expires_at) >= new Date();
   }
-
-  // Code is valid! Delete it so it cannot be reused
-  await supabase
-    .from('app_verification_codes')
-    .delete()
-    .eq('id', data.id);
-
-  return true;
 }
 
 // ── Widget Customizer Onboarding Status ──────────────────────────────────────

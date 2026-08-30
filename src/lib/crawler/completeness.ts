@@ -17,6 +17,24 @@ export interface CrawlDiagnostic {
   errors?: string[];
 }
 
+export interface InventoryCategoryCoverage {
+  discovered: boolean;
+  inventoryRoutesCount: number;
+  vehiclePagesCount: number;
+  extractedVehiclesCount: number;
+}
+
+export interface InventoryCoverageReport {
+  new: InventoryCategoryCoverage;
+  used: InventoryCategoryCoverage;
+  cpo: InventoryCategoryCoverage;
+  allVehiclesCount: number;
+  dealerInfoDiscovered: boolean;
+  businessHoursDiscovered: boolean;
+  isDualInventoryExpected: boolean;
+  missingCategoryWarning?: string;
+}
+
 export interface CrawlCoverageReport {
   websiteId: string;
   startUrl: string;
@@ -25,6 +43,7 @@ export interface CrawlCoverageReport {
   isSuspiciouslyIncomplete: boolean;
   suspiciousReasons: string[];
   missingExpectedSections: string[];
+  inventoryCoverage?: InventoryCoverageReport;
   discoveredUrlsCount: number;
   successfullyCrawledCount: number;
   failedUrlsCount: number;
@@ -212,12 +231,60 @@ export function assessCrawlCompleteness(params: {
     suspiciousReasons.push(`Missed ${missingSections.length}/${navSections.length} navigation sections: ${missingSections.join(', ')}`);
   }
 
-  // Rule C: SPA Shell detection — minimal homepage text but SPA scripts present
-  const isSpaShell = homepageHtml.length > 0 && homepageHtml.length < 5000 && !homepageHtml.includes('<main') && (homepageHtml.includes('_next') || homepageHtml.includes('root') || homepageHtml.includes('app'));
-  if (isSpaShell && entities.length <= 1) {
-    isSuspiciouslyIncomplete = true;
-    suspiciousReasons.push('Homepage is a client-rendered SPA shell with unrendered content.');
+  // 4. Automotive Dual Inventory (NEW vs USED vs CPO) Completeness Evaluation
+  const newRoutes = discoveredUrls.filter(u => /\b(?:new-vehicles|new-inventory|new-cars|\/new\/|searchnew)\b/i.test(u));
+  const usedRoutes = discoveredUrls.filter(u => /\b(?:used-vehicles|used-inventory|used-cars|pre-owned|\/used\/|searchused)\b/i.test(u));
+  const cpoRoutes = discoveredUrls.filter(u => /\b(?:cpo|certified-pre-owned|certified|\/cpo\/)\b/i.test(u));
+
+  const newVehicles = entities.filter(e => e.metadata?.condition === 'new' || /\bnew\b/i.test(String(e.metadata?.condition || '')));
+  const usedVehicles = entities.filter(e => e.metadata?.condition === 'used' || /\bused\b/i.test(String(e.metadata?.condition || '')));
+  const cpoVehicles = entities.filter(e => e.metadata?.condition === 'cpo' || e.metadata?.condition === 'certified');
+
+  const navHasNew = navSections.some(n => /\bnew\b/i.test(n.label) || (n.href && /\bnew\b/i.test(n.href)));
+  const navHasUsed = navSections.some(n => /\b(?:used|pre-owned|preowned)\b/i.test(n.label) || (n.href && /\b(?:used|pre-owned|preowned)\b/i.test(n.href)));
+  const isDualInventoryExpected = navHasNew && navHasUsed;
+
+  let missingCategoryWarning: string | undefined = undefined;
+  if (isDualInventoryExpected) {
+    if (newVehicles.length === 0 && usedVehicles.length > 0) {
+      missingCategoryWarning = `Dealership navigation indicates NEW inventory exists (${newRoutes.length} routes discovered), but 0 new vehicles were extracted.`;
+      isSuspiciouslyIncomplete = true;
+      suspiciousReasons.push(missingCategoryWarning);
+    } else if (usedVehicles.length === 0 && newVehicles.length > 0) {
+      missingCategoryWarning = `Dealership navigation indicates USED inventory exists (${usedRoutes.length} routes discovered), but 0 used vehicles were extracted.`;
+      isSuspiciouslyIncomplete = true;
+      suspiciousReasons.push(missingCategoryWarning);
+    }
   }
+
+  const hasDealerInfo = entities.some(e => e.dataType === 'contact' || (e.metadata?.phone && e.metadata?.address));
+  const hasHours = entities.some(e => e.metadata?.hours);
+
+  const inventoryCoverage: InventoryCoverageReport = {
+    new: {
+      discovered: newVehicles.length > 0 || newRoutes.length > 0,
+      inventoryRoutesCount: newRoutes.length,
+      vehiclePagesCount: newRoutes.length,
+      extractedVehiclesCount: newVehicles.length,
+    },
+    used: {
+      discovered: usedVehicles.length > 0 || usedRoutes.length > 0,
+      inventoryRoutesCount: usedRoutes.length,
+      vehiclePagesCount: usedRoutes.length,
+      extractedVehiclesCount: usedVehicles.length,
+    },
+    cpo: {
+      discovered: cpoVehicles.length > 0 || cpoRoutes.length > 0,
+      inventoryRoutesCount: cpoRoutes.length,
+      vehiclePagesCount: cpoRoutes.length,
+      extractedVehiclesCount: cpoVehicles.length,
+    },
+    allVehiclesCount: newVehicles.length + usedVehicles.length + cpoVehicles.length,
+    dealerInfoDiscovered: hasDealerInfo,
+    businessHoursDiscovered: hasHours,
+    isDualInventoryExpected,
+    missingCategoryWarning,
+  };
 
   // 4. Quality Score & Status Calculation
   let qualityScore = 100;
@@ -243,8 +310,9 @@ export function assessCrawlCompleteness(params: {
     isSuspiciouslyIncomplete,
     suspiciousReasons,
     missingExpectedSections: missingSections,
+    inventoryCoverage,
     discoveredUrlsCount: discoveredUrls.length,
-    successfullyCrawledCount: pagesVisited,
+    successfullyCrawledCount: pagesProcessed,
     failedUrlsCount,
     skippedUrlsCount: pagesSkipped,
     dynamicUrlsCount,

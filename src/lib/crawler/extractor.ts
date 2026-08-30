@@ -769,8 +769,16 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
       if (entity.title || entity.content) entities.push(entity);
     }
 
-    // 10. LocalBusiness / Organization / Store
-    else if (type.includes('localbusiness') || type.includes('organization') || type.includes('restaurant') || type.includes('store')) {
+    // 10. LocalBusiness / AutoDealer / Organization / Store
+    else if (
+      type.includes('localbusiness') ||
+      type.includes('autodealer') ||
+      type.includes('automotivedealer') ||
+      type.includes('carrepair') ||
+      type.includes('organization') ||
+      type.includes('restaurant') ||
+      type.includes('store')
+    ) {
       const entity: CrawledEntity = {
         url: pageUrl,
         title: ld.name || '',
@@ -779,9 +787,9 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
         metadata: {
           discoveryMethod: 'json-ld',
           description: ld.description,
-          phone: ld.telephone,
+          phone: ld.telephone || ld.phone,
           email: ld.email,
-          address: typeof ld.address === 'object' ? `${ld.address?.streetAddress || ''}, ${ld.address?.addressLocality || ''}` : ld.address,
+          address: typeof ld.address === 'object' ? `${ld.address?.streetAddress || ''}, ${ld.address?.addressLocality || ''} ${ld.address?.addressRegion || ''} ${ld.address?.postalCode || ''}`.trim() : ld.address,
           hours: ld.openingHours || ld.openingHoursSpecification ? JSON.stringify(ld.openingHours || ld.openingHoursSpecification) : undefined,
           rating: ld.aggregateRating?.ratingValue ? parseFloat(ld.aggregateRating.ratingValue) : undefined,
         },
@@ -907,16 +915,18 @@ export function extractEmbeddedAppState(html: string, pageUrl: string): CrawledE
     if (m?.[1]) {
       try {
         const stateObj = JSON.parse(m[1]);
-        const arrays = Array.isArray(stateObj) ? [stateObj] : findDomainArrays(stateObj);
-        for (const arr of arrays) {
-          for (const item of arr) {
-            if (isInventoryShapedObject(item)) {
-              const e = mapInventoryObjectToEntity(item, pageUrl, 'embedded_state');
-              if (e && e.title && !seenTitles.has(e.title.toLowerCase())) {
-                seenTitles.add(e.title.toLowerCase());
-                e.metadata.discoveryMethod = 'embedded_state';
-                entities.push(e);
-              }
+        const items = Array.isArray(stateObj)
+          ? stateObj
+          : isInventoryShapedObject(stateObj)
+          ? [stateObj]
+          : findDomainArrays(stateObj).flat();
+        for (const item of items) {
+          if (isInventoryShapedObject(item)) {
+            const e = mapInventoryObjectToEntity(item, pageUrl, 'embedded_state');
+            if (e && e.title && !seenTitles.has(e.title.toLowerCase())) {
+              seenTitles.add(e.title.toLowerCase());
+              e.metadata.discoveryMethod = 'embedded_state';
+              entities.push(e);
             }
           }
         }

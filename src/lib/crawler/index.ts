@@ -58,6 +58,10 @@ import {
   computeVehicleContentHash,
   type NormalizedVehicleRecord,
 } from '@/lib/vehicles/types';
+import {
+  extractDealerInfoFromEntities,
+  persistDealerProfileAndHours,
+} from './dealerExtractor';
 import crypto from 'crypto';
 
 export function computeContentHash(raw: string): string {
@@ -1247,6 +1251,16 @@ async function persistEntities(websiteId: string, entities: CrawledEntity[]): Pr
       console.error('[crawler] Insert/merge error:', err.message || err);
     }
   }
+
+    // 3. Extract and persist Dealership Profile & 7-Day Business Hours
+    try {
+      const dealerInfo = extractDealerInfoFromEntities(entities, entities[0]?.url || 'https://dealership.local');
+      if (dealerInfo) {
+        await persistDealerProfileAndHours(websiteId, dealerInfo);
+      }
+    } catch (dealerErr: any) {
+      console.warn('[crawler:dealer] Warning persisting dealer profile:', dealerErr.message);
+    }
 
   // Gracefully mark entities that disappeared from this crawl as still_listed = false without deleting them
   const savedRowIds = new Set(rowsToSave.map(r => r.id).filter(Boolean));

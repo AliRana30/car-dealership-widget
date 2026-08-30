@@ -191,9 +191,15 @@ export function sanitizeAndRankImages(rawImages: any): string[] {
     if (typeof raw !== 'string') continue;
     const url = raw.trim();
     if (isInvalid(url)) continue;
-    if (!seen.has(url)) {
-      seen.add(url);
-      validUrls.push(url);
+    let safeUrl = url;
+    try {
+      safeUrl = encodeURI(decodeURI(url));
+    } catch {
+      safeUrl = url.replace(/\s+/g, '%20');
+    }
+    if (!seen.has(safeUrl)) {
+      seen.add(safeUrl);
+      validUrls.push(safeUrl);
     }
   }
 

@@ -314,3 +314,66 @@ model OtpToken {
   @@index([email])
   @@map("otp_tokens")
 }
+
+model DealerProfile {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  websiteId      String?       @map("website_id") @db.Uuid
+  dealerCode     String        @unique @map("dealer_code")
+  name           String
+  websiteUrl     String?       @map("website_url")
+  phone          String?
+  email          String?
+  address        String?
+  city           String?
+  provinceState  String?       @map("province_state")
+  postalCode     String?       @map("postal_code")
+  country        String        @default("CA")
+  timezone       String        @default("America/Toronto")
+  logoUrl        String?       @map("logo_url")
+  description    String?
+  lastVerifiedAt DateTime?     @map("last_verified_at") @db.Timestamptz
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  hours          DealerHours[]
+
+  @@index([organizationId])
+  @@index([websiteId])
+  @@map("dealer_profiles")
+}
+
+model DealerHours {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dealerProfileId String        @map("dealer_profile_id") @db.Uuid
+  dayOfWeek       Int           @map("day_of_week") @db.SmallInt
+  openTime        DateTime?     @map("open_time") @db.Time(6)
+  closeTime       DateTime?     @map("close_time") @db.Time(6)
+  isClosed        Boolean       @default(false) @map("is_closed")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  dealerProfile   DealerProfile @relation(fields: [dealerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([dealerProfileId, dayOfWeek])
+  @@index([dealerProfileId])
+  @@map("dealer_hours")
+}
+
+model SessionContext {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId            String   @map("session_id")
+  widgetId             String   @map("widget_id")
+  currentEntity        Json?    @map("current_entity")
+  lastEntities         Json?    @default("[]") @map("last_entities")
+  activeFilters        Json?    @default("{}") @map("active_filters")
+  lastNavigationTarget String?  @map("last_navigation_target")
+  lastIntent           String?  @map("last_intent")
+  turnCount            Int      @default(0) @map("turn_count")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([sessionId, widgetId])
+  @@map("session_contexts")
+}
+
