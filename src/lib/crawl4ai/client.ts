@@ -69,6 +69,11 @@ export function isCrawlResultBlocked(result: CrawlResult): boolean {
     'security check',
     'enable javascript and cookies to continue',
     'pardon our interruption',
+    'request rejected',
+    'rejected by d2c media',
+    'd2c media\'s firewall',
+    'browsing from outside north america',
+    'site-firewall',
   ];
 
   if (blockSignatures.some(sig => errMsg.includes(sig))) {
@@ -76,14 +81,18 @@ export function isCrawlResultBlocked(result: CrawlResult): boolean {
   }
 
   // If content is short/suspicious (<2000 chars) and contains block signatures
-  if (rawContent.length > 0 && rawContent.length < 2000) {
+  if (rawContent.length > 0 && rawContent.length < 2500) {
     if (
       rawContent.includes('cloudflare') ||
       rawContent.includes('datadome') ||
       rawContent.includes('access denied') ||
       rawContent.includes('verify you are human') ||
       rawContent.includes('pardon our interruption') ||
-      rawContent.includes('please complete the security check')
+      rawContent.includes('please complete the security check') ||
+      rawContent.includes('request rejected') ||
+      rawContent.includes('rejected by d2c media') ||
+      rawContent.includes('d2c media\'s firewall') ||
+      rawContent.includes('browsing from outside north america')
     ) {
       return true;
     }

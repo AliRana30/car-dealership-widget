@@ -29,6 +29,7 @@ export interface NormalizedVehicleRecord {
   make?: string;                             // Manufacturer make (e.g. 'Jeep', 'Ram', 'Dodge', 'Toyota')
   model?: string;                            // Vehicle model (e.g. 'Wrangler 4xe', 'Grand Cherokee', '1500')
   trim?: string;                             // Trim package (e.g. 'Rubicon', 'Limited', 'Big Horn')
+  category?: string;                         // Category (e.g. 'SUV', 'Truck', 'Sedan', 'Minivan', 'Coupe', 'Convertible', 'Electric', 'Hybrid')
   bodyStyle?: string;                        // Body type (e.g. 'SUV', 'Truck', 'Sedan', 'Coupe', 'Van', 'Convertible')
   price?: number;                            // Current advertised / selling price
   msrp?: number;                             // Manufacturer Suggested Retail Price / original sticker
@@ -36,6 +37,8 @@ export interface NormalizedVehicleRecord {
   mileage?: number;                          // Odometer reading in miles / km (vital for USED inventory)
   drivetrain?: string;                       // Drivetrain configuration (e.g. '4x4', '4WD', 'AWD', 'FWD', 'RWD')
   transmission?: string;                     // Transmission type (e.g. '8-Speed Automatic', '6-Speed Manual')
+  towingCapacity?: string;                   // Display towing capacity e.g. '908kg' or '10,640 lbs'
+  towingCapacityKg?: number;                 // Normalized numeric towing capacity in kilograms
   engine?: string;                           // Engine specification (e.g. '3.6L Pentastar V6', '2.0L Turbo PHEV')
   fuel?: string;                             // Fuel / power type (e.g. 'Gasoline', 'Hybrid', 'Plug-in Hybrid', 'Electric', 'Diesel')
   exteriorColor?: string;                    // Exterior paint color (e.g. 'Diamond Black Crystal Pearl')
@@ -77,6 +80,7 @@ export interface VehicleSearchFilters {
   make?: string;                             // e.g. 'Jeep'
   model?: string;                            // e.g. 'Wrangler'
   trim?: string;                             // e.g. 'Rubicon'
+  category?: string;                         // e.g. 'SUV' | 'Sedan' | 'Truck' | 'Minivan'
   bodyStyle?: string;                        // e.g. 'SUV' | 'Truck'
   minYear?: number;                          // e.g. 2022
   maxYear?: number;                          // e.g. 2025
@@ -132,14 +136,30 @@ export function parseDrivetrain(val: unknown, title?: string, desc?: string): st
 
 export function parseBodyStyle(val: unknown, title?: string, desc?: string): string | undefined {
   const combined = `${String(val || '')} ${title || ''} ${desc || ''}`.toLowerCase();
-  if (/\b(?:suv|crossover|4runner|cherokee|wrangler|durango|explorer|tahoe|suburban)\b/i.test(combined)) return 'SUV';
-  if (/\b(?:truck|pickup|crew cab|quad cab|ram 1500|f-150|silverado|sierra|tacoma|tundra)\b/i.test(combined)) return 'Truck';
-  if (/\b(?:sedan|4-door sedan|saloon)\b/i.test(combined)) return 'Sedan';
-  if (/\b(?:coupe|2-door coupe)\b/i.test(combined)) return 'Coupe';
-  if (/\b(?:convertible|cabriolet|roadster)\b/i.test(combined)) return 'Convertible';
-  if (/\b(?:van|minivan|passenger van|cargo van|pacifica|odyssey|sienna)\b/i.test(combined)) return 'Van';
+  if (/\b(?:suv|crossover|4runner|cherokee|wrangler|durango|explorer|tahoe|suburban|escape|renegade|sportage|rav4|cr-v|tucson|santa fe|palisade|telluride|cx-5|highlander)\b/i.test(combined)) return 'SUV';
+  if (/\b(?:truck|pickup|crew cab|quad cab|ram 1500|f-150|silverado|sierra|tacoma|tundra|colorado|canyon|gladiator|ranger|maverick)\b/i.test(combined)) return 'Truck';
+  if (/\b(?:sedan|4-door sedan|saloon|328|328i|330i|civic|accord|camry|corolla|elantra|sonata|altima|sentra|jetta|passat)\b/i.test(combined)) return 'Sedan';
+  if (/\b(?:coupe|2-door coupe|mustang|camaro|corvette|challenger)\b/i.test(combined)) return 'Coupe';
+  if (/\b(?:convertible|cabriolet|roadster|soft top)\b/i.test(combined)) return 'Convertible';
+  if (/\b(?:van|minivan|passenger van|cargo van|pacifica|odyssey|sienna|grand caravan|carnival)\b/i.test(combined)) return 'Minivan';
   if (/\b(?:hatchback|5-door)\b/i.test(combined)) return 'Hatchback';
-  if (/\b(?:wagon|estate)\b/i.test(combined)) return 'Wagon';
+  if (/\b(?:wagon|estate|station wagon|outback)\b/i.test(combined)) return 'Wagon';
+  return typeof val === 'string' && val.trim() ? val.trim() : undefined;
+}
+
+export function parseVehicleCategory(val: unknown, title?: string, desc?: string, fuel?: string): string | undefined {
+  const combined = `${String(val || '')} ${title || ''} ${desc || ''} ${fuel || ''}`.toLowerCase();
+  if (/\b(?:suvs?\b|crossovers?\b|4runner|cherokee|wrangler|durango|explorer|tahoe|suburban|escape|renegade|sportage|rav4|cr-v|tucson|santa fe|palisade|telluride|cx-5|highlander)\b/i.test(combined)) return 'SUV';
+  if (/\b(?:trucks?\b|pickups?\b|crew cab|quad cab|ram\s*1500|f-150|silverado|sierra|tacoma|tundra|colorado|canyon|gladiator|ranger|maverick)\b/i.test(combined)) return 'Truck';
+  if (/\b(?:sedans?\b|compacts?\b|4-door sedan|saloon|328|328i|330i|civic|accord|camry|corolla|elantra|sonata|altima|sentra|jetta|passat)\b/i.test(combined)) return 'Sedan';
+  if (/\b(?:minivans?\b|vans?\b|passenger van|cargo van|pacifica|odyssey|sienna|grand caravan|carnival)\b/i.test(combined)) return 'Minivan';
+  if (/\b(?:coupes?\b|2-door coupe|mustang|camaro|corvette|challenger)\b/i.test(combined)) return 'Coupe';
+  if (/\b(?:convertibles?\b|cabriolets?\b|roadsters?\b|soft top)\b/i.test(combined)) return 'Convertible';
+  if (/\b(?:hatchbacks?\b|5-door)\b/i.test(combined)) return 'Hatchback';
+  if (/\b(?:wagons?\b|station wagon|outback)\b/i.test(combined)) return 'Wagon';
+  if (/\b(?:electrics?\b|ev\b|bev\b)\b/i.test(combined)) return 'Electric';
+  if (/\b(?:plug-in hybrids?\b|phev\b|4xe\b)\b/i.test(combined)) return 'Plug-in Hybrid';
+  if (/\b(?:hybrids?\b|hev\b)\b/i.test(combined)) return 'Hybrid';
   return typeof val === 'string' && val.trim() ? val.trim() : undefined;
 }
 
@@ -236,9 +256,27 @@ export function normalizeVehicleRecord(
   const transmission = raw.transmission || meta.transmission || (meta.vehicleTransmission ? String(meta.vehicleTransmission).trim() : undefined);
   const engine = raw.engine || meta.engine || meta.vehicleEngine ? String(raw.engine || meta.engine || meta.vehicleEngine).trim() : undefined;
   const fuel = parseFuelType(raw.fuel || meta.fuel || meta.fuelType, title, raw.content || meta.description);
-  const bodyStyle = parseBodyStyle(raw.bodyStyle || raw.body_style || meta.bodyStyle || meta.bodyType || meta.category, title, raw.content || meta.description);
+  const rawBodyStyle = raw.bodyStyle || raw.body_style || meta.bodyStyle || meta.bodyType || meta.body_style;
+  const rawCategory = raw.category || meta.category || rawBodyStyle;
+  const category = parseVehicleCategory(rawCategory, title, raw.content || meta.description, fuel) || (rawCategory ? String(rawCategory).trim() : undefined);
+  const bodyStyle = parseBodyStyle(rawBodyStyle || category, title, raw.content || meta.description) || category;
   const exteriorColor = raw.exteriorColor || raw.exterior_color || meta.exteriorColor || meta.color ? String(raw.exteriorColor || raw.exterior_color || meta.exteriorColor || meta.color).trim() : undefined;
   const interiorColor = raw.interiorColor || raw.interior_color || meta.interiorColor ? String(raw.interiorColor || raw.interior_color || meta.interiorColor).trim() : undefined;
+
+  // Towing Capacity
+  const towingRaw = raw.towingCapacity || raw.towing_capacity || meta.towingCapacity || meta.towing_capacity || meta.towing || meta.specsTowing;
+  let towingCapacity: string | undefined = towingRaw ? String(towingRaw).trim() : undefined;
+  let towingCapacityKg: number | undefined;
+  if (towingCapacity) {
+    const num = parseNumericValue(towingCapacity);
+    if (num !== undefined) {
+      if (/lbs?|pounds?/i.test(towingCapacity)) {
+        towingCapacityKg = Math.round(num * 0.453592);
+      } else {
+        towingCapacityKg = Math.round(num);
+      }
+    }
+  }
 
   // Passengers & Doors
   const passengers = meta.passengers != null ? parseInt(String(meta.passengers), 10) || undefined
@@ -264,10 +302,16 @@ export function normalizeVehicleRecord(
     meta.fuelEfficiencyHighway ?? meta.fuelHighway ?? meta.highway_mpg ?? meta.mpgHighway
   );
   // Determine unit from source: L/100km (Canadian D2C) or MPG (US)
+  const isCanadianDomain = Boolean((vdpUrl || sourceUrl || raw.url || '').includes('.ca') || meta.currency === 'CAD');
   const fuelEfficiencyUnit: string | undefined =
     (cityFuelEfficiency !== undefined || highwayFuelEfficiency !== undefined)
-      ? (meta.fuelEfficiencyUnit || meta.fuel_efficiency_unit ||
-         (String(meta.specsFuelCity || meta.fuelCity || '').includes('100') ? 'L/100km' : 'MPG'))
+      ? (
+          meta.fuelEfficiencyUnit && meta.fuelEfficiencyUnit !== 'MPG'
+            ? meta.fuelEfficiencyUnit
+            : isCanadianDomain
+            ? 'L/100km'
+            : (meta.fuelEfficiencyUnit || meta.fuel_efficiency_unit || 'MPG')
+        )
       : undefined;
 
   // Inventory status (separate from condition)
@@ -322,6 +366,7 @@ export function normalizeVehicleRecord(
     make,
     model,
     trim,
+    category,
     bodyStyle,
     price,
     msrp,
@@ -329,6 +374,8 @@ export function normalizeVehicleRecord(
     mileage,
     drivetrain,
     transmission,
+    towingCapacity,
+    towingCapacityKg,
     engine,
     fuel,
     exteriorColor,
@@ -362,13 +409,13 @@ export function normalizeVehicleRecord(
       make,
       model,
       trim,
+      category,
       bodyStyle,
       price,
       msrp,
       currency,
       mileage,
       drivetrain,
-      transmission,
       engine,
       fuel,
       exteriorColor,
@@ -691,13 +738,16 @@ export async function saveVehiclesBatch(
           make: veh.make || null,
           model: veh.model || null,
           trim: veh.trim || null,
-          body_style: veh.bodyStyle || null,
+          category: veh.category || veh.bodyStyle || null,
+          body_style: veh.bodyStyle || veh.category || null,
           price: veh.price !== undefined && veh.price !== null ? Number(veh.price) : null,
           msrp: veh.msrp !== undefined && veh.msrp !== null ? Number(veh.msrp) : null,
           currency: veh.currency || 'USD',
           mileage: veh.mileage !== undefined && veh.mileage !== null ? Number(veh.mileage) : null,
           drivetrain: veh.drivetrain || null,
           transmission: veh.transmission || null,
+          towing_capacity: veh.towingCapacity || (veh as any).towing_capacity || null,
+          towing_capacity_kg: (veh as any).towingCapacityKg !== undefined && (veh as any).towingCapacityKg !== null ? Number((veh as any).towingCapacityKg) : null,
           engine: veh.engine || null,
           fuel: veh.fuel || null,
           exterior_color: veh.exteriorColor || null,
@@ -900,8 +950,11 @@ export async function getVehiclesForWidget(
     if (filters?.model) {
       query = query.ilike('model', `%${filters.model}%`);
     }
+    if (filters?.category) {
+      query = query.or(`category.ilike.%${filters.category}%,body_style.ilike.%${filters.category}%`);
+    }
     if (filters?.bodyStyle) {
-      query = query.ilike('body_style', `%${filters.bodyStyle}%`);
+      query = query.or(`body_style.ilike.%${filters.bodyStyle}%,category.ilike.%${filters.bodyStyle}%`);
     }
     if (filters?.minYear) {
       query = query.gte('year', filters.minYear);

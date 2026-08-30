@@ -79,7 +79,7 @@ export interface CrawledEntity {
     email?: string;
     address?: string;
     hours?: string;
-    discoveryMethod?: 'json-ld' | 'embedded_state' | 'api' | 'dom' | 'css' | 'llm' | 'spa_chunk' | 'html_fallback' | 'shopify' | 'woocommerce';
+    discoveryMethod?: 'vdp_spec_extractor' | 'json-ld' | 'embedded_state' | 'api' | 'dom' | 'css' | 'llm' | 'spa_chunk' | 'html_fallback' | 'shopify' | 'woocommerce';
     apiEndpoint?: string;
     [key: string]: unknown;
   };

@@ -220,6 +220,7 @@ model Vehicle {
   make             String?
   model            String?
   trim             String?
+  category         String?   // "SUV" | "Truck" | "Sedan" | "Minivan" | "Coupe" | "Convertible" | "Electric" | "Hybrid"
   bodyStyle        String?   @map("body_style") // "SUV" | "Truck" | "Sedan" | "Coupe" | "Van" | "Convertible"
   price            Decimal?  @db.Decimal(12, 2)
   msrp             Decimal?  @db.Decimal(12, 2)
@@ -227,6 +228,8 @@ model Vehicle {
   mileage          Int?      // Odometer reading (km or miles the vehicle has been driven — NOT fuel economy)
   drivetrain       String?   // "4x4" | "AWD" | "FWD" | "RWD" | "4WD"
   transmission     String?   // "Automatic" | "Manual" | "8-Speed Automatic"
+  towingCapacity   String?   @map("towing_capacity")    // Display towing capacity e.g. "908kg" or "10,640 lbs"
+  towingCapacityKg Decimal?  @map("towing_capacity_kg") @db.Decimal(8, 2) // Numeric towing capacity in kg
   engine           String?   // e.g. "3.6L Pentastar V6", "2.0L Turbo PHEV"
   fuel             String?   // "Gasoline" | "Hybrid" | "Plug-in Hybrid" | "Electric" | "Diesel"
   exteriorColor    String?   @map("exterior_color")

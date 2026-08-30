@@ -575,10 +575,14 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
         : 'used';
 
       const drivetrain = ld.driveWheelConfiguration || ld.driveType || ld.drivetrain;
-      const bodyStyle = ld.bodyType || ld.vehicleConfiguration;
+      const category = ld.category || ld.bodyType || ld.vehicleConfiguration;
+      const bodyStyle = ld.bodyType || ld.vehicleConfiguration || category;
       const msrp = ld.msrp || offer.priceSpecification?.price || offer.highPrice;
       const engine = ld.vehicleEngine?.name || ld.engine?.name || ld.engine;
       const stockNumber = ld.sku || ld.stockNumber || ld.stock_number;
+      const towingCapacity = ld.towingCapacity || ld.towingCapacityKg || ld.trailerWeightRating;
+      const cityFuelEfficiency = ld.fuelEfficiencyCity || ld.fuelCity || ld.cityFuelEfficiency;
+      const highwayFuelEfficiency = ld.fuelEfficiencyHighway || ld.fuelHighway || ld.highwayFuelEfficiency;
       const features: string[] = [];
       if (Array.isArray(ld.amenityFeature)) {
         features.push(...ld.amenityFeature.map((f: any) => String(f.name || f)).filter(Boolean));
@@ -606,9 +610,14 @@ export function mapJsonLdToEntities(jsonLdList: Record<string, any>[], pageUrl: 
           make: ld.brand?.name || ld.brand,
           model: ld.model,
           trim: ld.vehicleConfiguration || ld.trim,
+          category,
           bodyStyle,
           body_style: bodyStyle,
           drivetrain,
+          towingCapacity,
+          towing_capacity: towingCapacity,
+          cityFuelEfficiency,
+          highwayFuelEfficiency,
           color: ld.color,
           exteriorColor: ld.color || ld.exteriorColor,
           interiorColor: ld.interiorColor,
@@ -1262,10 +1271,237 @@ function parseAndPushEntity(
 }
 
 /**
+ * Dedicated high-precision automotive Vehicle Detail Page (VDP) extractor.
+ * Parses specification tables, key-value grids, and DOM blocks for:
+ * Make, Model, Trim Level, Category, Exterior Colour, Interior Colour,
+ * Kilometers/Mileage, Stock #, VIN, Drive train, Transmission, Towing capacity,
+ * Price, Fuel efficiency (City & Highway), Engine, Doors, and Passengers.
+ */
+export function extractAutomotiveVdpDetails(html: string, pageUrl: string): CrawledEntity | null {
+  const isVdpUrl = /\/(?:used|new|cpo|certified|inventory|vehicles?)\/[^/]+-id\d+\.html|\/inventory\/(?:used|new|cpo)\/[^/]+|\/vehicle\/\d+/i.test(pageUrl);
+  
+  // Check if page contains automotive specifications
+  const hasAutoSignals = /\b(?:VIN:?|Stock\s*#:?|Kilometers?:?|Drivetrain:?|Drive\s*train:?|Transmission:?|Towing\s*capacity|Exterior\s*Colou?r:?)\b/i.test(html);
+  if (!isVdpUrl && !hasAutoSignals) return null;
+
+  let origin = '';
+  try { origin = new URL(pageUrl).origin; } catch {}
+
+  // 1. Clean HTML text pairs extraction
+  const specPairs: Record<string, string> = {};
+  
+  const pairRegexes = [
+    /<(?:div|li|tr|p)[^>]*>\s*<(?:span|strong|b|th|dt)[^>]*>([^<:]+)[:\s]*<\/(?:span|strong|b|th|dt)>\s*<(?:span|div|td|dd|p)[^>]*>([^<]+)<\/(?:span|div|td|dd|p)>/gi,
+    /<(?:dt|th|span|strong|b)[^>]*>([^<:]+)[:\s]*<\/(?:dt|th|span|strong|b)>\s*<(?:dd|td|span)[^>]*>([^<]+)<\/(?:dd|td|span)>/gi,
+    /\b([A-Za-z\s/]{3,30})[:\s]+([A-Za-z0-9,.\s/-]{1,60})(?:<|$|\n)/gi
+  ];
+
+  for (const regex of pairRegexes) {
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      const key = match[1].trim().toLowerCase().replace(/[:\s]+/g, ' ');
+      const val = decodeHtmlEntities(stripTags(match[2])).trim();
+      if (val && !specPairs[key]) {
+        specPairs[key] = val;
+      }
+    }
+  }
+
+  // 2. Direct regex extractions on HTML & plain text
+  const extractSpec = (patterns: RegExp[]): string | undefined => {
+    for (const pat of patterns) {
+      const m = html.match(pat);
+      if (m?.[1]) return decodeHtmlEntities(stripTags(m[1])).trim();
+    }
+    return undefined;
+  };
+
+  const vin = extractSpec([
+    /\b(?:data-vin=["']|VIN:?\s*|Vehicle\s*Identification\s*Number:?\s*)([A-HJ-NPR-Z0-9]{17})\b/i,
+    /["']vin["']\s*:\s*["']([A-HJ-NPR-Z0-9]{17})["']/i,
+  ]) || specPairs['vin'];
+
+  const stockNumber = extractSpec([
+    /\b(?:data-stock=["']|Stock\s*(?:#|No|Number)?:\s*)([A-Za-z0-9-_]+)\b/i,
+    /["']stockNumber["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['stock #'] || specPairs['stock number'] || specPairs['stock no'] || specPairs['stock'];
+
+  const mileageRaw = extractSpec([
+    /\b(?:data-mileage=["'](\d+)|Kilometers?:\s*([0-9,]+)\s*(?:km)?|Kilometres?:\s*([0-9,]+)\s*(?:km)?|Odometer:\s*([0-9,]+)\s*(?:km|mi)?|Mileage:\s*([0-9,]+)\s*(?:miles|mi|km)?)\b/i,
+    /["']mileage["']\s*:\s*["']?(\d+)["']?/i,
+  ]) || specPairs['kilometers'] || specPairs['kilometres'] || specPairs['mileage'] || specPairs['odometer'];
+
+  const mileageStr = mileageRaw ? mileageRaw.replace(/[^0-9]/g, '') : undefined;
+  const mileage = mileageStr ? parseInt(mileageStr, 10) : undefined;
+
+  const model = extractSpec([
+    /\bModel:\s*([A-Za-z0-9\s/-]+?)(?:<|\n|$)/i,
+    /["']model["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['model'];
+
+  const trim = extractSpec([
+    /\bTrim(?:\s*Level)?:\s*([A-Za-z0-9\s/-]+?)(?:<|\n|$)/i,
+    /["']trim["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['trim level'] || specPairs['trim'];
+
+  const categoryRaw = extractSpec([
+    /\bCategory:\s*([A-Za-z0-9\s/]+?)(?:<|\n|$)/i,
+    /\bBody(?:\s*Style)?:\s*([A-Za-z0-9\s/]+?)(?:<|\n|$)/i,
+  ]) || specPairs['category'] || specPairs['body style'] || specPairs['body'];
+
+  const exteriorColor = extractSpec([
+    /\bExterior\s*Colou?r:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /["']exteriorColor["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['exterior colour'] || specPairs['exterior color'] || specPairs['colour'] || specPairs['color'];
+
+  const interiorColor = extractSpec([
+    /\bInterior\s*Colou?r:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /["']interiorColor["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['interior colour'] || specPairs['interior color'];
+
+  const drivetrain = extractSpec([
+    /\bDrive\s*train:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /\bDrivetrain:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /["']drivetrain["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['drive train'] || specPairs['drivetrain'];
+
+  const transmission = extractSpec([
+    /\bTransmission:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /["']transmission["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['transmission'];
+
+  const towingRaw = extractSpec([
+    /\bTowing\s*capacity(?:\s*up\s*to)?:\s*([0-9,]+\s*(?:kg|lbs|pounds)?)(?:<|\n|$)/i,
+    /["']towingCapacity["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['towing capacity up to'] || specPairs['towing capacity'] || specPairs['towing'];
+
+  const cityFuelRaw = extractSpec([
+    /\bCity(?:\s*fuel)?:\s*([0-9.]+)\s*(?:l\/100km|mpg)?/i,
+    /\bFuel\s*efficiency\s*:\s*City\s*([0-9.]+)/i,
+  ]) || specPairs['city'] || specPairs['city fuel'] || specPairs['city fuel efficiency'];
+
+  const highwayFuelRaw = extractSpec([
+    /\bHighway(?:\s*fuel)?:\s*([0-9.]+)\s*(?:l\/100km|mpg)?/i,
+    /\bFuel\s*efficiency\s*:\s*.*?Highway\s*([0-9.]+)/i,
+  ]) || specPairs['highway'] || specPairs['highway fuel'] || specPairs['highway fuel efficiency'];
+
+  const priceRaw = extractSpec([
+    /\bPrice:\s*([$€£₹]?\s*[0-9,]+(?:\.[0-9]{2})?)/i,
+    /\bSelling\s*Price:\s*([$€£₹]?\s*[0-9,]+(?:\.[0-9]{2})?)/i,
+    /<span[^>]*class=["'][^"']*(?:price|selling-price|retail-price|price-value)[^"']*["'][^>]*>\s*([$€£₹]?\s*[0-9,]+)/i,
+  ]) || specPairs['price'] || specPairs['selling price'];
+
+  // Title extraction
+  const titleMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
+    html.match(/<title>([^<|—]+)/i);
+  const title = titleMatch ? decodeHtmlEntities(stripTags(titleMatch[1])).trim() : '';
+
+  // Images gallery extraction
+  const imageRegex = /<img[^>]*(?:src|data-src|data-lazy|data-highres|data-large)=["']([^"']+)["'][^>]*>/gi;
+  const rawImages: string[] = [];
+  let imgM;
+  while ((imgM = imageRegex.exec(html)) !== null) {
+    const src = imgM[1].trim();
+    if (!src.includes('data:image') && !src.includes('placeholder') && !src.includes('icon') && !src.includes('logo')) {
+      try {
+        rawImages.push(new URL(src, origin).href);
+      } catch {
+        if (src.startsWith('http')) rawImages.push(src);
+      }
+    }
+  }
+
+  const cleanImages = Array.from(new Set(rawImages.filter((u) => typeof u === 'string' && u.startsWith('http')).map((u) => {
+    try {
+      return encodeURI(decodeURI(u.trim()));
+    } catch {
+      return u.trim().replace(/\s+/g, '%20');
+    }
+  })));
+
+  // If no title, vin, and price, not a valid VDP
+  if (!title && !vin && !stockNumber) return null;
+
+  const conditionStr = `${pageUrl} ${title} ${html}`.toLowerCase();
+  const condition = conditionStr.includes('cpo') || conditionStr.includes('certified')
+    ? 'cpo'
+    : conditionStr.includes('/new-vehicles') || conditionStr.includes('/new-inventory') || /\bnew\b/i.test(conditionStr)
+    ? 'new'
+    : 'used';
+
+  const yearMatch = (title || pageUrl).match(/\b(19\d{2}|20\d{2})\b/);
+  const year = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
+
+  const makes = ['Ford', 'Jeep', 'Ram', 'Dodge', 'Chrysler', 'BMW', 'Mercedes-Benz', 'Audi', 'Toyota', 'Honda', 'Hyundai', 'Kia', 'Nissan', 'Chevrolet', 'GMC', 'Cadillac', 'Buick', 'Volkswagen', 'Subaru', 'Mazda', 'Lexus', 'Acura', 'Infiniti', 'Volvo', 'Lincoln', 'Genesis', 'Porsche', 'Land Rover', 'Jaguar', 'Fiat', 'Alfa Romeo', 'Tesla'];
+  let make: string | undefined;
+  const titleAndUrl = `${title} ${pageUrl}`;
+  for (const m of makes) {
+    if (new RegExp(`\\b${m}\\b`, 'i').test(titleAndUrl)) {
+      make = m;
+      break;
+    }
+  }
+
+  let content = title || `${year || ''} ${make || ''} ${model || 'Vehicle'}`.trim();
+  if (priceRaw) content += `\nPrice: ${priceRaw}`;
+  if (vin) content += `\nVIN: ${vin}`;
+  if (stockNumber) content += `\nStock #: ${stockNumber}`;
+  if (mileage) content += `\nKilometers: ${mileage.toLocaleString()} km`;
+  if (categoryRaw) content += `\nCategory: ${categoryRaw}`;
+  if (exteriorColor) content += `\nExterior Colour: ${exteriorColor}`;
+  if (interiorColor) content += `\nInterior Colour: ${interiorColor}`;
+  if (drivetrain) content += `\nDrive train: ${drivetrain}`;
+  if (transmission) content += `\nTransmission: ${transmission}`;
+  if (towingRaw) content += `\nTowing capacity up to: ${towingRaw}`;
+  if (cityFuelRaw || highwayFuelRaw) content += `\nFuel efficiency: City ${cityFuelRaw || ''} / Highway ${highwayFuelRaw || ''}`;
+
+  return {
+    url: pageUrl,
+    title: title || `${year || ''} ${make || ''} ${model || 'Vehicle'}`.trim(),
+    content,
+    dataType: 'product',
+    imageUrls: cleanImages,
+    metadata: {
+      discoveryMethod: 'vdp_spec_extractor',
+      entity_type: 'vehicle',
+      condition,
+      year,
+      make,
+      model,
+      trim,
+      vin,
+      stockNumber,
+      stock_number: stockNumber,
+      mileage,
+      category: categoryRaw,
+      bodyStyle: categoryRaw,
+      exteriorColor,
+      interiorColor,
+      drivetrain,
+      transmission,
+      towingCapacity: towingRaw,
+      towing_capacity: towingRaw,
+      cityFuelEfficiency: cityFuelRaw ? parseFloat(cityFuelRaw) : undefined,
+      highwayFuelEfficiency: highwayFuelRaw ? parseFloat(highwayFuelRaw) : undefined,
+      fuelEfficiencyUnit: pageUrl.includes('.ca') ? 'L/100km' : 'MPG',
+      price: priceRaw ? parseFloat(priceRaw.replace(/[^0-9.]/g, '')) : undefined,
+      images: cleanImages,
+      vdpUrl: pageUrl,
+    }
+  };
+}
+
+/**
  * Universal 5-tier page entity extractor with intelligent merging and provenance tracking.
  */
 export async function extractPageEntities(html: string, pageUrl: string): Promise<CrawledEntity[]> {
   const allDiscovered: CrawledEntity[] = [];
+
+  // Tier 0: Dedicated Automotive VDP Specification Extractor
+  const vdpEntity = extractAutomotiveVdpDetails(html, pageUrl);
+  if (vdpEntity) {
+    allDiscovered.push(vdpEntity);
+  }
 
   // Tier 1: JSON-LD / Schema.org (Highest structural fidelity)
   const jsonLd = extractJsonLd(html);
@@ -1291,8 +1527,9 @@ export async function extractPageEntities(html: string, pageUrl: string): Promis
   allDiscovered.push(...domCards);
 
   // Intelligent Deduplication & Precedence Merging
-  // Priority: json-ld (1) > embedded_state (2) > api (3) > spa_chunk (4) > dom (5)
+  // Priority: vdp_spec_extractor (0) > json-ld (1) > embedded_state (2) > api (3) > spa_chunk (4) > dom (5)
   const priorityMap: Record<string, number> = {
+    'vdp_spec_extractor': 0,
     'json-ld': 1,
     'embedded_state': 2,
     'api': 3,
