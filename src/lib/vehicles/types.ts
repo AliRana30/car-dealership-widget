@@ -136,28 +136,28 @@ export function parseDrivetrain(val: unknown, title?: string, desc?: string): st
 
 export function parseBodyStyle(val: unknown, title?: string, desc?: string): string | undefined {
   const combined = `${String(val || '')} ${title || ''} ${desc || ''}`.toLowerCase();
-  if (/\b(?:suv|crossover|4runner|cherokee|wrangler|durango|explorer|tahoe|suburban|escape|renegade|sportage|rav4|cr-v|tucson|santa fe|palisade|telluride|cx-5|highlander)\b/i.test(combined)) return 'SUV';
+  if (/\b(?:suv|crossover|4runner|cherokee|grand cherokee|grand cherokee l|wrangler|durango|compass|explorer|tahoe|suburban|escape|renegade|sportage|rav4|cr-v|tucson|santa fe|palisade|telluride|cx-5|highlander)\b/i.test(combined)) return 'SUV';
   if (/\b(?:truck|pickup|crew cab|quad cab|ram 1500|f-150|silverado|sierra|tacoma|tundra|colorado|canyon|gladiator|ranger|maverick)\b/i.test(combined)) return 'Truck';
   if (/\b(?:sedan|4-door sedan|saloon|328|328i|330i|civic|accord|camry|corolla|elantra|sonata|altima|sentra|jetta|passat)\b/i.test(combined)) return 'Sedan';
   if (/\b(?:coupe|2-door coupe|mustang|camaro|corvette|challenger)\b/i.test(combined)) return 'Coupe';
   if (/\b(?:convertible|cabriolet|roadster|soft top)\b/i.test(combined)) return 'Convertible';
   if (/\b(?:van|minivan|passenger van|cargo van|pacifica|odyssey|sienna|grand caravan|carnival)\b/i.test(combined)) return 'Minivan';
-  if (/\b(?:hatchback|5-door)\b/i.test(combined)) return 'Hatchback';
+  if (/\b(?:hatchback|5-door|500e|fiat 500|leaf|bolt)\b/i.test(combined)) return 'Hatchback';
   if (/\b(?:wagon|estate|station wagon|outback)\b/i.test(combined)) return 'Wagon';
   return typeof val === 'string' && val.trim() ? val.trim() : undefined;
 }
 
 export function parseVehicleCategory(val: unknown, title?: string, desc?: string, fuel?: string): string | undefined {
   const combined = `${String(val || '')} ${title || ''} ${desc || ''} ${fuel || ''}`.toLowerCase();
-  if (/\b(?:suvs?\b|crossovers?\b|4runner|cherokee|wrangler|durango|explorer|tahoe|suburban|escape|renegade|sportage|rav4|cr-v|tucson|santa fe|palisade|telluride|cx-5|highlander)\b/i.test(combined)) return 'SUV';
+  if (/\b(?:electrics?\b|ev\b|bev\b|500e|taycan|model 3|model y|lightning)\b/i.test(combined)) return 'Electric';
+  if (/\b(?:suvs?\b|crossovers?\b|4runner|cherokee|grand cherokee|grand cherokee l|wrangler|durango|compass|explorer|tahoe|suburban|escape|renegade|sportage|rav4|cr-v|tucson|santa fe|palisade|telluride|cx-5|highlander)\b/i.test(combined)) return 'SUV';
   if (/\b(?:trucks?\b|pickups?\b|crew cab|quad cab|ram\s*1500|f-150|silverado|sierra|tacoma|tundra|colorado|canyon|gladiator|ranger|maverick)\b/i.test(combined)) return 'Truck';
   if (/\b(?:sedans?\b|compacts?\b|4-door sedan|saloon|328|328i|330i|civic|accord|camry|corolla|elantra|sonata|altima|sentra|jetta|passat)\b/i.test(combined)) return 'Sedan';
   if (/\b(?:minivans?\b|vans?\b|passenger van|cargo van|pacifica|odyssey|sienna|grand caravan|carnival)\b/i.test(combined)) return 'Minivan';
   if (/\b(?:coupes?\b|2-door coupe|mustang|camaro|corvette|challenger)\b/i.test(combined)) return 'Coupe';
   if (/\b(?:convertibles?\b|cabriolets?\b|roadsters?\b|soft top)\b/i.test(combined)) return 'Convertible';
-  if (/\b(?:hatchbacks?\b|5-door)\b/i.test(combined)) return 'Hatchback';
+  if (/\b(?:hatchbacks?\b|5-door|fiat 500|leaf|bolt)\b/i.test(combined)) return 'Hatchback';
   if (/\b(?:wagons?\b|station wagon|outback)\b/i.test(combined)) return 'Wagon';
-  if (/\b(?:electrics?\b|ev\b|bev\b)\b/i.test(combined)) return 'Electric';
   if (/\b(?:plug-in hybrids?\b|phev\b|4xe\b)\b/i.test(combined)) return 'Plug-in Hybrid';
   if (/\b(?:hybrids?\b|hev\b)\b/i.test(combined)) return 'Hybrid';
   return typeof val === 'string' && val.trim() ? val.trim() : undefined;

@@ -1350,46 +1350,78 @@ export function extractAutomotiveVdpDetails(html: string, pageUrl: string): Craw
   ]) || specPairs['category'] || specPairs['body style'] || specPairs['body'];
 
   const exteriorColor = extractSpec([
-    /\bExterior\s*Colou?r:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /\b(?:Exterior\s*Colou?r|Couleur\s*extérieure|Paint):\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
     /["']exteriorColor["']\s*:\s*["']([^"']+)["']/i,
-  ]) || specPairs['exterior colour'] || specPairs['exterior color'] || specPairs['colour'] || specPairs['color'];
+  ]) || specPairs['exterior colour'] || specPairs['exterior color'] || specPairs['couleur extérieure'] || specPairs['paint'] || specPairs['colour'] || specPairs['color'];
 
   const interiorColor = extractSpec([
-    /\bInterior\s*Colou?r:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /\b(?:Interior\s*Colou?r|Couleur\s*intérieure|Upholstery|Interior|Cabin|Seating):\s*([A-Za-z0-9\s/.,+-]+?)(?:<|\n|$)/i,
     /["']interiorColor["']\s*:\s*["']([^"']+)["']/i,
-  ]) || specPairs['interior colour'] || specPairs['interior color'];
+  ]) || specPairs['interior colour'] || specPairs['interior color'] || specPairs['upholstery'] || specPairs['interior'] || specPairs['couleur intérieure'] || specPairs['seating'] || specPairs['cabin'];
 
   const drivetrain = extractSpec([
     /\bDrive\s*train:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
     /\bDrivetrain:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
     /["']drivetrain["']\s*:\s*["']([^"']+)["']/i,
-  ]) || specPairs['drive train'] || specPairs['drivetrain'];
+  ]) || specPairs['drive train'] || specPairs['drivetrain'] || specPairs['rouage'];
 
   const transmission = extractSpec([
     /\bTransmission:\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
     /["']transmission["']\s*:\s*["']([^"']+)["']/i,
   ]) || specPairs['transmission'];
 
+  const engine = extractSpec([
+    /\b(?:Engine|Moteur):\s*([A-Za-z0-9\s/.,()+-]+?)(?:<|\n|$)/i,
+    /["']engine["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['engine'] || specPairs['moteur'] || specPairs['motor'];
+
+  const fuel = extractSpec([
+    /\b(?:Fuel(?:\s*Type)?|Carburant):\s*([A-Za-z0-9\s/.-]+?)(?:<|\n|$)/i,
+    /["']fuelType["']\s*:\s*["']([^"']+)["']/i,
+  ]) || specPairs['fuel type'] || specPairs['fuel'] || specPairs['carburant'];
+
+  const passengersRaw = extractSpec([
+    /\b(?:Passengers?|Seating(?:\s*capacity)?|Places?):\s*(\d+)/i,
+    /["']seatingCapacity["']\s*:\s*["']?(\d+)["']?/i,
+  ]) || specPairs['passengers'] || specPairs['seating capacity'] || specPairs['seating'] || specPairs['places'];
+
+  const doorsRaw = extractSpec([
+    /\b(?:Doors?|Portes?):\s*(\d+)/i,
+    /["']numberOfDoors["']\s*:\s*["']?(\d+)["']?/i,
+  ]) || specPairs['doors'] || specPairs['portes'];
+
   const towingRaw = extractSpec([
-    /\bTowing\s*capacity(?:\s*up\s*to)?:\s*([0-9,]+\s*(?:kg|lbs|pounds)?)(?:<|\n|$)/i,
+    /\b(?:Towing\s*capacity(?:\s*up\s*to)?|Capacité\s*de\s*remorquage(?:\s*jusqu'à)?):\s*([0-9,]+\s*(?:kg|lbs|pounds)?)(?:<|\n|$)/i,
     /["']towingCapacity["']\s*:\s*["']([^"']+)["']/i,
-  ]) || specPairs['towing capacity up to'] || specPairs['towing capacity'] || specPairs['towing'];
+  ]) || specPairs['towing capacity up to'] || specPairs['towing capacity'] || specPairs['capacité de remorquage jusqu\'à'] || specPairs['capacité de remorquage'] || specPairs['towing'];
 
   const cityFuelRaw = extractSpec([
-    /\bCity(?:\s*fuel)?:\s*([0-9.]+)\s*(?:l\/100km|mpg)?/i,
+    /\bCity(?:\s*fuel)?:\s*([0-9.]+)\s*(?:l\/100km|le\/100km|mpg)?/i,
     /\bFuel\s*efficiency\s*:\s*City\s*([0-9.]+)/i,
-  ]) || specPairs['city'] || specPairs['city fuel'] || specPairs['city fuel efficiency'];
+  ]) || (specPairs['city'] && /\d/.test(specPairs['city']) ? specPairs['city'] : undefined)
+     || (specPairs['city fuel'] && /\d/.test(specPairs['city fuel']) ? specPairs['city fuel'] : undefined)
+     || (specPairs['city fuel efficiency'] && /\d/.test(specPairs['city fuel efficiency']) ? specPairs['city fuel efficiency'] : undefined);
 
   const highwayFuelRaw = extractSpec([
-    /\bHighway(?:\s*fuel)?:\s*([0-9.]+)\s*(?:l\/100km|mpg)?/i,
+    /\bHighway(?:\s*fuel)?:\s*([0-9.]+)\s*(?:l\/100km|le\/100km|mpg)?/i,
     /\bFuel\s*efficiency\s*:\s*.*?Highway\s*([0-9.]+)/i,
-  ]) || specPairs['highway'] || specPairs['highway fuel'] || specPairs['highway fuel efficiency'];
+  ]) || (specPairs['highway'] && /\d/.test(specPairs['highway']) ? specPairs['highway'] : undefined)
+     || (specPairs['highway fuel'] && /\d/.test(specPairs['highway fuel']) ? specPairs['highway fuel'] : undefined)
+     || (specPairs['highway fuel efficiency'] && /\d/.test(specPairs['highway fuel efficiency']) ? specPairs['highway fuel efficiency'] : undefined);
+
+  const msrpRaw = extractSpec([
+    /\b(?:MSRP|Retail\s*Price|Original\s*Price|Regular\s*Price|Prix\s*de\s*détail):\s*([$€£₹]?\s*[0-9,]+(?:\.[0-9]{2})?)/i,
+    /<span[^>]*class=["'][^"']*(?:msrp|original-price|regular-price)[^"']*["'][^>]*>\s*([$€£₹]?\s*[0-9,]+)/i,
+    /["']msrp["']\s*:\s*["']?([0-9,]+(?:\.[0-9]{2})?)["']?/i,
+  ]) || specPairs['msrp'] || specPairs['retail price'] || specPairs['regular price'] || specPairs['prix de détail'];
 
   const priceRaw = extractSpec([
+    /\b(?:Selling\s*Price|Sale\s*Price|Cash\s*Price|Our\s*Price|Prix\s*de\s*vente):\s*([$€£₹]?\s*[0-9,]+(?:\.[0-9]{2})?)/i,
     /\bPrice:\s*([$€£₹]?\s*[0-9,]+(?:\.[0-9]{2})?)/i,
-    /\bSelling\s*Price:\s*([$€£₹]?\s*[0-9,]+(?:\.[0-9]{2})?)/i,
-    /<span[^>]*class=["'][^"']*(?:price|selling-price|retail-price|price-value)[^"']*["'][^>]*>\s*([$€£₹]?\s*[0-9,]+)/i,
-  ]) || specPairs['price'] || specPairs['selling price'];
+    /<span[^>]*class=["'][^"']*(?:selling-price|sale-price|price-value|dealer-price)[^"']*["'][^>]*>\s*([$€£₹]?\s*[0-9,]+)/i,
+    /["']sellingPrice["']\s*:\s*["']?([0-9,]+(?:\.[0-9]{2})?)["']?/i,
+    /["']price["']\s*:\s*["']?([0-9,]+(?:\.[0-9]{2})?)["']?/i,
+  ]) || specPairs['selling price'] || specPairs['price'] || specPairs['sale price'] || specPairs['cash price'] || specPairs['prix de vente'];
 
   // Title extraction
   const titleMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
@@ -1444,6 +1476,7 @@ export function extractAutomotiveVdpDetails(html: string, pageUrl: string): Craw
 
   let content = title || `${year || ''} ${make || ''} ${model || 'Vehicle'}`.trim();
   if (priceRaw) content += `\nPrice: ${priceRaw}`;
+  if (msrpRaw) content += `\nMSRP: ${msrpRaw}`;
   if (vin) content += `\nVIN: ${vin}`;
   if (stockNumber) content += `\nStock #: ${stockNumber}`;
   if (mileage) content += `\nKilometers: ${mileage.toLocaleString()} km`;
@@ -1452,6 +1485,8 @@ export function extractAutomotiveVdpDetails(html: string, pageUrl: string): Craw
   if (interiorColor) content += `\nInterior Colour: ${interiorColor}`;
   if (drivetrain) content += `\nDrive train: ${drivetrain}`;
   if (transmission) content += `\nTransmission: ${transmission}`;
+  if (engine) content += `\nEngine: ${engine}`;
+  if (fuel) content += `\nFuel: ${fuel}`;
   if (towingRaw) content += `\nTowing capacity up to: ${towingRaw}`;
   if (cityFuelRaw || highwayFuelRaw) content += `\nFuel efficiency: City ${cityFuelRaw || ''} / Highway ${highwayFuelRaw || ''}`;
 
@@ -1479,12 +1514,17 @@ export function extractAutomotiveVdpDetails(html: string, pageUrl: string): Craw
       interiorColor,
       drivetrain,
       transmission,
+      engine,
+      fuel,
+      passengers: passengersRaw ? parseInt(passengersRaw, 10) : undefined,
+      doors: doorsRaw ? parseInt(doorsRaw, 10) : undefined,
       towingCapacity: towingRaw,
       towing_capacity: towingRaw,
       cityFuelEfficiency: cityFuelRaw ? parseFloat(cityFuelRaw) : undefined,
       highwayFuelEfficiency: highwayFuelRaw ? parseFloat(highwayFuelRaw) : undefined,
       fuelEfficiencyUnit: pageUrl.includes('.ca') ? 'L/100km' : 'MPG',
       price: priceRaw ? parseFloat(priceRaw.replace(/[^0-9.]/g, '')) : undefined,
+      msrp: msrpRaw ? parseFloat(msrpRaw.replace(/[^0-9.]/g, '')) : undefined,
       images: cleanImages,
       vdpUrl: pageUrl,
     }
