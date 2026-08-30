@@ -14,11 +14,13 @@
 import nodemailer from 'nodemailer';
 
 function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const secure = process.env.SMTP_SECURE === 'true';
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
+  // port 465 requires secure:true (SSL); port 587 uses STARTTLS (secure:false)
+  const secure = port === 465 ? true : (process.env.SMTP_SECURE === 'true');
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  // Strip spaces from app password (Gmail shows it with spaces but must be sent without)
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
 
   return nodemailer.createTransport({
     host,
@@ -26,6 +28,9 @@ function getTransporter() {
     secure,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
 
@@ -57,10 +62,22 @@ export async function sendEmail({
       console.log('----------------------------------------------------');
       return;
     }
-    throw new Error('[email] Missing SMTP config. Set SMTP_HOST, SMTP_USER, SMTP_PASS in env variables');
+    throw new Error('[email] Missing SMTP config. Set SMTP_HOST, SMTP_USER, SMTP_PASS in environment variables.');
   }
 
   const transporter = getTransporter();
+
+  // Verify SMTP connection before sending — gives a clear error message on misconfiguration
+  try {
+    await transporter.verify();
+  } catch (verifyErr: any) {
+    const port = process.env.SMTP_PORT || '465';
+    throw new Error(
+      `[email] SMTP connection failed (host=${host} port=${port}): ${verifyErr.message}. ` +
+      `Check SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS env vars and ensure the Gmail App Password has no spaces.`
+    );
+  }
+
   await transporter.sendMail({ from: getFrom(), to, subject, html });
 }
 
