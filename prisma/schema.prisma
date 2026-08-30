@@ -224,7 +224,7 @@ model Vehicle {
   price            Decimal?  @db.Decimal(12, 2)
   msrp             Decimal?  @db.Decimal(12, 2)
   currency         String    @default("USD")
-  mileage          Int?      // Odometer reading (miles / km)
+  mileage          Int?      // Odometer reading (km or miles the vehicle has been driven — NOT fuel economy)
   drivetrain       String?   // "4x4" | "AWD" | "FWD" | "RWD" | "4WD"
   transmission     String?   // "Automatic" | "Manual" | "8-Speed Automatic"
   engine           String?   // e.g. "3.6L Pentastar V6", "2.0L Turbo PHEV"
@@ -233,6 +233,11 @@ model Vehicle {
   interiorColor    String?   @map("interior_color")
   passengers       Int?      // Seating capacity (e.g. 5, 7, 8)
   doors            Int?      // Number of doors (e.g. 2, 4, 5)
+  cityFuelEfficiency    Decimal? @map("city_fuel_efficiency") @db.Decimal(5, 2)    // City fuel consumption (L/100km or MPG) — NULL if not published
+  highwayFuelEfficiency Decimal? @map("highway_fuel_efficiency") @db.Decimal(5, 2) // Highway fuel consumption (L/100km or MPG) — NULL if not published
+  fuelEfficiencyUnit    String?  @map("fuel_efficiency_unit")                        // "L/100km" | "MPG" — NULL if no efficiency data
+  status           String    @default("available") // "available" | "pending" | "sold" | "on_hold"
+  missingCount     Int       @default(0) @map("missing_count") // Consecutive crawl cycles vehicle was absent
   features         String[]  @default([])
   description      String?
   shortDescription String?   @map("short_description")
@@ -260,8 +265,11 @@ model Vehicle {
   @@index([widgetId, price])
   @@index([widgetId, year])
   @@index([widgetId, mileage])
+  @@index([widgetId, bodyStyle])
+  @@index([widgetId, availability])
   @@index([widgetId, stillListed])
   @@index([widgetId, condition, stillListed])
+  @@index([widgetId, condition, make, bodyStyle])
   @@map("vehicles")
 }
 

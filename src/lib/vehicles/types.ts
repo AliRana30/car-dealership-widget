@@ -42,6 +42,13 @@ export interface NormalizedVehicleRecord {
   interiorColor?: string;                    // Interior upholstery color/material (e.g. 'Black Capri Leather')
   passengers?: number;                       // Seating capacity (e.g. 5, 7, 8)
   doors?: number;                            // Number of doors (e.g. 2, 4, 5)
+  // ── Fuel Economy (NEVER fabricated; NULL if source does not publish) ────────
+  cityFuelEfficiency?: number;               // City fuel consumption e.g. 8.5 (L/100km) or 28 (MPG)
+  highwayFuelEfficiency?: number;            // Highway fuel consumption e.g. 6.2 (L/100km) or 38 (MPG)
+  fuelEfficiencyUnit?: string;               // 'L/100km' or 'MPG' — NULL when no efficiency data available
+  // ── Inventory Status (separate from condition new/used/cpo) ───────────────
+  status?: string;                           // 'available' | 'pending' | 'sold' | 'on_hold'
+  missingCount?: number;                     // Consecutive crawl cycles the vehicle was absent
   features: string[];                        // Equipment list / options / package highlights
   description?: string;                      // Full descriptive text / window sticker highlights
   shortDescription?: string;                 // Concise summary text
@@ -208,10 +215,38 @@ export function normalizeVehicleRecord(
   const exteriorColor = meta.exteriorColor || meta.color ? String(meta.exteriorColor || meta.color).trim() : undefined;
   const interiorColor = meta.interiorColor ? String(meta.interiorColor).trim() : undefined;
 
-  // Passengers & Doors (from vdpJSON seats/doors or explicit fields)
+  // Passengers & Doors
   const passengers = meta.passengers != null ? parseInt(String(meta.passengers), 10) || undefined
     : meta.seats != null ? parseInt(String(meta.seats), 10) || undefined : undefined;
   const doors = meta.doors != null ? parseInt(String(meta.doors), 10) || undefined : undefined;
+
+  // Fuel Efficiency (NEVER fabricated — NULL is correct when source doesn't publish it)
+  // D2C Media sites expose these as 'specsFuelCity' / 'specsFuelHighway' (L/100km)
+  // or via JSON-LD 'fuelEfficiencyCity' / 'fuelEfficiencyHighway'
+  const parseFuelEfficiency = (val: unknown): number | undefined => {
+    if (val == null) return undefined;
+    const n = parseNumericValue(val);
+    // Sanity check: L/100km range is 3-30; MPG range is 10-100
+    if (n !== undefined && n > 0 && n < 150) return Math.round(n * 100) / 100;
+    return undefined;
+  };
+  const cityFuelEfficiency = parseFuelEfficiency(
+    meta.cityFuelEfficiency ?? meta.city_fuel_efficiency ?? meta.specsFuelCity ??
+    meta.fuelEfficiencyCity ?? meta.fuelCity ?? meta.city_mpg ?? meta.mpgCity
+  );
+  const highwayFuelEfficiency = parseFuelEfficiency(
+    meta.highwayFuelEfficiency ?? meta.highway_fuel_efficiency ?? meta.specsFuelHighway ??
+    meta.fuelEfficiencyHighway ?? meta.fuelHighway ?? meta.highway_mpg ?? meta.mpgHighway
+  );
+  // Determine unit from source: L/100km (Canadian D2C) or MPG (US)
+  const fuelEfficiencyUnit: string | undefined =
+    (cityFuelEfficiency !== undefined || highwayFuelEfficiency !== undefined)
+      ? (meta.fuelEfficiencyUnit || meta.fuel_efficiency_unit ||
+         (String(meta.specsFuelCity || meta.fuelCity || '').includes('100') ? 'L/100km' : 'MPG'))
+      : undefined;
+
+  // Inventory status (separate from condition)
+  const status = meta.status || meta.vehicleStatus || meta.inventoryStatus || 'available';
 
   // Features list
   const features: string[] = [];
@@ -275,6 +310,11 @@ export function normalizeVehicleRecord(
     interiorColor,
     passengers: passengers && passengers > 0 ? passengers : undefined,
     doors: doors && doors > 0 ? doors : undefined,
+    cityFuelEfficiency: cityFuelEfficiency !== undefined ? cityFuelEfficiency : undefined,
+    highwayFuelEfficiency: highwayFuelEfficiency !== undefined ? highwayFuelEfficiency : undefined,
+    fuelEfficiencyUnit,
+    status: status || 'available',
+    missingCount: typeof meta.missingCount === 'number' ? meta.missingCount : 0,
     features,
     description: raw.content || meta.description || undefined,
     shortDescription: raw.short_description || raw.shortDescription || meta.shortDescription || undefined,
@@ -639,6 +679,11 @@ export async function saveVehiclesBatch(
           interior_color: veh.interiorColor || null,
           passengers: veh.passengers !== undefined && veh.passengers !== null ? Number(veh.passengers) : null,
           doors: veh.doors !== undefined && veh.doors !== null ? Number(veh.doors) : null,
+          city_fuel_efficiency: (veh as any).cityFuelEfficiency !== undefined && (veh as any).cityFuelEfficiency !== null ? Number((veh as any).cityFuelEfficiency) : null,
+          highway_fuel_efficiency: (veh as any).highwayFuelEfficiency !== undefined && (veh as any).highwayFuelEfficiency !== null ? Number((veh as any).highwayFuelEfficiency) : null,
+          fuel_efficiency_unit: (veh as any).fuelEfficiencyUnit || null,
+          status: (veh as any).status || 'available',
+          missing_count: (veh as any).missingCount || 0,
           features: Array.isArray(veh.features) ? veh.features : [],
           description: veh.description || null,
           short_description: veh.shortDescription || null,

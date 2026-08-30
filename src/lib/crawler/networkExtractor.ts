@@ -230,6 +230,30 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
   const fuel = item.fuel || item.fuelType || item.fueltype || (Array.isArray(item.specsFuel) ? item.specsFuel[0] : undefined);
   const exteriorColor = item.color?.exteriorOrig || item.color?.exterior || (Array.isArray(item.specsExtColor) ? item.specsExtColor[0] : undefined) || item.exteriorColor || item.extColor || item.color;
   const interiorColor = item.color?.interiorOrig || item.color?.interior || item.interiorColor || item.intColor;
+
+  // ── Fuel Efficiency (L/100km or MPG — NEVER fabricated) ──────────────────────
+  // D2C Media (Ottawa Chrysler etc.) exposes these as specsFuelCity / specsFuelHighway arrays
+  // Also handles: fuelEfficiencyCity, fuelCity, city_mpg, mpgCity patterns
+  const parseFuelEffNum = (v: unknown): number | undefined => {
+    if (v == null) return undefined;
+    const raw = Array.isArray(v) ? v[0] : v;
+    const n = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+    return (!isNaN(n) && n > 0 && n < 150) ? Math.round(n * 100) / 100 : undefined;
+  };
+  const cityFuelEfficiency = parseFuelEffNum(
+    item.specsFuelCity ?? item.fuelEfficiencyCity ?? item.fuelCity ?? item.city_mpg ?? item.mpgCity ??
+    item.fuelEconomyCity ?? item.cityFuelEconomy ?? item.cityL100km
+  );
+  const highwayFuelEfficiency = parseFuelEffNum(
+    item.specsFuelHighway ?? item.fuelEfficiencyHighway ?? item.fuelHighway ?? item.highway_mpg ?? item.mpgHighway ??
+    item.fuelEconomyHighway ?? item.highwayFuelEconomy ?? item.highwayL100km
+  );
+  // Unit: default L/100km for Canadian D2C sites; MPG for US sites
+  const hasFuelEff = cityFuelEfficiency !== undefined || highwayFuelEfficiency !== undefined;
+  const fuelEfficiencyUnit: string | undefined = hasFuelEff
+    ? (item.fuelEfficiencyUnit ||
+       (String(item.specsFuelCity?.[0] || item.fuelCity || '').includes('/') ? 'L/100km' : 'L/100km'))
+    : undefined;
   const msrp = item.msrp || item.originalPrice || item.prices?.originalPriceWithoutCustomFees;
   const features = Array.isArray(item.features) ? item.features : Array.isArray(item.options) ? item.options : (typeof item.optionRaw === 'string' ? item.optionRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined);
 
@@ -299,6 +323,12 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
   if (fuel) contentParts.push(`Fuel Type: ${fuel}`);
   if (exteriorColor) contentParts.push(`Exterior Color: ${exteriorColor}`);
   if (interiorColor) contentParts.push(`Interior Color: ${interiorColor}`);
+  if (cityFuelEfficiency !== undefined || highwayFuelEfficiency !== undefined) {
+    const unit = fuelEfficiencyUnit || 'L/100km';
+    const cityStr = cityFuelEfficiency !== undefined ? `City: ${cityFuelEfficiency} ${unit}` : '';
+    const hwyStr = highwayFuelEfficiency !== undefined ? `Highway: ${highwayFuelEfficiency} ${unit}` : '';
+    contentParts.push(`Fuel Efficiency: ${[cityStr, hwyStr].filter(Boolean).join(' / ')}`);
+  }
   if (features && features.length > 0) contentParts.push(`Features: ${features.join(', ')}`);
   if (rating) contentParts.push(`Rating: ${rating}★${reviews ? ` (${reviews} reviews)` : ''}`);
   if (Array.isArray(item.recentReviews) && item.recentReviews.length > 0) {
@@ -375,6 +405,9 @@ export function mapInventoryObjectToEntity(item: any, pageUrl: string, apiEndpoi
       ...(location ? { location: String(location) } : {}),
       ...(sku ? { sku } : {}),
       ...(mileage !== undefined && mileage !== null ? { mileage } : {}),
+      ...(cityFuelEfficiency !== undefined ? { cityFuelEfficiency, specsFuelCity: cityFuelEfficiency } : {}),
+      ...(highwayFuelEfficiency !== undefined ? { highwayFuelEfficiency, specsFuelHighway: highwayFuelEfficiency } : {}),
+      ...(fuelEfficiencyUnit ? { fuelEfficiencyUnit } : {}),
       ...(rating ? { rating: Number(rating) } : {}),
       ...(reviews ? { reviews: Number(reviews) } : {}),
       ...(availability ? { availability } : {}),
