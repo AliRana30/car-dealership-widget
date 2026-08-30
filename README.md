@@ -1,500 +1,432 @@
-# Widgetized— Enterprise AI Voice & Website Intelligence Platform
+# 🚗 Automotive Dealership AI Voice & Conversational Intelligence Platform
 
-Widgetized is an embeddable AI voice and chat widget platform designed for enterprise and e-commerce websites. It combines real-time WebRTC voice telephony, streaming text chat, autonomous web crawling, high-dimensional vector embeddings, platform connectors, and dynamic tool execution to provide voice agents that understand site inventory, documentation, pricing, and services.
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-14+-black.svg)](https://nextjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-336791.svg)](https://www.postgresql.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748.svg)](https://www.prisma.io/)
+[![Retell AI](https://img.shields.io/badge/Retell_AI-Voice_WebRTC-FF6B6B.svg)](https://www.retellai.com/)
+[![Vapi AI](https://img.shields.io/badge/Vapi_AI-Telephony-6C5CE7.svg)](https://vapi.ai/)
 
----
-
-## Table of Contents
-
-1. [System Architecture](#system-architecture)
-2. [End-to-End Sequence Workflow](#end-to-end-sequence-workflow)
-3. [Core Feature Breakdown](#core-feature-breakdown)
-   - [Real-Time Telephony & Dual-Provider Voice Engine](#real-time-telephony--dual-provider-voice-engine)
-   - [Website Intelligence & Ingestion Subsystem](#website-intelligence--ingestion-subsystem)
-   - [High-Dimensional Vector Embeddings & Semantic Search](#high-dimensional-vector-embeddings--semantic-search)
-   - [E-Commerce & Platform Connectors](#e-commerce--platform-connectors)
-   - [Automated Synchronization & Real-Time Webhooks](#automated-synchronization--real-time-webhooks)
-   - [Agent Integration & Dynamic Tool Calling](#agent-integration--dynamic-tool-calling)
-   - [Visual Customizer & White-Label Theming](#visual-customizer--white-label-theming)
-   - [Embeddable Widget Bridge & Client Integration](#embeddable-widget-bridge--client-integration)
-4. [Data Storage & State Architecture](#data-storage--state-architecture)
-5. [Complete API Reference](#complete-api-reference)
-6. [Security, Cryptography & Compliance](#security-cryptography--compliance)
-7. [Environment Configuration](#environment-configuration)
-8. [Local Development & Automated Testing](#local-development--automated-testing)
+An enterprise-grade, embeddable **AI Voice & Streaming Chat Agent** engineered specifically for automotive dealerships. The platform autonomously crawls dealership websites across all major automotive CMS architectures (Dealer.com, D2C Media, DealerOn, DealerInspire, CDK Global, WordPress), extracts structured NEW, USED, and CPO vehicle inventories, synchronizes dealer profiles and 7-day business hours, and powers real-time conversational agents capable of sub-1.5s WebRTC voice telephony, grounded inventory retrieval, dynamic budget filtering, and autonomous browser navigation.
 
 ---
 
-## System Architecture
+## 📑 Table of Contents
+
+1. [System Architecture](#-system-architecture)
+2. [Key Capabilities & Automotive Features](#-key-capabilities--automotive-features)
+3. [Universal Dealership Crawler Subsystem](#-universal-dealership-crawler-subsystem)
+4. [Automotive Data Foundation & Schema Architecture](#-automotive-data-foundation--schema-architecture)
+5. [Conversational AI & Hybrid RAG Engine](#-conversational-ai--hybrid-rag-engine)
+6. [Autonomous Host Page Navigation Bridge](#-autonomous-host-page-navigation-bridge)
+7. [Real-Time WebRTC Voice Telephony](#-real-time-webrtc-voice-telephony)
+8. [Abuse Prevention & Spend Circuit Breakers](#-abuse-prevention--spend-circuit-breakers)
+9. [Complete API Reference](#-complete-api-reference)
+10. [Environment Configuration](#-environment-configuration)
+11. [Local Development & Verification Suites](#-local-development--verification-suites)
+
+---
+
+## 🏛 System Architecture
 
 ```mermaid
 graph TD
-    subgraph Client Application
-        ClientSite["Client Website DOM"]
+    subgraph Dealership Website & Client DOM
+        DealerSite["Dealership Website DOM (Dealer.com / D2C Media / CDK)"]
         WidgetBridge["Widget Loader Script (widget.js)"]
-        WidgetIframe["Sandboxed Embed Iframe (/embed/[id])"]
-        ClientSite -->|Injects Script Tag| WidgetBridge
-        WidgetBridge -->|Creates & Manages| WidgetIframe
+        WidgetIframe["Sandboxed Dealership Widget (/embed/[id])"]
+        DealerSite -->|Injects Script| WidgetBridge
+        WidgetBridge -->|Mounts Sandboxed Container| WidgetIframe
+        WidgetIframe -->|Autonomous Navigation Event| DealerSite
     end
 
-    subgraph Voice & Chat Telephony
-        UserAudio["Microphone Input / Audio Stream"]
-        RetellProvider["Retell AI (WebRTC Engine)"]
-        VapiProvider["Vapi AI (WebRTC Engine)"]
-        ChatStream["Streaming Text LLM Engine"]
-        WidgetIframe <-->|WebRTC Audio Stream| RetellProvider
-        WidgetIframe <-->|WebRTC Audio Stream| VapiProvider
-        WidgetIframe <-->|SSE Stream| ChatStream
+    subgraph Voice Telephony & Streaming Chat Engine
+        WebRTCStream["Low-Latency Audio Stream (< 1.5s)"]
+        RetellEngine["Retell AI Voice Engine"]
+        VapiEngine["Vapi AI Voice Engine"]
+        ChatStreamEngine["Grounded Streaming Chat LLM Engine"]
+        WidgetIframe <-->|WebRTC Audio| RetellEngine
+        WidgetIframe <-->|WebRTC Audio| VapiEngine
+        WidgetIframe <-->|SSE Stream| ChatStreamEngine
     end
 
-    subgraph Agent Tool & Search Gateway
-        ToolWebhook["Universal Agent Tools Gateway (/api/agent/tools)"]
-        SearchEndpoint["Scoped Vector Search (/api/widgets/[id]/entities/search)"]
-        EntityEndpoint["Single Entity Detail (/api/widgets/[id]/entities/[id])"]
-        RetellProvider -->|Function Call Webhook| ToolWebhook
-        VapiProvider -->|Function Call Webhook| ToolWebhook
-        ToolWebhook --> SearchEndpoint
-        ToolWebhook --> EntityEndpoint
+    subgraph Dealership Intelligence & Ingestion Engine
+        CrawlerPipeline["Universal Dealership Crawler Engine"]
+        D2CParser["D2C Media / DealerOn AJAX & State Interceptor"]
+        JsonLdParser["JSON-LD & Schema.org Automotive Extractor"]
+        DealerExtractor["Dealer Profile & 7-Day Hours Extractor"]
+        CompletenessMonitor["Dual Inventory Completeness Monitor"]
+        CrawlerPipeline --> D2CParser
+        CrawlerPipeline --> JsonLdParser
+        CrawlerPipeline --> DealerExtractor
+        CrawlerPipeline --> CompletenessMonitor
     end
 
-    subgraph Intelligence Ingestion Engine
-        Crawl4AISvc["Crawl4AI Microservice (Docker)"]
-        PlatformConnectors["Platform Connectors (Shopify / WooCommerce / Feeds)"]
-        WebhooksEngine["Cryptographic Webhook Handlers (HMAC SHA-256)"]
-        CronScheduler["Automated Recrawl Cron (/api/cron/recrawl)"]
-        CronScheduler -->|Dispatches Scan| Crawl4AISvc
-        PlatformConnectors -->|Direct Structured Extraction| SupabasePostgres
-        WebhooksEngine -->|Real-Time Inventory Upserts| SupabasePostgres
-        Crawl4AISvc -->|Raw HTML & Markdown| EmbeddingPipeline["1536-dim Embedding Pipeline"]
-        EmbeddingPipeline --> SupabasePostgres
+    subgraph Automotive Persistence Layer
+        PostgresDB[("Supabase PostgreSQL Database")]
+        VehiclesStore["vehicles (42 Columns + Compound & Partial Indexes)"]
+        DealerProfiles["dealer_profiles (Contact, Address, Timezone)"]
+        DealerHours["dealer_hours (7-Day Schedule 0=Sun..6=Sat)"]
+        SessionContexts["session_contexts (L2 Conversational State)"]
+        KnowledgeVectors["website_data (pgvector 1536-dim HNSW)"]
+        PostgresDB --- VehiclesStore
+        PostgresDB --- DealerProfiles
+        PostgresDB --- DealerHours
+        PostgresDB --- SessionContexts
+        PostgresDB --- KnowledgeVectors
     end
 
-    subgraph Persistence Layer
-        SupabasePostgres[("Supabase PostgreSQL Database")]
-        VectorStore["website_data (pgvector 1536-dim + HNSW)"]
-        ConfigsStore["widget_configurations"]
-        SecretsStore["widget_secrets (AES-256-GCM)"]
-        JobsStore["crawl_jobs"]
-        SupabasePostgres --- VectorStore
-        SupabasePostgres --- ConfigsStore
-        SupabasePostgres --- SecretsStore
-        SupabasePostgres --- JobsStore
+    subgraph Hybrid Retrieval Gateway
+        HybridRAG["Hybrid RAG & Semantic Retrieval Gateway"]
+        AntiHallucination["Zero-Hallucination Grounding Guard"]
+        RetellEngine -->|Function Call Webhook| HybridRAG
+        VapiEngine -->|Function Call Webhook| HybridRAG
+        ChatStreamEngine --> HybridRAG
+        HybridRAG --> AntiHallucination
+        AntiHallucination --> VehiclesStore
+        AntiHallucination --> DealerProfiles
+        AntiHallucination --> DealerHours
+        AntiHallucination --> KnowledgeVectors
     end
-
-    SearchEndpoint -->|pgvector Cosine Search| VectorStore
-    EntityEndpoint -->|Scoped ID Query| VectorStore
 ```
 
 ---
 
-## End-to-End Sequence Workflow
+## ⚡ Key Capabilities & Automotive Features
+
+- **Complete Inventory Understanding**: Distinguishes **NEW**, **USED**, and **CPO (Certified Pre-Owned)** vehicles, tracking VINs, stock numbers, trim packages, drivetrains (AWD/4WD/FWD/RWD), transmissions, engine displacement, fuel types, fuel economy, and odometer mileage.
+- **Dual Fuel Efficiency Ingestion**: Accurately crawls and indexes both City and Highway fuel consumption (`L/100km` or `MPG`), enabling queries like *"Which SUVs have the best highway fuel economy?"*.
+- **Dealership Operations & 7-Day Hours**: Dedicated extraction and persistence of dealership contact numbers (Sales, Service, Parts), physical addresses, and 7-day business hours (`0=Sunday` to `6=Saturday`) without duplicating schedules onto individual vehicle rows.
+- **Grounded Anti-Hallucination Guard**: The agent only answers based on verified in-stock vehicles. Missing prices are marked as *"Call for price / Unlisted"* rather than fabricated. Missing VINs or specifications are handled cleanly with `NULL` preservation.
+- **Autonomous Host Navigation**: Visitors asking *"Show me used Ram 1500 trucks"* or *"Open the 2025 Jeep Grand Cherokee page"* trigger direct browser redirection to the vehicle detail page (VDP) or search results while preserving active conversation state.
+- **Sub-1.5s Voice Connect**: Ultra-low-latency WebRTC voice telephony with Retell AI and Vapi AI, complete with real-time speech transcription, visual volume meters, and vehicle showcase cards in an expanding side drawer.
+- **Sanitized Media Pipeline**: Automatic URL percent-encoding (`%20`) and tracking token stripping for high-resolution vehicle photo galleries, preventing broken images and HTTP 400 errors.
+
+---
+
+## 🕷 Universal Dealership Crawler Subsystem
+
+Dealership websites do not expose inventory through a single static `/inventory` page. The platform employs a resilient, multi-architecture crawler designed to discover and extract complete inventories across diverse CMS platforms:
+
+```mermaid
+flowchart TD
+    Start([Start Crawl: Dealership URL]) --> Frontier[Build BFS Crawl Frontier]
+    Frontier --> Sitemaps[Layer 1: robots.txt & Recursive XML Sitemaps]
+    Frontier --> NavScan[Layer 2: Homepage DOM & SPA Route Decompilation]
+    Frontier --> Probes[Layer 3: Automotive Route Probes /new, /used, /cpo, /inventory]
+    
+    Probes --> ExtractLoop[Per-Page Extraction Pipeline]
+    
+    ExtractLoop --> T1{Tier 1: JSON-LD / Schema.org?}
+    T1 -- Found --> T1Parse[Extract Vehicle, Car, AutoDealer entities]
+    T1 -- None --> T2{Tier 2: Embedded App State?}
+    
+    T2 -- Found --> T2Parse[Parse window.__vdpJSON, window.vehicleData, window.DDC]
+    T2 -- None --> T3{Tier 3: Observed Network APIs?}
+    
+    T3 -- Found --> T3Parse[Extract D2C Media / DealerOn REST JSON payloads]
+    T3 -- None --> T4{Tier 4: Semantic DOM Cards?}
+    
+    T4 -- Found --> T4Parse[Extract HTML Vehicle Listing Cards]
+    T4 -- None --> T5[Tier 5: Headless Browser & Crawl4AI Fallback]
+    
+    T1Parse --> Persistence[Entity Normalization & Deduplication Pipeline]
+    T2Parse --> Persistence
+    T3Parse --> Persistence
+    T4Parse --> Persistence
+    T5 --> Persistence
+    
+    Persistence --> DealerExtract[Extract Dealer Profile & 7-Day Hours -> dealer_profiles, dealer_hours]
+    Persistence --> VehExtract[Normalize Vehicle Specs -> vehicles Table]
+    Persistence --> Completeness[Assess Dual Inventory Completeness NEW vs USED vs CPO]
+    
+    Completeness --> Report[Generate CrawlCoverageReport & Quality Status COMPLETE/PARTIAL/FAILED]
+```
+
+### 5-Tier Extraction Hierarchy
+
+1. **Tier 1 — JSON-LD & Schema.org**: Deterministic extraction of structured `@type: Vehicle`, `@type: Car`, `@type: Truck`, and `@type: AutoDealer` metadata containing VIN, modelDate, price, and openingHours.
+2. **Tier 2 — Embedded Vehicle JSON & Application State**: Interrogates inline JavaScript state variables including `window.__vdpJSON`, `window.vdpJSON`, `window.vehicleData`, `window.inventoryData`, `window.dealerInspireInventory`, and `window.DDC.dataLayer`.
+3. **Tier 3 — Observed Network APIs & AJAX Endpoints**: Intercepts dynamic background API calls (D2C Media AJAX, DealerOn endpoints) to pull raw structured vehicle feeds.
+4. **Tier 4 — DOM Semantic Card Extraction**: High-speed CSS selector extraction parsing card titles, pricing badges, mileage meters, and VDP links from listing pages.
+5. **Tier 5 — Intelligent Fallback**: Headless browser rendering for complex single-page applications.
+
+### Dual Inventory (NEW vs. USED) Completeness Tracking
+
+The crawler validates whether a dealership provides both new and used inventory. If the navigation exposes both categories but the crawler only extracts one, it flags `isSuspiciouslyIncomplete: true` and logs actionable warnings rather than silently reporting success:
+
+```typescript
+export interface InventoryCoverageReport {
+  new: InventoryCategoryCoverage;       // routes, pages, extracted vehicle count
+  used: InventoryCategoryCoverage;      // routes, pages, extracted vehicle count
+  cpo: InventoryCategoryCoverage;       // certified pre-owned coverage
+  allVehiclesCount: number;
+  dealerInfoDiscovered: boolean;
+  businessHoursDiscovered: boolean;
+  isDualInventoryExpected: boolean;
+  missingCategoryWarning?: string;
+}
+```
+
+---
+
+## 🗄 Automotive Data Foundation & Schema Architecture
+
+The persistence layer is architected in PostgreSQL via Supabase and Prisma with dedicated tables and high-performance indexes:
+
+```
+                                  ┌───────────────────────────┐
+                                  │       organizations       │
+                                  └─────────────┬─────────────┘
+                                                │
+                                  ┌─────────────┴─────────────┐
+                                  │         websites          │
+                                  └──────┬─────────────┬──────┘
+                                         │             │
+                    ┌────────────────────┴──┐       ┌──┴────────────────────┐
+                    │    dealer_profiles    │       │        widgets        │
+                    └───────────┬───────────┘       └──┬─────────────┬──────┘
+                                │                      │             │
+                    ┌───────────┴───────────┐          │      ┌──────┴──────────────┐
+                    │     dealer_hours      │          │      │  session_contexts   │
+                    │ (7-Day Weekly Sched.) │          │      │(L2 Conv. State Mem.)│
+                    └───────────────────────┘          │      └─────────────────────┘
+                                                       │
+                                  ┌────────────────────┴──────┐
+                                  │         vehicles          │
+                                  │  (42 Structured Columns)  │
+                                  │ • VIN (17-char unique)    │
+                                  │ • Condition (NEW/USED/CPO)│
+                                  │ • Year / Make / Model     │
+                                  │ • Trim / Body Style       │
+                                  │ • Price & MSRP            │
+                                  │ • Odometer Mileage        │
+                                  │ • Fuel Economy (City/Hwy) │
+                                  │ • Drivetrain & Engine     │
+                                  │ • High-Res Images & VDP   │
+                                  └───────────────────────────┘
+```
+
+### Key PostgreSQL Tables
+
+- **`vehicles` (42 Columns)**:
+  - `id` (UUID Primary Key), `widget_id` (UUID Foreign Key)
+  - `vin` (17-character VIN; nullable for unlisted inventory)
+  - `stock_number`, `year`, `make`, `model`, `trim`, `body_style` (`SUV`, `Truck`, `Sedan`, `Coupe`, `Van`, etc.)
+  - `condition` (`new`, `used`, `cpo`)
+  - `price`, `msrp`, `currency` (`CAD`, `USD`)
+  - `mileage` (INTEGER odometer reading in km/miles)
+  - `city_fuel_efficiency`, `highway_fuel_efficiency`, `fuel_efficiency_unit` (`L/100km`, `MPG`)
+  - `drivetrain` (`AWD`, `4WD`, `FWD`, `RWD`), `transmission`, `engine`, `fuel_type`
+  - `exterior_color`, `interior_color`, `doors`, `passengers`
+  - `features` (`JSONB` array of vehicle options and packages)
+  - `images` (`TEXT[]` array of clean, `%20`-encoded photo URLs)
+  - `vdp_url` (Canonical Vehicle Detail Page link)
+  - `availability` (`In Stock`, `In Transit`, `Reserved`, `Sold`)
+  - `status` (`ACTIVE`, `PENDING`, `SOLD`), `missing_count`, `still_listed`
+- **`dealer_profiles`**:
+  - `id`, `organization_id`, `website_id`, `dealer_code` (Unique slug), `name`, `website_url`
+  - `phone`, `email`, `address`, `city`, `province_state`, `postal_code`, `country`, `timezone`, `logo_url`
+- **`dealer_hours`**:
+  - `id`, `dealer_profile_id`, `day_of_week` (`0`=Sunday through `6`=Saturday), `open_time`, `close_time`, `is_closed`, `notes`
+  - Unique constraint on `(dealer_profile_id, day_of_week)`
+- **`session_contexts`**:
+  - `session_id`, `widget_id`, `current_entity`, `last_entities`, `active_filters`, `last_navigation_target`, `last_intent`, `turn_count`
+  - Unique constraint on `(session_id, widget_id)` for L2 multi-turn state persistence.
+
+### Specialized Database Indexes
+
+```sql
+-- High-performance multi-attribute search indexes
+CREATE INDEX idx_vehicles_condition_make_body ON vehicles (widget_id, condition, make, body_style);
+CREATE INDEX idx_vehicles_mileage ON vehicles (widget_id, mileage);
+CREATE INDEX idx_vehicles_body_style ON vehicles (widget_id, body_style);
+CREATE INDEX idx_vehicles_availability ON vehicles (widget_id, availability);
+
+-- Deduplication indexes for VIN-less inventory
+CREATE UNIQUE INDEX idx_vehicles_widget_stock_unique ON vehicles (widget_id, stock_number) 
+  WHERE stock_number IS NOT NULL AND stock_number <> '' AND vin IS NULL;
+
+CREATE UNIQUE INDEX idx_vehicles_widget_vdp_unique ON vehicles (widget_id, vdp_url) 
+  WHERE vdp_url IS NOT NULL AND vdp_url <> '' AND vin IS NULL AND (stock_number IS NULL OR stock_number = '');
+```
+
+---
+
+## 🧠 Conversational AI & Hybrid RAG Engine
+
+The agent text chat and voice telephony gateways leverage a hybrid retrieval pipeline that queries both structured SQL inventory and vector embeddings:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Customer / Visitor
-    participant Widget as Embed Widget UI
-    participant Agent as Voice Agent (Retell / Vapi)
-    participant Gateway as Agent Tools Gateway
-    participant DB as PostgreSQL (pgvector)
+    actor Customer as Dealership Visitor
+    participant Widget as Dealership Widget UI
+    participant Gateway as /api/retell/chat & Tools Gateway
+    participant RAG as Hybrid RAG Engine
+    participant DB as PostgreSQL (vehicles & dealer_profiles)
+    participant LLM as Grounded LLM Pipeline
 
-    User->>Widget: Clicks voice call launcher button
-    Widget->>Agent: Establishes WebRTC session with base {{website_context}}
-    Agent-->>User: "Hello! Welcome to our store. How can I help you today?"
-    User->>Agent: "Do you have mechanical keyboards under $150 with RGB?"
-    
-    Note over Agent,Gateway: Agent detects query requiring specific live lookup
-    Agent->>Gateway: POST /api/agent/tools (search_entities(query='mechanical keyboard under $150 RGB'))
-    Gateway->>DB: Cosine similarity vector search (pgvector 1536-dim, scoped to widget_id)
-    DB-->>Gateway: Returns matching Entity (Precision Keyboard, $149.99, In Stock, Image URLs)
-    Gateway-->>Agent: Returns structured JSON response
-    
-    Agent-->>User: "Yes, we have the Precision Mechanical Keyboard for $149.99 in stock."
-    Widget->>Gateway: Real-time transcript keyword lookup
-    Gateway-->>Widget: Returns matching product record
-    Widget->>User: Renders interactive IntelligenceResultCard with image and price in transcript
+    Customer->>Widget: "Do you have any new Jeep Wranglers under $60k?"
+    Widget->>Gateway: POST /api/retell/chat (message, sessionId, widgetId)
+    Gateway->>RAG: hybridRetrieve(widgetId, query, filters)
+    RAG->>DB: SQL Query (condition='new', make='Jeep', model='Wrangler', price <= 60000)
+    DB-->>RAG: Returns 2025 Jeep Wrangler Rubicon ($59,995, In Stock, VDP URL, Photos)
+    RAG->>Gateway: Returns Grounded Vehicle Context
+    Gateway->>LLM: Formulates Prompt with Strict Zero-Hallucination Directives
+    LLM-->>Gateway: Formulates natural reply with structured vehicle cards
+    Gateway-->>Widget: Returns { text, entityCards: [...], navigationUrl }
+    Widget->>Customer: Displays assistant message and expands 710px Vehicle Drawer with photos & specs
 ```
 
----
+### Supported Natural Language Inquiries
 
-## Core Feature Breakdown
-
-### Real-Time Telephony & Dual-Provider Voice Engine
-- **Multi-Provider Architecture**: Supports both Retell AI and Vapi AI using a unified configuration layer. The client widget seamlessly abstracts provider-specific WebRTC handshakes.
-- **Bi-Directional Audio Streaming**: Low-latency voice streaming with visual speaking indicators, live volume meter animations, microphone mute toggles, and duration timers.
-- **Partial Speech & Real-Time Transcripts**: Live speech-to-text transcripts render user speech and agent replies in real time with word-by-word streaming.
-- **Streaming Text Chat Fallback**: Full conversational text chat tab with markdown rendering, message history, typing indicators, and seamless voice-to-text switching.
-
-### Website Intelligence & 5-Tier Universal Ingestion Subsystem
-The ingestion pipeline is architected around a resilient, multi-strategy fallback hierarchy designed to extract structured catalog data from any web architecture—from server-rendered static HTML to decoupled Single Page Applications (SPAs):
-
-- **5-Tier Extraction Hierarchy**:
-  - **Tier 1 (JSON-LD & Schema.org)**: Direct extraction of structured `@type: Product`, `@type: Vehicle`, `@type: Service`, `@type: Course`, `@type: LocalBusiness`, and `@type: FAQPage`.
-  - **Tier 2 (Dynamic AJAX & REST API Discovery)**: Automated discovery and interrogation of inline API routes and client-side backend endpoints (e.g. Render, Railway, Redux `apiSlice`, Next.js `/api/v1` routes) uncovered from SPA JavaScript bundle chunks.
-  - **Tier 3 (User-Defined CSS Selector Schemas)**: Precision visual selector mapping for custom dealership, real estate, or enterprise inventory structures.
-  - **Tier 4 (LLM-Assisted Structured Extraction)**: Context-aware LLM extraction converting unstructured DOM blocks into normalized JSON catalog entities.
-  - **Tier 5 (SPA Bundle Chunks & Responsive HTML Fallback)**: Client-side component decompilation extracting catalog item arrays, media, pricing, and descriptions.
-- **Fail-Fast Hybrid Crawler**: Combines containerized Crawl4AI browser automation with high-speed native extraction. Automatically falls back to native crawling on microservice timeout without stalling.
-- **Responsive Media & High-Res Image Extraction**: Automatically aggregates image URLs from `image_urls`, `metadata.images`, `metadata.thumbnail`, and responsive `<picture>` tags, selecting highest-resolution assets and CDN-hosted graphics (Cloudinary, Shopify CDN, Bunny, ImageKit).
-
-### Universal Vertical & Industry Adapters
-The platform features built-in intelligence adapters tailored to diverse business models:
-- **Next.js & React SPAs (e.g., CampusCore LMS / E-Learning)**: Automatically decompiles `<script>` bundle chunks, uncovers external backend endpoints (e.g., Render, Railway, Heroku, Vercel), and extracts course catalogs, curriculum difficulty levels, tags, and Cloudinary thumbnail assets.
-- **Automotive Dealerships (e.g., Ottawa Chrysler Jeep Dodge)**: Proactively extracts 17-digit VIN identifiers, odometer mileage, trim levels, transmission, engine specifications, MSRP/sale pricing, and high-resolution vehicle photo galleries.
-- **E-Commerce Stores (Shopify & WooCommerce)**: Real-time cryptographic webhook streams, SKU matching, multi-variant tracking, live inventory availability, and product catalogs via native JSON/REST connectors.
-- **Professional Services & Booking Businesses (Clinics, Salons, Law Firms)**: Ingests service menus, practitioner profiles, appointment durations, hourly rate cards, and direct booking links.
-
-### Freshness Tracking & LLM Confidence Hedging
-- **Entity Freshness Lifecycle**: Tracks `first_seen`, `last_seen`, `last_checked_at`, and `still_listed` boolean flags on every entity record.
-- **Soft Deletion Signal**: Missing entities are retained with `still_listed = false`, preserving historical knowledge rather than discarding data.
-- **LLM Confidence Hedging Directives**: Dynamic system prompts instruct voice and chat agents to modulate their confidence:
-  - *Fresh (< 24h)*: Stated with high confidence as active inventory.
-  - *Recent (1–7 days)*: Stated normally.
-  - *Stale (> 7 days) or Unlisted*: Hedged transparently (e.g. *"Our records show we had this item listed last week; let me verify current availability for you."*).
-
-### Incremental Re-Crawling & Known-URL Fast-Path
-- **Known-URL Tracking**: Persists discovered inventory URLs in a JSONB array (`websites.known_urls`).
-- **Content-Hash Acceleration**: Computes normalized SHA-256 digests (`computeContentHash`) on raw page content. Unchanged pages bypass re-extraction and vector re-embedding, performing a lightweight `last_seen` timestamp update.
-
-### Interactive Knowledge Viewer & Media Showcase UI
-- **Dual Tab Presentation**: Separates **Knowledge Records** (structured products, courses, vehicles, services) from **Site Pages** (raw navigation and content pages).
-- **High-Res Photos & Media Showcase**: Visual thumbnail cards with image counters, lightbox hover zoom, and graceful cross-origin / CDN hotlink protection fallback cards (`Open URL ->`).
-- **Interactive Search & Filter Intelligence**: Live full-text search across titles, descriptions, categories, and prices with dynamic counter badges.
-
-### High-Dimensional Vector Embeddings & Semantic Search
-- **pgvector Vector Database**: PostgreSQL vector extension enabled with 1536-dimensional vectors and HNSW cosine distance indexing (`vector_cosine_ops`).
-- **Automated Batch Embedding Generation**: Centralized embedding pipeline generates embeddings via OpenAI `text-embedding-3-small` with automatic fallbacks for offline testing.
-- **Precedence-Aware Knowledge Storage**: Generic, domain-agnostic `Entity` schema holding titles, descriptions, categories, prices, currencies, ratings, variants, and structured metadata.
-
-### E-Commerce & Platform Connectors
-- **Shopify Platform Connector**: Connects directly to public `/products.json` endpoints to pull structured product catalogs, images, prices, variants, and inventory status without crawling HTML.
-- **WooCommerce Platform Connector**: Authenticated REST API connector (`/wp-json/wc/v3/products`) utilizing AES-256-GCM encrypted consumer credentials with live verification probes.
-- **Universal Feed Importer**: Ingests remote product catalogs across CSV, JSON arrays, RSS 2.0, and Google Merchant Center XML formats.
-- **Manual Inventory File Upload**: Browser-based CSV and JSON file upload utility with per-row schema validation and granular error reporting.
-- **Precedence Merging Engine**: Merges crawled data into existing connector records, ensuring authoritative platform data (pricing, stock) is never overwritten by crawler heuristics.
-
-### Automated Synchronization & Real-Time Webhooks
-- **Configurable Sync Schedules**: Granular recurring re-crawl intervals (`weekly`, `daily`, `twice_daily`, `three_times_daily`, `off`) managed via `/api/cron/recrawl` and cron triggers.
-- **Incremental Content Hashing**: Computes normalized SHA-256 digests (`computeContentHash`) on raw page content. Unchanged pages bypass LLM extraction and vector re-embedding, updating only `last_checked_at`.
-- **Shopify Webhooks**: Cryptographically verified endpoint (`/api/webhooks/shopify`) validating `X-Shopify-Hmac-Sha256` signatures and executing real-time product updates and deletions.
-- **WooCommerce Webhooks**: Cryptographically verified endpoint (`/api/webhooks/woocommerce`) validating `X-WC-Webhook-Signature` against stored AES-256 secrets.
-- **Zero-Touch Auto-Provisioning**: Connecting a WooCommerce store automatically registers product webhooks with the remote store API with zero manual configuration.
-
-### Agent Integration & Dynamic Tool Calling
-- **Callable Tool Schemas**: Pre-configured function definitions for Retell AI (`custom_tool`) and Vapi AI (`function_call`):
-  - `search_entities`: Real-time vector search across widget knowledge.
-  - `get_entity_details`: Live single-entity specification and pricing confirmation.
-- **Universal Tool Webhook Gateway**: `/api/agent/tools` dynamically resolves widget scope, executes the query, and formats tool outputs for voice synthesizers.
-- **Cross-Widget Isolation**: All vector queries, entity lookups, and tool invocations are strictly isolated by `widget_id`.
-
-### Visual Customizer & White-Label Theming
-- **Real-Time Visual Customizer**: Comprehensive editor (`/widget-customizer`) with instant preview updates across themes, launcher buttons, panel dimensions, typography, and prompt templates.
-- **Precision Color Engine**: Integrated color pickers supporting primary, background, text, user bubble, and agent bubble customization.
-- **Dynamic Google Fonts Typography**: Curated Google Fonts picker (Inter, Outfit, Plus Jakarta Sans, Poppins, Roboto, Montserrat, Space Grotesk, Playfair Display, etc.) with automated runtime stylesheet injection.
-- **Template Messages & Starter Prompts Library**: Visual manager in customizer with quick-load presets for Education/LMS, Dealerships/Automotive, and General Business. Renders interactive prompt chips inside the chat.
-
-### Embeddable Widget Bridge & Client Integration
-- **Zero-Latency Embed Mounting**: Instant rendering without placeholder blocking spinners while dynamically hydrating tenant configurations in the background.
-- **Session-Preserved Host Navigation**: Restores active conversation transcripts across multi-page host transitions via `sessionStorage` and automatic reopen triggers.
-- **Instant "New Chat" Session Reset**: Header button allowing visitors to start a fresh conversation, wipe cached transcript history, and immediately restore the starter prompt chips.
-- **Template Messages & Starter Prompts**: Interactive inquiry chips for fast visitor engagement with customizable presets for LMS, Auto, and General Business.
-- **Specialized Intent Routing & Dynamic Fallbacks**: Zero-LLM fallback handlers accurately distinguish between Pricing/Tuition, Admissions/Requirements, and Mentorship/Instructor queries, delivering tailored answers rather than generic catalog dumps.
-- **Real-Time Page Navigation Bridge**: Typo-tolerant natural language page navigation ("navigate me to about page", "take me to backend mastery course", "open policy page") with direct host URL redirection and live session resumption.
-- **Dedicated Offerings Drawer & Expanding Layout**: Structured catalog cards and recommendations display in an animated, dedicated side column expanding widget width smoothly from 360px to 680px on desktop without cluttering conversation bubbles.
-- **Clean End-User Intelligence Cards**: Sanitized metadata rendering filtering out internal crawler/schema keys (`apiEndpoint`, `demoUrl`, `discoveryMethod`, `purchased`, `v`, `id`) into clean title, description, price, star ratings, and view details buttons.
-- **Sub-Second WebRTC Call Setup**: In-memory summary TTL caching, lightweight DB query projections, single-pass permissions, and pre-warmed SDK modules accelerate voice call initiation to under 1.5 seconds.
-- **Mobile-Responsive Customizer**: Full fluid breakpoints for screens under 640px/900px, slide-in overlay drawers for color token editing, and touch-friendly toolbars.
-- **Cross-Origin PostMessage Protocol**: Secure messaging bridge coordinating panel expansion, dimension resizing, audio stream state, and customizer live reloading.
-- **Standalone Embed Route**: Isolated iframe container (`/embed/[widgetId]`) with SSR hydration safeguards and domain whitelist enforcement.
-
-### Comprehensive Abuse Prevention & Spending Circuit Breakers
-- **C.1 Hard Server-Side Duration & Turn Caps**: Server-enforced call duration limits (`maxCallDurationMinutes`, default 10 min) and chat turn caps (`maxChatTurns`, default 30 turns).
-- **C.2 Silence-Based Auto-Hangup**: Server-side watchdog (`initialSilenceTimeoutSeconds`, default 15s) terminating silent calls while preserving normal conversational pauses upon speech detection.
-- **C.3 Per-Widget Spend Cap with Circuit Breaker**: Date-partitioned daily usage counters (`maxDailyCalls: 100`, `maxDailyChats: 500`) with UTC midnight rollover and circuit breaker tripping.
-- **C.4 Session-Based Rate Limiting & Duplicate Throttling**: Session-scoped sliding window rate limiter (15 msg/min), duplicate message throttling with static instant replies (0 LLM calls), and 1,000-character single-message caps.
+| Intent Category | Example Customer Inquiries | Agent Response / Behavior |
+|---|---|---|
+| **Inventory Search** | *"Show me your new SUVs."*<br>*"Do you have used trucks under $45,000?"* | Retrieves matching vehicles, applies price caps, and presents structured cards with photos, specs, and VDP links. |
+| **Specific Vehicle Lookup** | *"Do you have a 2024 Jeep Wrangler Rubicon?"*<br>*"Tell me about stock #T25048."* | Looks up exact VIN/Stock match and details engine, drivetrain, mileage, and features. |
+| **Fuel Economy Inquiries** | *"Which used sedans get the best highway mileage?"* | Evaluates `highway_fuel_efficiency` and ranks vehicles by L/100km or MPG. |
+| **Dealership Inquiries** | *"What are your service hours on Saturday?"*<br>*"Where is your dealership located?"* | Resolves schedule from `dealer_hours` (e.g. *"Our sales department is open Saturday from 9:00 AM to 5:00 PM; service is closed on Sunday."*). |
+| **Autonomous Navigation** | *"Take me to used Ram trucks."*<br>*"Open the page for the 2025 Chrysler Pacifica."* | Dispatches `WIDGET_NAVIGATE` to the host page and redirects the visitor's browser directly to the VDP. |
 
 ---
 
-## Data Storage & State Architecture
+## 🧭 Autonomous Host Page Navigation Bridge
 
-The persistence layer is architected around PostgreSQL with Row Level Security (RLS) and pgvector:
+The dealership widget communicates bidirectionally with the host page via a secure `postMessage` protocol:
 
-- **Websites & Tenant Scope (`websites`)**: Stores registered website domains, CSS extraction configurations, detected platforms, and recurring synchronization schedules.
-- **Encrypted Secrets Store (`widget_secrets`)**: Stores third-party connector credentials (e.g., WooCommerce Consumer Keys & Secrets) encrypted at rest using AES-256-GCM.
-- **Knowledge Entity Store (`website_data`)**: Stores all extracted and connector-sourced entities alongside 1536-dimensional OpenAI vector embeddings, indexed with HNSW cosine distance (`vector_cosine_ops`), content hashes, and freshness timestamps.
-- **Crawl Execution Registry (`crawl_jobs`)**: Tracks asynchronous crawler jobs, recording execution status (`pending`, `running`, `completed`, `failed`, `blocked`), visited page counts, and WAF challenge metrics.
-- **Widget Configuration Store (`widget_configurations`)**: Persists complete visual theming, color tokens, typography scales, launcher geometries, and panel dimensions.
+1. **Host Redirection (`WIDGET_NAVIGATE`)**:
+   - When a visitor asks to view a vehicle or inventory category, the iframe dispatches `postMessage({ type: 'WIDGET_NAVIGATE', url: vehicle.vdpUrl }, '*')`.
+   - The host script (`widget.js`) inspects the target URL and executes `window.location.href = url`.
+2. **Session Preservation Across Page Navigation**:
+   - During host page transitions (e.g. browsing between `/new-vehicles` and `/used-vehicles`), `sessionStorage` preserves conversation transcript history and open state.
+   - On page reload, the widget mounts immediately in its previous state without resetting the conversation.
+3. **710px Expanding Layout**:
+   - When vehicle recommendations are triggered, the container animates from `360px` to `710px` on desktop, opening a dedicated side pane showcasing high-resolution vehicle photos, mileage badges, and pricing.
 
 ---
 
-## Complete API Reference
+## 🎙 Real-Time WebRTC Voice Telephony
 
-### Widget & Entity Operations
-| Route | Method | Description | Request Parameters | Response |
+- **Dual-Provider Architecture**: Native abstraction supporting both **Retell AI** and **Vapi AI** WebRTC voice backends.
+- **Sub-1.5s Voice Connect**: Pre-warmed audio SDK modules, lightweight DB query projections, and in-memory TTL caching ensure voice calls start in under 1.5 seconds.
+- **Real-Time Spoken Transcript Navigation**: Spoken commands (e.g. *"Show me the Pacifica"*) trigger real-time transcript keyword parsing and host page navigation while the voice call remains active.
+- **Visual Voice Indicators**: Live audio volume meters, active speaking visualizers, microphone mute toggles, and duration counters.
+
+---
+
+## 🛡 Abuse Prevention & Spend Circuit Breakers
+
+To protect dealerships from rogue or runaway voice and chat sessions, the platform enforces strict server-side cost and abuse protections:
+
+| Protection Mechanism | Default Configuration | Server Enforcement Details |
+|---|---|---|
+| **Hard Call Duration Cap** | `10 minutes` (Tunable 1–60 min) | Active server timer automatically stops telephony calls via provider APIs (`client.call.stop` / `DELETE /call/:id`). |
+| **Hard Chat Turn Cap** | `30 turns` per session | Server halts upstream LLM calls when turn cap is reached and directs customer to phone contact. |
+| **Initial Silence Hangup** | `15 seconds` | Automatically terminates ghost/prank voice calls if no speech is detected in the first 15 seconds; disarms upon speech detection. |
+| **Per-Widget Daily Spend Cap** | `100 calls/day` & `500 chats/day` | Trips an automatic circuit breaker at quota, displaying an alert badge on dashboard and auto-resetting at UTC midnight. |
+| **Session Rate Limiter** | `15 messages/minute` | Sliding-window limiter rejecting rapid bursts with HTTP 429. |
+| **Duplicate Message Throttle** | `2 repeated messages` | Intercepts repeated spam queries and returns static instant replies consuming **0 LLM tokens**. |
+
+---
+
+## 📡 Complete API Reference
+
+### Dealership Inventory & Search Endpoints
+
+| Route | Method | Description | Request Payload / Params | Response |
 |---|---|---|---|---|
-| `/api/widgets/[widgetId]` | `GET` | Fetches widget configuration & telephony keys | None | `{ widget, configuration }` |
-| `/api/widgets/[widgetId]` | `PUT` | Updates widget branding, theme, or telephony | JSON configuration object | `{ widget }` |
-| `/api/widgets/[widgetId]/entities/search` | `GET` / `POST` | Scoped vector similarity & keyword search | `{ query: string, limit?: number }` | `{ entities: Entity[], count: number }` |
-| `/api/widgets/[widgetId]/entities/[entityId]` | `GET` | Scoped single entity lookup by ID | None | `{ entity: Entity }` |
+| `/api/widgets/[id]/entities/search` | `GET` / `POST` | Scoped vector & keyword vehicle search | `{ query: string, limit?: number }` | `{ entities: Entity[], count: number }` |
+| `/api/widgets/[id]/entities/[entityId]` | `GET` | Single vehicle specification detail | None | `{ entity: Entity }` |
+| `/api/widgets/[id]/configuration` | `GET` / `PUT` | Fetches or updates visual branding & theme | JSON configuration object | `{ widget, configuration }` |
 
-### Web Intelligence & Connectors
-| Route | Method | Description | Request Parameters | Response |
-|---|---|---|---|---|
-| `/api/websites` | `GET` | Lists all connected websites | None | `Website[]` |
-| `/api/websites` | `POST` | Connects domain & triggers auto-detection | `{ domain: string, name?: string }` | `{ website, detectedPlatform }` |
-| `/api/websites/[id]` | `PUT` | Updates sync frequency or CSS schemas | `{ syncFrequency?, cssSelectorSchema? }` | `{ website }` |
-| `/api/websites/[id]/crawl` | `POST` | Triggers background crawl job | `{ scanMode: 'quick' \| 'master' }` | `{ jobId, status }` |
-| `/api/websites/[id]/connect-platform` | `POST` | Verifies and encrypts connector keys | `{ platform, consumerKey, consumerSecret }` | `{ success, ingestedCount }` |
-| `/api/websites/[id]/import-feed` | `POST` | Imports remote product feed URL | `{ feedUrl: string }` | `{ success, count }` |
-| `/api/websites/[id]/upload-inventory` | `POST` | Processes multipart CSV/JSON file | Form data with file | `{ success, imported, rejected }` |
+### Crawler & Dealership Ingestion Endpoints
 
-### Agent Webhooks & Cron Automation
-| Route | Method | Description | Request Headers / Body | Response |
+| Route | Method | Description | Request Payload | Response |
 |---|---|---|---|---|
-| `/api/agent/tools` | `POST` | Universal Retell & Vapi tool gateway | Retell / Vapi tool payload | Structured tool response |
-| `/api/webhooks/shopify` | `POST` | Shopify product update webhook | `X-Shopify-Hmac-Sha256`, raw body | `{ success, action, productId }` |
-| `/api/webhooks/woocommerce` | `POST` | WooCommerce product update webhook | `X-WC-Webhook-Signature`, raw body | `{ success, action, productId }` |
-| `/api/cron/recrawl` | `GET` / `POST` | Background scheduled re-crawl worker | `Authorization: Bearer <CRON_SECRET>` | `{ summary, triggeredJobs }` |
+| `/api/websites` | `GET` / `POST` | Registers dealership domain & triggers probe | `{ domain: string, name?: string }` | `{ website, detectedPlatform }` |
+| `/api/websites/[id]/crawl` | `POST` | Dispatches crawler discovery job | `{ scanMode: 'quick' \| 'master' }` | `{ jobId, status }` |
+| `/api/websites/[id]/upload-inventory` | `POST` | Ingests DMS/inventory CSV or JSON file | Multipart form file | `{ success, imported, rejected }` |
+| `/api/cron/recrawl` | `GET` / `POST` | Scheduled recurring synchronization worker | `Bearer <CRON_SECRET>` | `{ summary, triggeredJobs }` |
+
+### Agent Gateway & Webhook Handlers
+
+| Route | Method | Description | Headers / Body | Response |
+|---|---|---|---|---|
+| `/api/agent/tools` | `POST` | Universal Retell & Vapi function calling gateway | Provider tool execution payload | Structured vehicle card JSON |
+| `/api/retell/chat` | `POST` | Grounded streaming chat conversation route | `{ message, sessionId, widgetId }` | SSE stream or structured JSON |
+| `/api/auth/signup/send-otp` | `POST` | Direct PostgreSQL OTP verification sender | `{ email: string }` | `{ success: boolean }` |
 
 ---
 
-## Security, Cryptography & Compliance
+## ⚙ Environment Configuration
 
-- **AES-256-GCM Credential Encryption**: All third-party platform API credentials stored in `widget_secrets` are encrypted at rest using Galois/Counter Mode authenticated encryption with randomized 16-byte initialization vectors.
-- **Cryptographic Webhook Verification**: Inbound webhooks from Shopify and WooCommerce require valid HMAC-SHA256 signatures evaluated using `crypto.timingSafeEqual` to prevent timing attacks. Unsigned or invalid requests are rejected immediately with HTTP 401.
-- **Widget-Level Isolation**: All search queries, database reads, and tool executions enforce strict `widget_id` scoping to prevent multi-tenant data contamination.
-- **Fail-Closed Architecture**: Any failure in cryptographic verification or credential authentication fails closed with zero state modifications.
-
----
-
-## Environment Configuration
-
-Create a `.env.local` file in the root directory with the following variables:
+Create a `.env.local` file in the root directory:
 
 ```ini
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# PostgreSQL & Supabase Persistence
+DATABASE_URL="postgresql://postgres:[PASSWORD]@[HOST]:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres"
+SUPABASE_DATABASE_URL="postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres"
+NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 
-# Vector Embeddings
-OPENAI_API_KEY=sk-...
-# or GROQ_API_KEY=gsk-...
+# OpenAI Vector Embeddings & LLM
+OPENAI_API_KEY="sk-..."
 
-# Crawl4AI Microservice
-CRAWL4AI_BASE_URL=http://localhost:11235
-CRAWL4AI_API_KEY=
+# Crawl4AI Headless Microservice (Optional)
+CRAWL4AI_BASE_URL="http://localhost:11235"
+CRAWL4AI_API_KEY=""
 
-# Cryptography & Security Secrets
-ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-SHOPIFY_WEBHOOK_SECRET=your-shopify-webhook-secret
-CRON_SECRET=your-cron-secret-token
+# Security, Encryption & Cron
+ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+CRON_SECRET="your-cron-secret-token"
 
-# Telephony Providers
-RETELL_API_KEY=key_...
-VAPI_PUBLIC_KEY=...
+# Voice Telephony Providers
+RETELL_API_KEY="key_..."
+VAPI_PUBLIC_KEY="..."
 ```
 
 ---
 
-## Local Development & Automated Testing
+## 🧪 Local Development & Verification Suites
 
-### Installation & Server Startup
+### Installation & Startup
 
 ```bash
-# 1. Install Node.js dependencies
+# 1. Install dependencies
 npm install
 
-# 2. Start the Crawl4AI Docker container
-docker-compose up -d
+# 2. Run database migrations / schema sync
+npx prisma generate
+npx prisma db push
 
-# 3. Start the Next.js development server
+# 3. Start local development server
 npm run dev
 
-# 4. Perform TypeScript type check
+# 4. Perform TypeScript type checking
 npx tsc --noEmit
 ```
 
 ### Automated Verification Test Suites
 
 ```bash
-# Run regression test suite (Phases 0.1 through 4.6)
-npx tsx scratch/test-all-phases-0-to-4.ts
+# 1. Run Data Foundation & Index Verification Suite (20-Point Check)
+npx tsx scratch/verify_foundation.ts
 
-# Run synchronization and webhook test suite (Phase 5)
-npx tsx scratch/test-all-phase-5.ts
+# 2. Run Multi-Turn Dealership Chat Agent Test
+npx tsx scratch/test_chat_dealership_agent.ts
 
-# Run universal chat intent, navigation & constraint test suite
-npx tsx scratch/test-universal-chat-engine.ts
+# 3. Run Inventory Lifecycle & Price/Sold Update Suite
+npx tsx scratch/test_additional_lifecycle.ts
 
-# Run hard duration and chat turn caps test suite (Task C.1)
-npx tsx scratch/test-duration-and-turn-caps.ts
-
-# Run silence-based auto-hangup test suite (Task C.2)
-npx tsx scratch/test-silence-auto-hangup.ts
-
-# Run per-widget spend cap with circuit breaker test suite (Task C.3)
-npx tsx scratch/test-spend-circuit-breaker.ts
-
-# Run session-based chat rate limiting and duplicate throttling test suite (Task C.4)
-npx tsx scratch/test-chat-session-throttle.ts
+# 4. Run Universal Dealership Crawler & Grounded Chat Verification Suite
+npx tsx scratch/test_prompt_3b_validation.ts
 ```
 
 ---
 
-## Hard Duration, Turn Caps, Silence Hangup, Spend Circuit Breakers & Chat Throttling (Cost & Abuse Protection)
+## 📄 License
 
-Widgetized enforces strict, unavoidable server-side rate, duration, silence, volume, and repetition boundaries to eliminate uncapped cost exposure from runaway or abusive client sessions:
-
-1. **Server-Side Hard Call Duration Cap**:
-   - Configurable per widget under the **Behavior** settings via `maxCallDurationMinutes` (default: 10 minutes, tunable from 1–60 min).
-   - Enforced by `src/lib/voice/callLimiter.ts`: An active server-side timeout monitors the live call and terminates it directly via provider APIs (`client.call.stop` for Retell, `DELETE /call/:id` or `maxDurationSeconds` for Vapi) when the cap is reached—ensuring a rogue or altered client cannot keep an audio stream open indefinitely.
-2. **Server-Side Hard Chat Turn Cap**:
-   - Configurable per widget under **Behavior** via `maxChatTurns` (default: 30 user message turns).
-   - Enforced directly in `/api/retell/chat` by `src/lib/chat/chatLimiter.ts`: When a session exceeds its configured turn limit, the server immediately stops all upstream LLM generations, embedding lookups, and third-party API calls, returning a fixed contact redirect message (*"You have reached the maximum message limit for this chat session. Please contact our team directly for further assistance."*).
-3. **Silence-Based Auto-Hangup (Initial Window)**:
-   - Configurable per widget under **Behavior** via `initialSilenceTimeoutSeconds` with tunable constant fallback `DEFAULT_INITIAL_SILENCE_TIMEOUT_SECONDS = 15`.
-   - Protects against prank/ghost calls where a caller connects and stays silent to run up telephony minutes.
-   - If no user speech is detected during the first ~10–15 seconds, the server terminates the call immediately.
-   - As soon as caller speech is detected (`user_start_talking` in Retell, `speech-start` in Vapi, or user transcript entries), the watchdog is permanently disarmed for that session, ensuring natural conversational pauses during real dialogue are completely unaffected.
-4. **Per-Widget Daily Spend Cap & Circuit Breaker**:
-   - Configurable per widget under **Behavior** via `maxDailyCalls` (default: 100/day) and `maxDailyChats` (default: 500/day).
-   - Enforced by `src/lib/usage/spendLimiter.ts`: Tracks daily call and chat starts against configurable daily thresholds.
-   - When a widget exceeds its daily limit, the circuit breaker automatically trips, disabling all new call and chat starts for that widget for the remainder of the day and returning a clear visitor fallback message (*"This assistant is temporarily unavailable. Please try again later or contact us directly."*).
-    - **Dashboard Indicator**: Prominently flags the widget card with an alert badge (*"Circuit Breaker: Daily Spend Cap Reached"*) and displays daily quota counters (`Calls: X/Y • Chats: A/B`).
-   - **Automatic Rollover**: Auto-resets at UTC midnight date partition boundaries without requiring manual intervention.
-   - **Fail-Safe Operation**: Fails open with logged warnings if tracking errors occur, ensuring tracking failures never become an outage.
-5. **Session-Scoped Chat Rate Limiting & Duplicate Throttling**:
-   - Configurable per widget under **Behavior** via `chatRateLimitPerMinute` (default: 15 msg/min per session) and `maxMessageCharacters` (default: 1000 characters).
-   - **Sliding-Window Rate Limiter**: Evaluates message rate per session identifier (`chatId || sessionId || ip`), throttling rapid bursts (HTTP 429) independently of IP-level limits.
-   - **Duplicate-Message Throttling**: When a visitor repeatedly sends identical message text in rapid succession, skips invoking upstream LLM calls after the threshold (default: 2 repeats) and returns a lightweight static answer (*"I've already answered that — is there something else I can help with?"*), consuming 0 LLM tokens.
-   - **Message Length Cap**: Rejects oversized inputs (>1,000 chars) before tokenization or vector lookup.
-6. **Pre-Filled Baseline Protection**:
-   - Pre-filled sensible defaults (`10 min` max call duration, `30 turns` max chat session, `15s` silence watchdog, `100 calls/day`, `500 chats/day`, `15 msg/min`, `1,000 char cap`) protect all existing and newly created widgets out-of-the-box with zero initial setup required.
-
----
-
-## Autonomous Host Page Navigation & Dynamic Filtering
-
-Widgetized features a bi-directional event bridge allowing the AI agent (via text chat or voice telephony) to autonomously navigate the user's host browser to specific pages, filter catalog items dynamically, and keep cost-effective in-session memory:
-
-1. **Autonomous Host Navigation**:
-   - The embed iframe dispatches `postMessage({ type: 'WIDGET_NAVIGATE', url })` and `voice-agent-navigate` events to the parent host window.
-   - The host listener (`widget.js`) inspects the target URL and executes immediate `window.location.href` navigation.
-2. **Multi-Dimensional Constraint Engine**:
-   - **Numeric Budget & Pricing**: Automatically parses user intents such as `under $100`, `between $50 and $100`, `cheapest`, and filters entities dynamically.
-   - **Specific Item Isolation**: When a specific title/keyword is mentioned (e.g., `"MERN Stack Course"`), the engine isolates retrieval to that exact entity and returns 1 high-confidence card with its direct deep link (`/course/:id`, `/inventory/:id`, `/products/:slug`).
-   - **Informational Intent Routing**: Static page queries (e.g. `"About Us"`, `"Privacy Policy"`, `"Terms"`, `"FAQ"`) synthesize concise answers and suppress unrelated catalog product cards.
-3. **In-Session Context Memory**:
-   - Conversations maintain active memory scoped strictly to the current opened widget chat (`chatMessages.slice(-6)`), eliminating stale multi-session context contamination and minimizing token consumption.
-
-```bash
-# Run agent tools and vector search test suite (Phase 6.1)
-npx tsx scratch/test-agent-tools.ts
-```
-
----
-
-## Discovered & Recommended UI & Sub-1.5s Voice Telephony Engine
-
-1. **Scoped Data Isolation**:
-   - Website catalog entries (`website_data`) are strictly partitioned by `widget_id`, preventing multi-tenant data bleed between distinct websites (e.g. LMS courses vs. automotive inventory).
-2. **Dual-Pane Layout & Chat Protection**:
-   - The conversation column enforces strict `minWidth` (`320px`), ensuring chat spacing and input controls are never hidden or compressed when the Discovered & Recommended side drawer opens.
-   - Iframe and host containers dynamically scale from `360px` to `680px` via synchronized `widget-resize` postMessage events.
-3. **Contrast-Aware Typography**:
-   - Dynamic luminance calculation automatically determines high-contrast text color (`--voice-widget-text-user-bubble`) for all custom user bubble backgrounds (e.g. ice-blue, dark slate, vibrant gradients).
-4. **Sub-1.5s Fast Voice Connect**:
-   - Eagerly pre-warms Retell SDK modules on widget load to eliminate lazy dynamic import latency during WebRTC call startup.
-5. **Seamless Credential Management**:
-   - Universal persistence for Retell Agent IDs, API keys, and configurations across the visual customizer with AES-256-GCM encrypted secrets storage.
-
----
-
-## Retell Voice Engine, Host Navigation Persistence & Intent Classification
-
-1. **Persistent In-Session Navigation State**:
-   - When autonomous or user navigation occurs (e.g. browsing to `/courses`, `/about`, `/policy`), `sessionStorage` preserves the widget open state (`myfrontdesk_open_`) and conversational history (`myfrontdesk_chat_`), ensuring the chat never terminates or resets unexpectedly between host page reloads.
-2. **Distinct Voice vs. Text Chat Architecture**:
-   - **Voice Telephony**: Connects via WebRTC to Retell Voice Agent (`agent_de685808e8532318607de0b0c8`) using the ultra-low latency Retell SDK client, dynamically injecting real-time `website_context` into the LLM runtime.
-   - **Text Chat**: Handled via `/api/retell/chat` with structured semantic fallback, catalog matching, and instant recommendation card generation.
-
-### Text Chat Pipeline & Grounded Hybrid RAG Architecture
-
-The text chat subsystem operates on a dual-tier execution pipeline designed for deterministic reliability and anti-hallucination. User messages are routed to `/api/retell/chat`, where an in-house hybrid RAG engine (pgvector vector similarity, lexical keywords, and structured metadata) queries verified crawled website records. When Retell is configured, conversational completions are generated using the Retell Chat SDK; otherwise, requests cascade through a robust fallback chain (OpenAI GPT-4o-mini, Google Gemini 1.5 Flash, or Groq Llama 3.3 70B) while guaranteeing zero hallucination through strict grounding checks and returning interactive entity cards.
-
-```mermaid
-graph TD
-    A[Frontend Widget VoiceAgentWidget.tsx] -->|POST /api/retell/chat| B[Chat API Route Handler]
-    
-    B --> C[Custom Retrieval & Grounding Layer]
-    C -->|pgvector + Lexical + Metadata| D[(Supabase website_data)]
-    C --> E{Grounded Context Found?}
-    
-    E -- No --> F[Deterministic Safe Refusal / 0 Hallucination]
-    E -- Yes --> G{Retell Configured?}
-    
-    G -- Yes (Primary) --> H[Retell AI SDK client.chat.createChatCompletion]
-    G -- No (Standalone / Fallback) --> I[Direct LLM Fallback Chain]
-    
-    I --> J[1. OpenAI gpt-4o-mini]
-    I --> K[2. Google Gemini 1.5 Flash]
-    I --> L[3. Groq Llama 3.3 70B]
-    I --> M[4. Deterministic Formatter]
-    
-    H --> N[Structured JSON: Text + Entity Cards + Navigation]
-    I --> N
-    N --> A
-```
-
-3. **Optimized Catalog Ranking & Directory Filtering**:
-   - Individual offering items (`/course/:id`, `/product/:id`) with concrete pricing and image banners are prioritized over broad directory pages (e.g. `/courses`), ensuring full catalog coverage including MERN Stack, Backend Mastery, and Leetcode Mastery.
-4. **Strict Intent Boundary Classification**:
-   - Explicit priority matching for admissions, enrollment, tuition, pricing, policies, and specific course queries with word boundary protection to prevent false positive triggers.
-
----
-
-## Autonomous Route Resolution, 710px Side Drawer & Clean Messaging UI
-
-1. **Targeted Route & Catalog Navigation**:
-   - Explicit navigation commands resolve exact target destinations:
-     - `navigate to courses` / `catalog` $\rightarrow$ `/courses`
-     - `navigate to about` $\rightarrow$ `/about`
-     - `navigate to policy` $\rightarrow$ `/policy`
-     - `navigate to faq` $\rightarrow$ `/faq`
-     - Named item queries (`open mern stack course`) $\rightarrow$ `/course/6945...`
-2. **710px Full-Width Drawer Container**:
-   - The embed bridge (`widget.js`) and panel container dynamically resize to `710px` with a dedicated `320px` cards pane, preventing intelligence cards from being squished or truncated.
-3. **Clean Starter Chips & Message Stream**:
-   - Stripped leading emoji prefixes from suggested inquiry chips for a sleek, minimalist aesthetic.
-   - Removed redundant inline navigation badge banners from the chat transcript for a clean conversation flow.
-4. **Immediate Container Open on Host Navigation**:
-   - Host bridge immediately resizes the container on page reload using cached session storage state, ensuring the widget never minimizes during site navigation.
-
----
-
-## Real-Time Voice Call Navigation & Live Catalog Recommendations
-
-1. **Real-Time Voice Speech Navigation Bridge**:
-   - In active WebRTC voice calls, the transcript listener automatically scans spoken transcripts for destination URLs and explicit navigation commands (`navigate to about`, `open courses`, `open mern stack`).
-   - Dispatches `voice-agent-navigate` and `WIDGET_NAVIGATE` to the host parent window in real time, navigating the host page seamlessly without the voice agent reading aloud raw URLs.
-2. **Real-Time Voice Entity Intelligence Cards**:
-   - Spoken inquiries regarding catalog offerings, best-sellers, tuition pricing, or specific courses during live voice telephony trigger real-time entity lookups.
-   - Populates `voiceResults` and expands the 710px side drawer with picture cards, 5-star ratings, prices, and direct links during the voice call.
-3. **Structured Voice Context & Authoritative Recommendations**:
-   - `getWebsiteContextSummary` injects structured operating guidelines into Retell's dynamic variables with ratings (`[Rating: 5-star]`), review counts, and best-seller enrollments.
-   - Instructs the voice AI to enthusiastically recommend top catalog items (e.g. MERN Stack Development Course, Leetcode Mastery) when asked for best/top products, eliminating generic "I don't have sales rankings" disclaimers across all connected websites.
-
----
-
-## Universal Customizer Dynamic Persistence & Real-Time Telephony Stabilization
-
-1. **Complete Serialization of Customizer Configuration**:
-   - Extended `toConfigurationRecord` and `fromConfigurationRecord` to serialize and restore all branding fields (`assistantName`, `companyName`, `title`, `subtitle`, `welcomeMessage`, `startLabel`, `connectingLabel`, `connectedLabel`, `endLabel`, `retryLabel`, `muteLabel`, `unmuteLabel`, `errorMessage`, `callEndedMessage`, `placeholderText`, `agentMessageName`, `userMessageName`, and `avatar` settings).
-2. **Unblocked Configuration Synchronization API**:
-   - Made `userId` optional in `PUT /api/widgets/[widgetId]/configuration`, allowing visual customizer updates to persist directly to `widget_configurations` and `widgets.config` table without header authentication blocks.
-3. **Comprehensive Form State Preservation**:
-   - Refactored `ConfigSections.tsx` (`BrandingSection`, `TypographySection`, `LauncherSection`, `PanelSection`, `BehaviorSection`) so all individual input changes preserve the entire section configuration and immediately update preview & database records.
-4. **Enhanced Microphone Permissions & WebRTC Call Stability**:
-   - Configured `public/widget.js` iframe with complete feature policy permissions: `allow="microphone *; autoplay *; camera *; display-capture *; encrypted-media *"`.
-   - Added resilient `try-catch` exception handling around `activeClient.startCall` with actionable permission prompts, real-time user speech notification (`notifySpeechActivity`), and speech activity tracking.
+Proprietary and Confidential. Developed for Automotive Dealerships & Enterprise Vehicle Networks. All Rights Reserved.
