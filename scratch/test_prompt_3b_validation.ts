@@ -233,8 +233,8 @@ async function runPrompt3BValidation() {
     });
 
     // ── 6. Individual VDP Discovery ────────────────────────────────────────
-    const vdpUrl = 'https://www.ottawachryslerjeepdodge.com/used/2025-Hyundai-Elantra-id14056790.html';
-    const vdpCheck = await client.query(`SELECT id, vdp_url FROM vehicles WHERE vdp_url LIKE '%id14056790%' LIMIT 1`);
+    const vdpUrl = 'https://www.ottawachryslerjeepdodge.com/used/2024-Ford-Escape-id14203170.html';
+    const vdpCheck = await client.query(`SELECT id, vdp_url FROM vehicles WHERE vdp_url LIKE '%id14203170%' LIMIT 1`);
     recordTest({
       testCase: 'Individual VDP pages',
       expected: 'Canonical trusted VDP URL preserved for each vehicle',
@@ -313,9 +313,9 @@ async function runPrompt3BValidation() {
     });
 
     // ── 10. Vehicle Images (Canonical & Encoded) ───────────────────────────
-    const imgCheck = await client.query(`SELECT images FROM vehicles WHERE model ILIKE '%Grand Caravan%' LIMIT 1`);
+    const imgCheck = await client.query(`SELECT images FROM vehicles WHERE model ILIKE '%Escape%' LIMIT 1`);
     const imgs = imgCheck.rows[0]?.images || [];
-    const isCleanEncoded = imgs.every((u: string) => !u.includes(' '));
+    const isCleanEncoded = imgs.length > 0 && imgs.every((u: string) => !u.includes(' '));
     recordTest({
       testCase: 'Vehicle images (canonical & %20 encoded)',
       expected: 'High-res image gallery with 0 unencoded spaces',
