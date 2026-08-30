@@ -2,6 +2,12 @@
 
 export * from '@/lib/vehicles/types';
 
+export type ScanMode = 'quick' | 'master';
+
+export const QUICK_SCAN_PAGE_CAP = 15;
+export const MASTER_SCAN_PAGE_CAP = 150;
+export const BLOCKED_THRESHOLD_RATIO = 0.5;
+
 export interface Entity {
   id: string;
   widgetId: string;

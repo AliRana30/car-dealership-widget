@@ -11,14 +11,15 @@
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 
 let _userPool: Pool | null = null;
 function getUserPool(): Pool {
   if (!_userPool) {
+    const { Pool } = require('pg');
     _userPool = new Pool({ connectionString: process.env.SUPABASE_DATABASE_URL });
   }
-  return _userPool;
+  return _userPool!;
 }
 
 const BCRYPT_ROUNDS = 12;

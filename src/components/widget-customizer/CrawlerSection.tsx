@@ -16,7 +16,7 @@ import {
   ChevronDown,
   AlertCircle,
 } from 'lucide-react';
-import { QUICK_SCAN_PAGE_CAP, MASTER_SCAN_PAGE_CAP } from '@/lib/crawler';
+import { QUICK_SCAN_PAGE_CAP, MASTER_SCAN_PAGE_CAP } from '@/lib/crawler/types';
 
 type ScanMode = 'quick' | 'master';
 

@@ -5,14 +5,15 @@
  * from Vehicle Data and General Website Knowledge per Prompt 3B requirements.
  */
 
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
 
 let _pool: Pool | null = null;
 function getPool(): Pool {
   if (!_pool) {
+    const { Pool } = require('pg');
     _pool = new Pool({ connectionString: process.env.SUPABASE_DATABASE_URL });
   }
-  return _pool;
+  return _pool!;
 }
 
 export interface RawDealerInfo {

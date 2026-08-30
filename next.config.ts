@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['nodemailer'],
+  serverExternalPackages: ['nodemailer', 'pg', 'pg-connection-string', 'pgpass', 'bcryptjs'],
   async rewrites() {
     return [
       {
